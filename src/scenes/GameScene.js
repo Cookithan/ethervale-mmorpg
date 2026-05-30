@@ -1,0 +1,370 @@
+import Phaser from 'phaser'
+import Player from '../entities/Player.js'
+
+const TILE = 16
+const MAP_W = 80
+const MAP_H = 60
+
+// --- sol (TilesetField / field.png, 5 colonnes) ---
+const GRASS = 21 // herbe verte claire = sol de base
+// blobs autotile : 3x3 (coins/bords transparents) + fills pleins pour la variété
+const BLOB = {
+  darkGrass: {
+    tl: 30, t: 31, tr: 32,
+    l: 35, c: 36, r: 37,
+    bl: 40, b: 41, br: 42,
+    fills: [36, 33, 34, 38, 39],
+  },
+  dirt: {
+    tl: 0, t: 1, tr: 2,
+    l: 5, c: 6, r: 7,
+    bl: 10, b: 11, br: 12,
+    fills: [6, 3, 4, 8, 9],
+  },
+}
+
+// --- éléments du TilesetNature (nature.png, 24 colonnes) ---
+const TREE = { tl: 0, tr: 1, bl: 24, br: 25 } // petit arbre rond 2x2
+const ROCKS = [295, 296, 297]
+const FLOWERS = [264, 265, 267] // tournesol, fleur, tulipe
+const BUSHES = [240, 241, 242, 268, 269, 273] // buissons / herbes hautes
+
+/**
+ * GameScene — Phase 1, "vraie map".
+ * Sol herbe + prairies foncées aux bords FONDUS (autotile blob) + clairière de
+ * terre au spawn + forêt structurée (lisière dense + bosquets) + rochers en amas
+ * + déco groupée. Tronc toujours derrière le perso, feuillage transparent au contact.
+ */
+export default class GameScene extends Phaser.Scene {
+  constructor() {
+    super('GameScene')
+  }
+
+  create() {
+    this.worldW = MAP_W * TILE
+    this.worldH = MAP_H * TILE
+    this.cx = Math.floor(MAP_W / 2)
+    this.cy = Math.floor(MAP_H / 2)
+
+    // --- couches de sol ---
+    const data = []
+    for (let y = 0; y < MAP_H; y++) data.push(new Array(MAP_W).fill(GRASS))
+    const map = this.make.tilemap({ data, tileWidth: TILE, tileHeight: TILE })
+    const tileset = map.addTilesetImage('field')
+    map.createLayer(0, tileset, 0, 0).setDepth(-10) // herbe de base
+    this.overlay = map.createBlankLayer('overlay', tileset).setDepth(-9) // blobs
+
+    // --- terrain : chemins de terre qui serpentent (pas de gros blobs colorés) ---
+    this.painted = new Set() // cellules de sol déjà peintes (évite les superpositions)
+    this.pathCells = new Set() // cellules de chemin (pour dégager arbres/rochers)
+    this.paintPaths()
+
+    // --- physique / héros ---
+    this.physics.world.setBounds(0, 0, this.worldW, this.worldH)
+    this.player = new Player(this, this.worldW / 2, this.worldH / 2)
+
+    // --- décors ---
+    this.obstacles = this.physics.add.staticGroup()
+    this.trees = []
+    this.occupied = new Set()
+    this.spawnForest()
+    this.spawnRocks()
+    this.spawnDecor()
+    this.physics.add.collider(this.player, this.obstacles)
+
+    // --- caméra ---
+    const cam = this.cameras.main
+    cam.setBounds(0, 0, this.worldW, this.worldH)
+    // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
+    // une vibration en diagonale (positions fractionnaires arrondies différemment).
+    cam.startFollow(this.player, true)
+    cam.setZoom(3)
+    cam.setRoundPixels(true)
+
+    // --- HUD ---
+    this.add
+      .text(6, 6, 'Bouge : ZQSD / WASD / flèches', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#ffffff',
+        backgroundColor: '#00000066',
+        padding: { x: 4, y: 3 },
+      })
+      .setScrollFactor(0)
+      .setDepth(10000)
+  }
+
+  // ---------- helpers généraux ----------
+
+  key(x, y) {
+    return `${x},${y}`
+  }
+
+  dist(x, y, ox, oy) {
+    return Math.hypot(x - ox, y - oy)
+  }
+
+  /** Région "organique" = union de quelques disques autour d'un centre. */
+  blobRegion(cx, cy, radius, lobes = 3) {
+    const cells = new Set()
+    for (let i = 0; i < lobes; i++) {
+      const ox = cx + Phaser.Math.Between(-radius, radius)
+      const oy = cy + Phaser.Math.Between(-radius, radius)
+      const r = Phaser.Math.Between(Math.ceil(radius * 0.5), radius)
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          if (dx * dx + dy * dy > r * r) continue
+          const x = ox + dx
+          const y = oy + dy
+          if (x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1) cells.add(this.key(x, y))
+        }
+      }
+    }
+    return cells
+  }
+
+  /** Peint une région avec autotile 3x3 (bords fondus) sur la couche overlay. */
+  paintBlob(cells, set) {
+    const has = (x, y) => cells.has(this.key(x, y))
+    for (const k of cells) {
+      if (this.painted.has(k)) continue
+      const [x, y] = k.split(',').map(Number)
+      const n = has(x, y - 1)
+      const s = has(x, y + 1)
+      const w = has(x - 1, y)
+      const e = has(x + 1, y)
+
+      let tile
+      if (!n && !w) tile = set.tl
+      else if (!n && !e) tile = set.tr
+      else if (!s && !w) tile = set.bl
+      else if (!s && !e) tile = set.br
+      else if (!n) tile = set.t
+      else if (!s) tile = set.b
+      else if (!w) tile = set.l
+      else if (!e) tile = set.r
+      else tile = Phaser.Utils.Array.GetRandom(set.fills) // intérieur : fill varié
+
+      this.overlay.putTileAt(tile, x, y)
+      this.painted.add(k)
+    }
+  }
+
+  // ---------- génération du sol ----------
+
+  /**
+   * Trace des chemins de terre qui RELIENT des points d'intérêt (le spawn au
+   * centre + des "lieux" répartis sur la map). Chaque chemin serpente légèrement
+   * mais avance toujours vers sa destination -> il mène quelque part. Les lieux
+   * sont mémorisés pour y dégager le décor et y poser des amorces (clairières).
+   */
+  paintPaths() {
+    const cells = new Set()
+    const carve = (x, y, w) => {
+      for (let dx = 0; dx < w; dx++) {
+        for (let dy = 0; dy < w; dy++) {
+          const tx = Math.round(x) + dx
+          const ty = Math.round(y) + dy
+          if (tx > 0 && ty > 0 && tx < MAP_W - 1 && ty < MAP_H - 1) {
+            cells.add(this.key(tx, ty))
+            this.pathCells.add(this.key(tx, ty))
+          }
+        }
+      }
+    }
+
+    // points d'intérêt : le spawn (centre) + 4 lieux répartis (un par "quart")
+    this.places = [
+      { x: this.cx, y: this.cy }, // spawn
+      { x: Math.floor(MAP_W * 0.18), y: Math.floor(MAP_H * 0.22) },
+      { x: Math.floor(MAP_W * 0.82), y: Math.floor(MAP_H * 0.2) },
+      { x: Math.floor(MAP_W * 0.2), y: Math.floor(MAP_H * 0.8) },
+      { x: Math.floor(MAP_W * 0.8), y: Math.floor(MAP_H * 0.78) },
+    ]
+
+    // petite clairière de terre à chaque lieu (donne un "but" visible)
+    for (const p of this.places) {
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++) carve(p.x + dx, p.y + dy, 1)
+    }
+
+    // relie le spawn (places[0]) à chacun des autres lieux
+    for (let i = 1; i < this.places.length; i++) {
+      this.carvePathTo(carve, this.places[0], this.places[i])
+    }
+
+    this.paintBlob(cells, BLOB.dirt)
+  }
+
+  /** Sentier de A vers B : avance vers la cible avec un léger zigzag. */
+  carvePathTo(carve, a, b) {
+    let x = a.x
+    let y = a.y
+    let ang = Math.atan2(b.y - a.y, b.x - a.x)
+    let guard = 0
+    while (this.dist(x, y, b.x, b.y) > 1.5 && guard++ < MAP_W * MAP_H) {
+      carve(x, y, 2)
+      const toTarget = Math.atan2(b.y - y, b.x - x)
+      // se rapproche de la direction de la cible + un peu de bruit (virages doux)
+      ang = Phaser.Math.Angle.RotateTo(ang, toTarget, 0.25)
+      ang += Phaser.Math.FloatBetween(-0.3, 0.3)
+      x += Math.cos(ang)
+      y += Math.sin(ang)
+    }
+    carve(b.x, b.y, 2)
+  }
+
+  // ---------- décors ----------
+
+  nearSpawn(tx, ty, r = 5) {
+    return Math.abs(tx - this.cx) <= r && Math.abs(ty - this.cy) <= r
+  }
+
+  /** true si une des cellules du bloc w×w est un chemin. */
+  onPath(tx, ty, w = 1) {
+    for (let dx = 0; dx < w; dx++)
+      for (let dy = 0; dy < w; dy++)
+        if (this.pathCells.has(this.key(tx + dx, ty + dy))) return true
+    return false
+  }
+
+  /** Réserve un bloc de w×h cellules si libre ; renvoie true si placé. */
+  reserve(tx, ty, w, h) {
+    for (let dx = -1; dx <= w; dx++)
+      for (let dy = -1; dy <= h; dy++)
+        if (this.occupied.has(this.key(tx + dx, ty + dy))) return false
+    for (let dx = 0; dx < w; dx++)
+      for (let dy = 0; dy < h; dy++) this.occupied.add(this.key(tx + dx, ty + dy))
+    return true
+  }
+
+  /** Forêt : lisière dense sur les bords + bosquets + quelques arbres épars. */
+  spawnForest() {
+    const tryTree = (tx, ty) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - 3 || ty > MAP_H - 3) return
+      if (this.nearSpawn(tx, ty, 6)) return
+      if (this.onPath(tx, ty, 2)) return // pas d'arbre sur un chemin
+      if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty)
+    }
+
+    // 1) lisière : anneau dense près des bords (probabilité décroissante)
+    for (let x = 1; x < MAP_W - 2; x += 2) {
+      for (let y = 1; y < MAP_H - 2; y += 2) {
+        const edge = Math.min(x, y, MAP_W - 2 - x, MAP_H - 2 - y)
+        if (edge <= 5 && Phaser.Math.Between(0, 100) < 70 - edge * 10) tryTree(x, y)
+      }
+    }
+
+    // 2) bosquets : amas denses d'arbres
+    for (let g = 0; g < 6; g++) {
+      const gx = Phaser.Math.Between(12, MAP_W - 12)
+      const gy = Phaser.Math.Between(12, MAP_H - 12)
+      if (this.nearSpawn(gx, gy, 10)) continue
+      const r = Phaser.Math.Between(4, 7)
+      for (let i = 0; i < 30; i++) {
+        const tx = gx + Phaser.Math.Between(-r, r)
+        const ty = gy + Phaser.Math.Between(-r, r)
+        if (this.dist(tx, ty, gx, gy) <= r) tryTree(tx, ty)
+      }
+    }
+
+    // 3) quelques arbres isolés
+    for (let i = 0; i < 25; i++) {
+      tryTree(Phaser.Math.Between(2, MAP_W - 4), Phaser.Math.Between(2, MAP_H - 4))
+    }
+  }
+
+  addTree(tx, ty) {
+    const px = tx * TILE
+    const py = ty * TILE
+    const baseY = py + 2 * TILE
+    const TRUNK_DEPTH = -5 // tronc toujours derrière le perso, jamais devant la tête
+
+    const leaves = []
+    this.add.image(px + 8, py + 24, 'nature', TREE.bl).setDepth(TRUNK_DEPTH)
+    this.add.image(px + 24, py + 24, 'nature', TREE.br).setDepth(TRUNK_DEPTH)
+    leaves.push(this.add.image(px + 8, py + 8, 'nature', TREE.tl).setDepth(baseY))
+    leaves.push(this.add.image(px + 24, py + 8, 'nature', TREE.tr).setDepth(baseY))
+
+    const trunk = this.add.rectangle(px + TILE, py + TILE + 8, 16, 9)
+    this.physics.add.existing(trunk, true)
+    this.obstacles.add(trunk)
+
+    this.trees.push({
+      leaves,
+      bounds: new Phaser.Geom.Rectangle(px, py, 2 * TILE, TILE + 12),
+    })
+  }
+
+  /** Rochers : surtout en petits amas, un peu en isolé. */
+  spawnRocks() {
+    const place = (tx, ty) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
+      if (this.nearSpawn(tx, ty, 4)) return
+      if (this.onPath(tx, ty, 1)) return // pas de rocher sur un chemin
+      if (!this.reserve(tx, ty, 1, 1)) return
+      const px = tx * TILE + 8
+      const py = ty * TILE + 8
+      this.add.image(px, py, 'nature', Phaser.Utils.Array.GetRandom(ROCKS)).setDepth(py)
+      const rock = this.add.rectangle(px, py + 2, 13, 10)
+      this.physics.add.existing(rock, true)
+      this.obstacles.add(rock)
+    }
+
+    for (let c = 0; c < 6; c++) {
+      const cx = Phaser.Math.Between(4, MAP_W - 4)
+      const cy = Phaser.Math.Between(4, MAP_H - 4)
+      const n = Phaser.Math.Between(2, 5)
+      for (let i = 0; i < n; i++) {
+        place(cx + Phaser.Math.Between(-2, 2), cy + Phaser.Math.Between(-2, 2))
+      }
+    }
+    for (let i = 0; i < 10; i++) {
+      place(Phaser.Math.Between(2, MAP_W - 3), Phaser.Math.Between(2, MAP_H - 3))
+    }
+  }
+
+  /** Déco sans collision : massifs de fleurs serrées + touffes de buissons/herbes. */
+  spawnDecor() {
+    const place = (tx, ty, pool) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
+      if (this.occupied.has(this.key(tx, ty))) return
+      const px = tx * TILE + 8
+      const py = ty * TILE + 8
+      this.add.image(px, py, 'nature', Phaser.Utils.Array.GetRandom(pool)).setDepth(py - 4)
+    }
+
+    // massifs de fleurs serrées (côte à côte)
+    for (let c = 0; c < 6; c++) {
+      const cx = Phaser.Math.Between(4, MAP_W - 4)
+      const cy = Phaser.Math.Between(4, MAP_H - 4)
+      for (let i = 0; i < Phaser.Math.Between(3, 5); i++) {
+        place(cx + Phaser.Math.Between(-1, 1), cy + Phaser.Math.Between(-1, 1), FLOWERS)
+      }
+    }
+
+    // touffes de buissons / herbes hautes
+    for (let c = 0; c < 12; c++) {
+      const cx = Phaser.Math.Between(3, MAP_W - 3)
+      const cy = Phaser.Math.Between(3, MAP_H - 3)
+      for (let i = 0; i < Phaser.Math.Between(3, 6); i++) {
+        place(cx + Phaser.Math.Between(-2, 2), cy + Phaser.Math.Between(-2, 2), BUSHES)
+      }
+    }
+  }
+
+  update() {
+    this.player.update()
+    const p = this.player
+    p.setDepth(p.y)
+
+    const body = new Phaser.Geom.Rectangle(p.x - 6, p.y - 14, 12, 20)
+    for (const tree of this.trees) {
+      const touching = Phaser.Geom.Rectangle.Overlaps(tree.bounds, body)
+      const target = touching ? 0.5 : 1
+      for (const leaf of tree.leaves) {
+        leaf.alpha = Phaser.Math.Linear(leaf.alpha, target, 0.2)
+      }
+    }
+  }
+}
