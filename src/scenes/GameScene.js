@@ -5,7 +5,8 @@ import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY } from '../data/items.js'
 
-const MONSTER_COUNT = 84 // nombre de monstres sur la map
+const MONSTER_COUNT = 70 // nombre de monstres sur la map
+const MONSTER_GAP = 7 // distance mini entre deux monstres au spawn (en tuiles, anti-paquets)
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
 const EDGE_INSET = 16 // marge intérieure caméra/monde (1 tuile) : empêche de voir le fond hors-map au bord
 const MERCHANT_RANGE = 44 // distance pour pouvoir parler au marchand (px)
@@ -23,8 +24,8 @@ function makeSeededRandom(seed) {
 }
 
 const TILE = 16
-const MAP_W = 160
-const MAP_H = 120
+const MAP_W = 200
+const MAP_H = 150
 
 // --- sol (TilesetField / field.png, 5 colonnes) ---
 const GRASS = 21 // herbe verte claire = sol de base
@@ -60,12 +61,21 @@ const BLOB = {
 // biomes en ANNEAUX concentriques autour du spawn (difficulté croissante vers l'extérieur).
 const BIOME_BLOCKS = { forest: BLOB.darkGrass, desert: BLOB.dirt, snow: BLOB.snow, cursed: BLOB.cursed }
 // monstres par biome : faibles au centre, costauds en s'éloignant
+// noms affichés des zones (bandeau quand on change de biome)
+const BIOME_NAMES = {
+  prairie: 'Village',
+  forest: 'Forêt',
+  desert: 'Désert',
+  snow: 'Terres gelées',
+  cursed: 'Terres maudites',
+}
+
 const MONSTERS_BY_BIOME = {
-  prairie: ['lizard', 'lizard', 'racoon'],
-  forest: ['lizard', 'racoon', 'racoon'],
-  desert: ['racoon', 'mushroom'],
-  snow: ['racoon', 'mushroom', 'mushroom'],
-  cursed: ['mushroom'],
+  prairie: ['lizard'], // (zone sûre : pas de spawn de toute façon)
+  forest: ['lizard', 'racoon', 'mushroom'],
+  desert: ['snake', 'spider'],
+  snow: ['owl', 'bear'],
+  cursed: ['skull', 'spirit', 'flam'],
 }
 
 // groupe de décor par biome (les arbres ne doivent pas déborder sur un autre groupe)
@@ -123,8 +133,8 @@ export default class GameScene extends Phaser.Scene {
     for (let y = 0; y < MAP_H; y++) data.push(new Array(MAP_W).fill(GRASS))
     const map = this.make.tilemap({ data, tileWidth: TILE, tileHeight: TILE })
     const tileset = map.addTilesetImage('field')
-    map.createLayer(0, tileset, 0, 0).setDepth(-10) // herbe de base
-    this.overlay = map.createBlankLayer('overlay', tileset).setDepth(-9) // blobs
+    this.groundLayer = map.createLayer(0, tileset, 0, 0).setDepth(-10) // sol (herbe + biomes)
+    this.overlay = map.createBlankLayer('overlay', tileset).setDepth(-9) // chemins (par-dessus)
 
     // --- terrain : chemins de terre qui serpentent (pas de gros blobs colorés) ---
     this.painted = new Set() // cellules de sol déjà peintes (évite les superpositions)
@@ -205,8 +215,11 @@ export default class GameScene extends Phaser.Scene {
     })
 
     this.gameOver = false
+    this.currentBiome = 'prairie' // suivi pour le bandeau de zone
     // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
     if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
+    // bandeau de bienvenue (laisse l'UIScene démarrer)
+    this.time.delayedCall(600, () => this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES.prairie))
 
     // fin de la génération : on rend l'aléatoire réel au gameplay (IA, loot...)
     Math.random = origRandom
@@ -324,8 +337,7 @@ export default class GameScene extends Phaser.Scene {
         if (b === 'prairie') continue // prairie = herbe de base, rien à peindre
         const fills = BIOME_BLOCKS[b].fills
         const tile = fills[Math.floor(tileNoise(tx, ty, 7) * fills.length)]
-        this.overlay.putTileAt(tile, tx, ty)
-        this.painted.add(this.key(tx, ty))
+        this.groundLayer.putTileAt(tile, tx, ty) // sol de biome SOUS le chemin
       }
     }
   }
@@ -358,9 +370,9 @@ export default class GameScene extends Phaser.Scene {
     // = rivières énormes). Bords organiques mais nets pour des rivières fines.
     const wob = Math.sin(ang * 3) * 0.06 + Math.sin(ang * 5 + 1.3) * 0.04
     const r = Math.hypot(nx, ny) + wob
-    if (r < 0.24) return 'prairie' // hub central (sûr)
-    if (r < 0.42) return 'forest' // anneau de forêt autour du spawn
-    if (r < 0.84) {
+    if (r < 0.22) return 'prairie' // hub central (sûr)
+    if (r < 0.48) return 'forest' // anneau de forêt LARGE autour du spawn
+    if (r < 0.86) {
       // grande zone intermédiaire : NEIGE en haut, DÉSERT en bas (bord ondulé lisse)
       const split = Math.sin(nx * 4) * 0.08
       return ny < split ? 'snow' : 'desert'
@@ -382,23 +394,64 @@ export default class GameScene extends Phaser.Scene {
     if (!RIVERS_ENABLED) return // rivières désactivées : map propre (biomes + déco + chemins)
 
     // cellules de bord = entre deux biomes différents (des DEUX côtés -> rivière ~2 large)
+    const cursedMoat = new Set() // bord des terres maudites : large + PAS de gué (zone verrouillée)
+    const prairieEdge = new Set() // bord de la prairie (zone sûre) : un peu plus large, AVEC gués
     for (let ty = 1; ty < MAP_H - 1; ty++) {
       for (let tx = 1; tx < MAP_W - 1; tx++) {
         const b = this.biomeAt(tx, ty)
-        if (
-          this.biomeAt(tx + 1, ty) !== b ||
-          this.biomeAt(tx - 1, ty) !== b ||
-          this.biomeAt(tx, ty + 1) !== b ||
-          this.biomeAt(tx, ty - 1) !== b
-        ) {
+        const n = [this.biomeAt(tx + 1, ty), this.biomeAt(tx - 1, ty), this.biomeAt(tx, ty + 1), this.biomeAt(tx, ty - 1)]
+        if (n.some((nb) => nb !== b)) {
           this.waterCells.add(this.key(tx, ty))
+          if (b === 'cursed' || n.includes('cursed')) cursedMoat.add(this.key(tx, ty))
+          else if (b === 'prairie' || n.includes('prairie')) prairieEdge.add(this.key(tx, ty))
         }
       }
     }
-    // retirer les cellules de chemin (le chemin en terre fait le gué, marchable)
+    // dilatation d'un ensemble de cellules d'eau (rayon r en tuiles)
+    const widen = (set, r, alsoInto = null) => {
+      for (const k of [...set]) {
+        const [bx, by] = k.split(',').map(Number)
+        for (let dx = -r; dx <= r; dx++) {
+          for (let dy = -r; dy <= r; dy++) {
+            const x = bx + dx
+            const y = by + dy
+            if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1) continue
+            this.waterCells.add(this.key(x, y))
+            if (alsoInto) alsoInto.add(this.key(x, y))
+          }
+        }
+      }
+    }
+    widen(cursedMoat, 2, cursedMoat) // douve large infranchissable autour des maudites
+    widen(prairieEdge, 1) // rivière plus large autour de la prairie (mais gués conservés)
+    // proche du moat maudit ? (pour ne pas y poser de pont troué)
+    const nearCursed = (x, y) => {
+      for (let dx = -2; dx <= 2; dx++)
+        for (let dy = -2; dy <= 2; dy++) if (cursedMoat.has(this.key(x + dx, y + dy))) return true
+      return false
+    }
+    // gués (pont entier marchable) vs pont en RUINE (chemin dans le moat maudit : reste eau)
+    const fords = []
+    const ruined = []
     for (const k of [...this.waterCells]) {
       const [x, y] = k.split(',').map(Number)
-      if (this.onPath(x, y, 1)) this.waterCells.delete(k)
+      if (!this.onPath(x, y, 1)) continue
+      if (cursedMoat.has(k)) {
+        ruined.push([x, y]) // chemin coupé par le lac maudit -> pont en ruine (infranchissable)
+      } else if (!nearCursed(x, y)) {
+        this.waterCells.delete(k) // gué normal : devient marchable
+        fords.push([x, y])
+      }
+      // proche du moat (sans y être) : reste eau, pas de pont
+    }
+    // couche de pont (au-dessus de l'eau)
+    const bmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
+    const bts = bmap.addTilesetImage('bridge_gen', 'bridge_gen', TILE, TILE)
+    this.bridgeLayer = bmap.createBlankLayer('bridge', bts, 0, 0).setDepth(-7)
+    for (const [fx, fy] of fords) this.bridgeLayer.putTileAt(0, fx, fy) // ponts entiers
+    // pont en ruine vers les terres maudites : ~82% de planches, quelques trous (eau visible)
+    for (const [rx, ry] of ruined) {
+      if (tileNoise(rx, ry, 5) < 0.82) this.bridgeLayer.putTileAt(0, rx, ry)
     }
     // rendu : eau générée (4 variantes 0..3, choisies par bruit pour varier les reflets)
     for (const k of this.waterCells) {
@@ -479,7 +532,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // 2) bosquets : amas denses d'arbres (surtout prairie/forêt)
-    for (let g = 0; g < 16; g++) {
+    for (let g = 0; g < 22; g++) {
       const gx = Phaser.Math.Between(12, MAP_W - 12)
       const gy = Phaser.Math.Between(12, MAP_H - 12)
       if (this.nearSpawn(gx, gy, 10)) continue
@@ -492,7 +545,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // 3) quelques arbres isolés (prairie)
-    for (let i = 0; i < 50; i++) {
+    for (let i = 0; i < 70; i++) {
       tryTree(Phaser.Math.Between(2, MAP_W - 4), Phaser.Math.Between(2, MAP_H - 4))
     }
   }
@@ -554,7 +607,7 @@ export default class GameScene extends Phaser.Scene {
       this.obstacles.add(rock)
     }
 
-    for (let c = 0; c < 24; c++) {
+    for (let c = 0; c < 34; c++) {
       const cx = Phaser.Math.Between(4, MAP_W - 4)
       const cy = Phaser.Math.Between(4, MAP_H - 4)
       const n = Phaser.Math.Between(2, 5)
@@ -562,7 +615,7 @@ export default class GameScene extends Phaser.Scene {
         place(cx + Phaser.Math.Between(-2, 2), cy + Phaser.Math.Between(-2, 2))
       }
     }
-    for (let i = 0; i < 34; i++) {
+    for (let i = 0; i < 48; i++) {
       place(Phaser.Math.Between(2, MAP_W - 3), Phaser.Math.Between(2, MAP_H - 3))
     }
   }
@@ -573,6 +626,7 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
       if (this.occupied.has(this.key(tx, ty))) return
       if (this.onWater(tx, ty, 1)) return // pas de déco dans une rivière
+      if (this.onPath(tx, ty, 1)) return // pas de déco sur un chemin / pont
       const b = this.biomeAt(tx, ty)
       if (b !== 'prairie' && b !== 'forest') return // fleurs/herbes : prairie + forêt
       const px = tx * TILE + 8
@@ -581,7 +635,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // massifs de fleurs serrées (côte à côte)
-    for (let c = 0; c < 16; c++) {
+    for (let c = 0; c < 24; c++) {
       const cx = Phaser.Math.Between(4, MAP_W - 4)
       const cy = Phaser.Math.Between(4, MAP_H - 4)
       for (let i = 0; i < Phaser.Math.Between(3, 5); i++) {
@@ -590,7 +644,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // touffes de buissons / herbes hautes
-    for (let c = 0; c < 34; c++) {
+    for (let c = 0; c < 48; c++) {
       const cx = Phaser.Math.Between(3, MAP_W - 3)
       const cy = Phaser.Math.Between(3, MAP_H - 3)
       for (let i = 0; i < Phaser.Math.Between(3, 6); i++) {
@@ -602,25 +656,39 @@ export default class GameScene extends Phaser.Scene {
   // ---------- combat ----------
 
   spawnMonsters() {
-    const types = Object.keys(MONSTER_TYPES)
-    const MIN_GAP = 6 // distance mini entre deux monstres (en tuiles)
-    const spots = [] // positions déjà occupées par un monstre
-    let placed = 0
-    let tries = 0
-    while (placed < MONSTER_COUNT && tries < MONSTER_COUNT * 60) {
-      tries++
+    for (let i = 0; i < MONSTER_COUNT; i++) this.spawnOneMonster(true)
+  }
+
+  /**
+   * Place UN monstre à un endroit valide (hors spawn/décor/eau, type selon le biome).
+   * `initial` = false pour un respawn -> évite d'apparaître trop près du joueur.
+   */
+  spawnOneMonster(initial = false) {
+    for (let tries = 0; tries < 80; tries++) {
       const tx = Phaser.Math.Between(2, MAP_W - 3)
       const ty = Phaser.Math.Between(2, MAP_H - 3)
-      if (this.nearSpawn(tx, ty, 8)) continue // pas trop près du joueur
-      if (this.occupied.has(this.key(tx, ty))) continue // pas dans un arbre/rocher
-      if (this.onWater(tx, ty, 1)) continue // pas dans une rivière
-      if (spots.some((s) => this.dist(tx, ty, s.x, s.y) < MIN_GAP)) continue // pas collé à un autre monstre
-      const pool = MONSTERS_BY_BIOME[this.biomeAt(tx, ty)] || types
-      const type = Phaser.Utils.Array.GetRandom(pool)
-      this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, type))
-      spots.push({ x: tx, y: ty })
-      placed++
+      if (this.nearSpawn(tx, ty, 8)) continue
+      if (this.occupied.has(this.key(tx, ty))) continue
+      if (this.onWater(tx, ty, 1)) continue
+      const biome = this.biomeAt(tx, ty)
+      if (biome === 'prairie') continue // prairie = zone sûre, aucun monstre
+      if (!initial && biome === 'cursed') continue // pas de respawn dans la zone verrouillée
+      // respawn : pas dans le champ de vision proche du joueur (pop devant lui = moche)
+      if (!initial && this.dist(tx, ty, this.player.x / TILE, this.player.y / TILE) < 16) continue
+      // espacement : pas collé à un autre monstre (évite les paquets -> meutes qui poursuivent)
+      let tooClose = false
+      for (const m of this.monsters.getChildren()) {
+        if (m.active && this.dist(tx, ty, m.x / TILE, m.y / TILE) < MONSTER_GAP) {
+          tooClose = true
+          break
+        }
+      }
+      if (tooClose) continue
+      const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
+      this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, Phaser.Utils.Array.GetRandom(pool)))
+      return true
     }
+    return false
   }
 
   /** Place le marchand près du spawn (PNJ statique avec collision) + son indice "E". */
@@ -762,6 +830,10 @@ export default class GameScene extends Phaser.Scene {
   onMonsterKilled(mon) {
     this.player.gainXp(mon.def.xp)
     this.spawnDrop(mon)
+    // respawn différé pour garder le monde peuplé (population ~constante)
+    this.time.delayedCall(Phaser.Math.Between(6000, 11000), () => {
+      if (!this.gameOver) this.spawnOneMonster()
+    })
   }
 
   /** Fait apparaître un objet ramassable sur le cadavre, selon la table du monstre. */
@@ -887,6 +959,13 @@ export default class GameScene extends Phaser.Scene {
     })
 
     if (p.hp <= 0) this.handleDeath()
+
+    // bandeau de zone quand le héros change de biome
+    const biome = this.biomeAt(Math.floor(p.x / TILE), Math.floor(p.y / TILE))
+    if (biome !== this.currentBiome) {
+      this.currentBiome = biome
+      this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES[biome])
+    }
 
     // indice du marchand quand on est proche
     this.merchantHint.setVisible(this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE)

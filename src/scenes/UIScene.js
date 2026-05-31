@@ -29,6 +29,7 @@ export default class UIScene extends Phaser.Scene {
     this.shopOpen = false
     this.shopObjects = []
     this.toast = null
+    this.zoneBanner = null
     this.frameRect = null
     this.xpRect = null
     this.bagRect = null
@@ -424,6 +425,40 @@ export default class UIScene extends Phaser.Scene {
 
   hideTip() {
     this.tip.setVisible(false)
+  }
+
+  /** Bandeau de zone (nom du biome) qui apparaît en grand puis s'efface. */
+  showZoneBanner(name) {
+    if (!name) return
+    if (this.zoneBanner) {
+      this.tweens.killTweensOf(this.zoneBanner)
+      this.zoneBanner.destroy()
+    }
+    const t = this.add
+      .text(this.scale.width / 2, this.scale.height * 0.2, name, {
+        fontFamily: 'Georgia, serif',
+        fontSize: '36px',
+        fontStyle: 'bold',
+        color: '#ffe9a8',
+        stroke: '#2a1c08',
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setDepth(140)
+      .setAlpha(0)
+    this.zoneBanner = t
+    this.tweens.add({
+      targets: t,
+      alpha: 1,
+      duration: 450,
+      hold: 1500,
+      yoyo: true,
+      ease: 'Sine.inOut',
+      onComplete: () => {
+        t.destroy()
+        if (this.zoneBanner === t) this.zoneBanner = null
+      },
+    })
   }
 
   /** Message bref au-dessus de la hotbar (ramassage, équipement...). */

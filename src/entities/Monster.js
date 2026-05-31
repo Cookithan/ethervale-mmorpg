@@ -19,11 +19,46 @@ export const MONSTER_TYPES = {
     key: 'mon_racoon', hp: 55, speed: 46, damage: 8, xp: 16, aggro: 105, scale: 1.1, name: 'Raton',
     loot: { gold: [2, 5], equipChance: 11, rarity: { common: 72, rare: 25, epic: 3 } },
   },
+
+  // --- désert ---
+  snake: {
+    key: 'mon_snake', hp: 40, speed: 82, damage: 10, xp: 18, aggro: 135, scale: 1.0, name: 'Serpent',
+    loot: { gold: [2, 6], equipChance: 12, rarity: { common: 70, rare: 27, epic: 3 } },
+  },
+  spider: {
+    key: 'mon_spider', hp: 60, speed: 56, damage: 12, xp: 22, aggro: 110, scale: 1.1, name: 'Araignée',
+    loot: { gold: [3, 7], equipChance: 14, rarity: { common: 62, rare: 33, epic: 5 } },
+  },
+
+  // --- neige ---
+  owl: {
+    key: 'mon_owl', hp: 55, speed: 70, damage: 14, xp: 26, aggro: 120, scale: 1.0, name: 'Hibou',
+    loot: { gold: [3, 8], equipChance: 14, rarity: { common: 60, rare: 33, epic: 7 } },
+  },
+  bear: {
+    key: 'mon_bear', hp: 130, speed: 30, damage: 22, xp: 42, aggro: 80, scale: 1.5, name: 'Ours',
+    loot: { gold: [5, 11], equipChance: 18, rarity: { common: 48, rare: 37, epic: 15 } },
+  },
+
+  // --- terres maudites ---
+  skull: {
+    key: 'mon_skull', hp: 80, speed: 50, damage: 18, xp: 34, aggro: 115, scale: 1.1, name: 'Crâne',
+    loot: { gold: [5, 10], equipChance: 18, rarity: { common: 45, rare: 38, epic: 17 } },
+  },
+  spirit: {
+    key: 'mon_spirit', hp: 50, speed: 92, damage: 16, xp: 30, aggro: 140, scale: 1.0, name: 'Esprit',
+    loot: { gold: [4, 9], equipChance: 16, rarity: { common: 50, rare: 35, epic: 15 } },
+  },
+  flam: {
+    key: 'mon_flam', hp: 105, speed: 40, damage: 26, xp: 48, aggro: 100, scale: 1.3, name: 'Démon de feu',
+    loot: { gold: [7, 14], equipChance: 22, rarity: { common: 35, rare: 40, epic: 25 } },
+  },
 }
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)
 const LEASH_RANGE = 200 // distance parcourue depuis l'endroit où elle t'a repéré avant d'abandonner (px)
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
+const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 
 /**
  * Monster — IA simple : patrouille aléatoire, puis poursuite si le joueur entre
@@ -105,8 +140,15 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // On l'utilise pour l'anim plutôt que la vitesse physique, qui rebondit quand
     // le monstre est collé au joueur (-> oscillation gauche/droite sans fin).
     const homeDist = Math.hypot(this.homeX - this.x, this.homeY - this.y)
+    const spd = def.speed * SPEED_SCALE
     let aimX
     let aimY
+
+    // la prairie est une zone sûre : un monstre qui y pénètre abandonne et rentre
+    if (this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16)) === 'prairie') {
+      this.aggroed = false
+      this.returning = true
+    }
 
     // machine à états (patrouille / poursuite / retour) avec leash.
     // En "retour", la créature ignore le joueur jusqu'à être rentrée : ça évite le
@@ -129,7 +171,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.aggroed) {
       // poursuite du joueur
       const d = dist || 1
-      this.setVelocity((dx / d) * def.speed, (dy / d) * def.speed)
+      this.setVelocity((dx / d) * spd, (dy / d) * spd)
       aimX = dx
       aimY = dy
     } else if (this.returning) {
@@ -137,7 +179,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       const hx = this.homeX - this.x
       const hy = this.homeY - this.y
       const d = homeDist || 1
-      this.setVelocity((hx / d) * def.speed, (hy / d) * def.speed)
+      this.setVelocity((hx / d) * spd, (hy / d) * spd)
       aimX = hx
       aimY = hy
     } else {
@@ -151,7 +193,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
           this.wander.set(Math.cos(a), Math.sin(a))
         }
       }
-      this.setVelocity(this.wander.x * def.speed * 0.5, this.wander.y * def.speed * 0.5)
+      this.setVelocity(this.wander.x * spd * 0.5, this.wander.y * spd * 0.5)
       aimX = this.wander.x
       aimY = this.wander.y
     }

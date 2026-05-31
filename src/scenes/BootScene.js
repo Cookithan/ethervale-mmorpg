@@ -1,5 +1,8 @@
 import Phaser from 'phaser'
 
+// monstres (sprites mon_<nom>.png, grille 4x4) — chargement + animations directionnelles
+const MONSTER_SPRITES = ['mushroom', 'lizard', 'racoon', 'snake', 'spider', 'bear', 'owl', 'skull', 'spirit', 'flam']
+
 /**
  * BootScene — précharge les assets puis crée les animations du héros.
  * Assets : pack "Ninja Adventure" (CC0). Héros = NinjaGreen, spritesheet 16x16
@@ -37,8 +40,8 @@ export default class BootScene extends Phaser.Scene {
     })
 
     // monstres : spritesheets 16x16 (4x4)
-    for (const m of ['mon_mushroom', 'mon_lizard', 'mon_racoon']) {
-      this.load.spritesheet(m, `assets/sprites/${m}.png`, {
+    for (const m of MONSTER_SPRITES) {
+      this.load.spritesheet('mon_' + m, `assets/sprites/mon_${m}.png`, {
         frameWidth: 16,
         frameHeight: 16,
       })
@@ -128,6 +131,19 @@ export default class BootScene extends Phaser.Scene {
       g.generateTexture('water_gen', 64, 16)
       g.destroy()
     }
+
+    // 'bridge_gen' : tuile de pont en planches de bois (16x16) posée au-dessus de l'eau.
+    if (!this.textures.exists('bridge_gen')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0xd49a58, 1) // bois clair (proche du chemin)
+      g.fillRect(0, 0, 16, 16)
+      g.fillStyle(0xab6f38, 1) // joints entre planches
+      for (let y = 0; y < 16; y += 5) g.fillRect(0, y, 16, 1)
+      g.fillStyle(0xeec394, 1) // reflets clairs en haut de chaque planche
+      for (let y = 1; y < 16; y += 5) g.fillRect(0, y, 16, 1)
+      g.generateTexture('bridge_gen', 16, 16)
+      g.destroy()
+    }
   }
 
   /**
@@ -172,7 +188,7 @@ export default class BootScene extends Phaser.Scene {
    */
   createMonsterAnimations() {
     const dirs = { down: 0, up: 1, left: 2, right: 3 }
-    for (const m of ['mushroom', 'lizard', 'racoon']) {
+    for (const m of MONSTER_SPRITES) {
       for (const [dir, col] of Object.entries(dirs)) {
         const key = `mon-${m}-${dir}`
         if (this.anims.exists(key)) continue
