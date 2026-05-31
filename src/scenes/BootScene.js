@@ -30,9 +30,6 @@ export default class BootScene extends Phaser.Scene {
       frameHeight: 16,
     })
 
-    // eau (rivières) : image pour servir de tileset à une couche dédiée
-    this.load.image('water', 'assets/tiles/water.png')
-
     // héros : spritesheet 16x16
     this.load.spritesheet('player', 'assets/sprites/player.png', {
       frameWidth: 16,
@@ -96,6 +93,39 @@ export default class BootScene extends Phaser.Scene {
       g.fillStyle(0xffffff, 1) // cœur lumineux
       g.fillCircle(5, 5, 2)
       g.generateTexture('proj', 10, 10)
+      g.destroy()
+    }
+
+    // 'water_gen' : tileset d'eau 64x16 = 4 variantes 16x16 (bleu + reflets clairs).
+    // Utilisé comme tileset d'une couche de tilemap pour les rivières.
+    if (!this.textures.exists('water_gen')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      // reflets clairs par variante : [x, y, largeur]
+      const ripples = [
+        [[2, 4, 4], [9, 11, 5]],
+        [[6, 3, 5], [1, 12, 4], [11, 8, 3]],
+        [[8, 6, 4], [3, 13, 5]],
+        [[12, 5, 3], [5, 10, 5], [1, 2, 3]],
+      ]
+      const specks = [
+        [[12, 9], [4, 14]],
+        [[3, 6], [13, 13]],
+        [[10, 3], [1, 9]],
+        [[7, 7], [14, 4]],
+      ]
+      for (let i = 0; i < 4; i++) {
+        const ox = i * 16
+        g.fillStyle(0x3f8ed0, 1) // bleu eau de base
+        g.fillRect(ox, 0, 16, 16)
+        g.fillStyle(0x357fbe, 1) // creux légèrement plus foncés
+        for (const [sx, sy] of specks[i]) g.fillRect(ox + sx, sy, 2, 1)
+        g.fillStyle(0x74b4e8, 1) // reflets clairs (vaguelettes)
+        for (const [rx, ry, rw] of ripples[i]) {
+          g.fillRect(ox + rx, ry, rw, 1)
+          g.fillRect(ox + rx + 1, ry + 1, Math.max(1, rw - 2), 1)
+        }
+      }
+      g.generateTexture('water_gen', 64, 16)
       g.destroy()
     }
   }

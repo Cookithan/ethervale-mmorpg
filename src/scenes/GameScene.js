@@ -88,8 +88,7 @@ const FLOWERS = [264, 265, 267] // tournesol, fleur, tulipe
 const BUSHES = [240, 241, 242, 268, 269, 273] // buissons / herbes hautes
 
 // --- eau (TilesetWater / water.png, 28 colonnes) ---
-const RIVERS_ENABLED = false // rivières retirées : le tileset d'eau n'a pas de tuile "eau pleine" propre (que des berges)
-const WATER_TILE = 201
+const RIVERS_ENABLED = true // rivières avec eau GÉNÉRÉE PAR CODE ('water_gen', 4 variantes)
 
 /**
  * GameScene — Phase 1, "vraie map".
@@ -378,7 +377,8 @@ export default class GameScene extends Phaser.Scene {
     this.waterCells = new Set()
     // couche d'eau (vide si désactivé) pour que les colliders existent toujours
     const wmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
-    this.waterLayer = wmap.createBlankLayer('water', wmap.addTilesetImage('water'), 0, 0).setDepth(-8)
+    const wts = wmap.addTilesetImage('water_gen', 'water_gen', TILE, TILE) // eau générée par code
+    this.waterLayer = wmap.createBlankLayer('water', wts, 0, 0).setDepth(-8)
     if (!RIVERS_ENABLED) return // rivières désactivées : map propre (biomes + déco + chemins)
 
     // cellules de bord = entre deux biomes différents (des DEUX côtés -> rivière ~2 large)
@@ -400,10 +400,10 @@ export default class GameScene extends Phaser.Scene {
       const [x, y] = k.split(',').map(Number)
       if (this.onPath(x, y, 1)) this.waterCells.delete(k)
     }
-    // rendu : eau pleine cyan (pas d'autotile)
+    // rendu : eau générée (4 variantes 0..3, choisies par bruit pour varier les reflets)
     for (const k of this.waterCells) {
       const [x, y] = k.split(',').map(Number)
-      this.waterLayer.putTileAt(WATER_TILE, x, y)
+      this.waterLayer.putTileAt(Math.floor(tileNoise(x, y, 3) * 4), x, y)
     }
     this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau bloque
   }
