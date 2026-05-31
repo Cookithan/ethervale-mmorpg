@@ -149,8 +149,52 @@ export default class UIScene extends Phaser.Scene {
     this.xpText = reg(this.add.text(cw / 2, xpY + xpH / 2, '', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' }).setOrigin(0.5))
     this.xpRect = new Phaser.Geom.Rectangle(0, xpY, cw, xpH)
 
+    // --- barre de BOSS (haut-centre, cachée hors combat de boss, style MMO) ---
+    const bw = Math.min(440, cw * 0.62)
+    const bcx = cw / 2
+    const by = 56
+    this.bossBarObjects = []
+    const breg = (o) => {
+      reg(o)
+      this.bossBarObjects.push(o)
+      return o
+    }
+    breg(this.add.rectangle(bcx, by, bw + 10, 48, 0x0c0f16, 0.85).setStrokeStyle(2, GOLD).setDepth(150))
+    this.bossNameText = breg(
+      this.add.text(bcx, by - 14, '', { fontFamily: 'Georgia, serif', fontSize: '15px', fontStyle: 'bold', color: '#ffd86b', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(151)
+    )
+    this.bossBarW = bw - 12
+    breg(this.add.rectangle(bcx, by + 11, this.bossBarW + 4, 14, 0x000000, 0.7).setDepth(150))
+    this.bossHpBar = breg(this.add.rectangle(bcx - this.bossBarW / 2, by + 11, this.bossBarW, 12, 0x9b1b1b).setOrigin(0, 0.5).setDepth(151))
+    this.bossHpText = breg(
+      this.add.text(bcx, by + 11, '', { fontFamily: 'monospace', fontSize: '9px', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(152)
+    )
+    this.bossBarObjects.forEach((o) => o.setVisible(false))
+    this.bossShown = false
+
     // --- sac (bas-droite, reconstruit selon le contenu) ---
     this.builtInvVersion = -1
+  }
+
+  /** Affiche/MAJ/masque la barre de boss selon le boss engagé côté GameScene. */
+  updateBossBar(boss) {
+    if (!this.bossBarObjects) return
+    const live = boss && boss.active && boss.hp > 0
+    if (!live) {
+      if (this.bossShown) {
+        this.bossBarObjects.forEach((o) => o.setVisible(false))
+        this.bossShown = false
+      }
+      return
+    }
+    if (!this.bossShown) {
+      this.bossBarObjects.forEach((o) => o.setVisible(true))
+      this.bossShown = true
+    }
+    this.bossNameText.setText(`⚔ ${boss.displayName} · Niv.${boss.level}`)
+    const ratio = Phaser.Math.Clamp(boss.hp / boss.maxHp, 0, 1)
+    this.bossHpBar.setSize(this.bossBarW * ratio, 12)
+    this.bossHpText.setText(`${Math.max(0, Math.round(boss.hp))} / ${boss.maxHp}`)
   }
 
   rebuildHud() {
@@ -874,6 +918,8 @@ export default class UIScene extends Phaser.Scene {
       this.buildBag()
       if (this.charOpen) this.buildCharPanel()
     }
+
+    this.updateBossBar(this.game_?.activeBoss) // barre de boss en haut (combat de boss)
   }
 
   showGameOver(level) {

@@ -93,6 +93,16 @@ const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé,
 const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
 
+// BOSS DE BIOME (un par zone, repaire FIXE au fond du biome -> "boss de monde" style WoW).
+// type = monstre emblématique du biome ; dir = direction du repaire depuis le centre ; dist = tuiles.
+const BIOME_BOSSES = {
+  forest: { type: 'mushroom', name: 'Gorthak, Gardien de la Forêt', dir: [1, 0], dist: 44 },
+  desert: { type: 'spider', name: 'Sslyth, Reine des Sables', dir: [0, 1], dist: 66 },
+  snow: { type: 'bear', name: 'Brakka, Colosse des Glaces', dir: [0, -1], dist: 66 },
+  cursed: { type: 'flam', name: 'Dargoth, Seigneur des Maudits', dir: [1, 0], dist: 96 },
+}
+const BOSS_BAR_RANGE = 240 // distance (px) à laquelle la barre de boss apparaît en haut de l'écran
+
 // groupe de décor par biome (les arbres ne doivent pas déborder sur un autre groupe)
 const DECOR_GROUP = { prairie: 'green', forest: 'green', snow: 'snow', desert: 'dead', cursed: 'dead' }
 const BORDER_MARGIN = 3 // distance mini (tuiles) entre un arbre et la frontière d'un autre groupe
@@ -207,6 +217,7 @@ export default class GameScene extends Phaser.Scene {
     // --- monstres ---
     this.monsters = this.physics.add.group()
     this.spawnMonsters()
+    this.spawnBosses() // boss de biome (repaires fixes au fond de chaque zone)
     this.physics.add.collider(this.monsters, this.obstacles)
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
     this.physics.add.collider(this.monsters, this.monsters)
@@ -301,6 +312,7 @@ export default class GameScene extends Phaser.Scene {
     this.gameOver = false
     this.pendingNpc = null // interlocuteur cliqué vers lequel on marche (interaction auto en arrivant)
     this.currentBiome = 'prairie' // suivi pour le bandeau de zone
+    this.activeBoss = null // boss actuellement engagé (alimente la barre de boss de l'UIScene)
     if (!this.preview) {
       // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
       if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
@@ -1096,6 +1108,48 @@ export default class GameScene extends Phaser.Scene {
     return false
   }
 
+  /** Pose les boss de biome à leurs repaires fixes (un par zone). */
+  spawnBosses() {
+    this.bosses = []
+    for (const biome of Object.keys(BIOME_BOSSES)) this.spawnBoss(biome)
+  }
+
+  /** (Re)crée le boss d'un biome à son repaire (tuile fixe, ajustée si occupée/eau). */
+  spawnBoss(biome) {
+    const cfg = BIOME_BOSSES[biome]
+    if (!cfg) return null
+    const tile = this.findBossTile(this.cx + cfg.dir[0] * cfg.dist, this.cy + cfg.dir[1] * cfg.dist, biome)
+    if (!tile) return null
+    const level = Phaser.Math.Clamp(this.monsterLevelAt(tile.tx, tile.ty) + 3, 1, 20)
+    const boss = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, cfg.type, { level, boss: true, name: cfg.name })
+    boss.bossBiome = biome
+    boss.homeX = tile.tx * TILE + 8 // ancre de patrouille = son repaire
+    boss.homeY = tile.ty * TILE + 8
+    this.monsters.add(boss)
+    this.bosses.push(boss)
+    return boss
+  }
+
+  /** Cherche une tuile libre (bon biome, hors eau/déco/chemin) en spirale autour de (tx,ty). */
+  findBossTile(tx, ty, biome) {
+    tx = Math.round(tx)
+    ty = Math.round(ty)
+    for (let r = 0; r <= 16; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue // périmètre de l'anneau r
+          const x = tx + dx
+          const y = ty + dy
+          if (x < 3 || y < 3 || x > MAP_W - 4 || y > MAP_H - 4) continue
+          if (this.biomeAt(x, y) !== biome) continue
+          if (this.onWater(x, y, 1) || this.occupied.has(this.key(x, y)) || this.onPath(x, y, 1)) continue
+          return { tx: x, ty: y }
+        }
+      }
+    }
+    return null
+  }
+
   /** Pose un bâtiment (bloc de tuiles 'house') à (tx,ty) si l'emplacement est libre. */
   placeBuilding(tx, ty, key) {
     const b = BUILDINGS[key]
@@ -1601,6 +1655,10 @@ export default class GameScene extends Phaser.Scene {
 
   onMonsterKilled(mon) {
     this.player.gainXp(mon.xpReward ?? mon.def.xp)
+    if (mon.isBoss) {
+      this.onBossKilled(mon)
+      return
+    }
     this.spawnDrop(mon)
     // respawn de CAMP : le monstre réapparaît dans SON biome, près de là où il est mort
     // (la zone se repeuple comme dans un MMORPG ; fallback ailleurs si l'endroit est pris).
@@ -1621,6 +1679,27 @@ export default class GameScene extends Phaser.Scene {
         if (!this.gameOver) this.spawnOneMonster(false, near, false)
       })
     }
+  }
+
+  /** Mort d'un BOSS de biome : butin garanti (épique + or + soin), annonce, respawn long. */
+  onBossKilled(mon) {
+    const i = this.bosses.indexOf(mon)
+    if (i >= 0) this.bosses.splice(i, 1)
+    if (this.activeBoss === mon) this.activeBoss = null
+
+    // butin GARANTI : 2 équipements épiques + gros tas d'or + un gros soin
+    this.drops.add(new Drop(this, mon.x - 12, mon.y, 'equip', 0, this.equipmentOfTier('epic')))
+    this.drops.add(new Drop(this, mon.x + 12, mon.y, 'equip', 0, this.equipmentOfTier('epic')))
+    const gold = Phaser.Math.Between(120, 240) + mon.level * 20
+    this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', gold))
+    this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))
+
+    // annonce + respawn long (boss de monde : ~8-10 min)
+    this.scene.get('UIScene')?.showToast?.(`⚔ ${mon.displayName} vaincu !`, '#ffd86b')
+    const biome = mon.bossBiome
+    this.time.delayedCall(Phaser.Math.Between(480000, 600000), () => {
+      if (!this.gameOver) this.spawnBoss(biome)
+    })
   }
 
   /** Fait apparaître un objet ramassable sur le cadavre, selon la table du monstre. */
@@ -1728,6 +1807,16 @@ export default class GameScene extends Phaser.Scene {
       mon.setDepth(mon.y)
     })
 
+    // barre de boss : on suit le boss engagé (en aggro, ou simplement proche du joueur)
+    let engagedBoss = null
+    for (const b of this.bosses || []) {
+      if (b.active && (b.aggroed || this.dist(p.x, p.y, b.x, b.y) < BOSS_BAR_RANGE)) {
+        engagedBoss = b
+        break
+      }
+    }
+    this.activeBoss = engagedBoss
+
     if (p.hp <= 0) this.handleDeath()
 
     // bandeau de zone quand le héros change de biome
@@ -1754,6 +1843,7 @@ export default class GameScene extends Phaser.Scene {
 
   handleDeath() {
     this.gameOver = true
+    this.activeBoss = null // cache la barre de boss
     this.player.setVelocity(0, 0)
     this.player.setTint(0x555555)
     this.physics.pause()

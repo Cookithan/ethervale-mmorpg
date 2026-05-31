@@ -62,6 +62,10 @@ const LEASH_RANGE = 200 // distance parcourue depuis l'endroit où elle t'a rep�
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
+const BOSS_HP_MUL = 8 // PV d'un boss = type × niveau × 8 (gros sac à PV)
+const BOSS_DMG_MUL = 1.5 // dégâts du boss (kitable car plus lent que le joueur -> on encaisse rarement)
+const BOSS_XP_MUL = 8 // XP massive
+const BOSS_SCALE_MUL = 2.2 // taille imposante
 
 /**
  * Monster — IA simple : patrouille aléatoire, puis poursuite si le joueur entre
@@ -76,23 +80,30 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
     const level = opts.level ?? 1
     const elite = opts.elite ?? false
+    const boss = opts.boss ?? false
     this.typeKey = typeKey
     this.def = def
     this.level = level
     this.elite = elite
+    this.isBoss = boss
     this.eliteName = opts.name ?? null
 
-    // stats mises à l'échelle selon le NIVEAU (+12 %/niv) et le statut ÉLITE (shiny)
+    // stats mises à l'échelle selon le NIVEAU (+12 %/niv) et le statut ÉLITE/BOSS
     const lvlMul = 1 + (level - 1) * 0.12
     this.lvlMul = lvlMul
-    this.maxHp = Math.round(def.hp * lvlMul * (elite ? 2.2 : 1))
+    const hpMul = boss ? BOSS_HP_MUL : elite ? 2.2 : 1
+    const dmgMul = boss ? BOSS_DMG_MUL : elite ? 1.6 : 1
+    const xpMul = boss ? BOSS_XP_MUL : elite ? 3 : 1
+    this.maxHp = Math.round(def.hp * lvlMul * hpMul)
     this.hp = this.maxHp
-    this.damage = Math.round(def.damage * lvlMul * (elite ? 1.6 : 1))
-    this.xpReward = Math.round(def.xp * lvlMul * (elite ? 3 : 1))
+    this.damage = Math.round(def.damage * lvlMul * dmgMul)
+    this.xpReward = Math.round(def.xp * lvlMul * xpMul)
+    this.displayName = opts.name ?? def.name // nom affiché (boss/élite nommés, sinon type)
+    this.aggroRange = boss ? def.aggro + 70 : def.aggro // le boss repère de plus loin
+    this.leashRange = boss ? 700 : LEASH_RANGE // ...et lâche beaucoup moins vite
 
-    // taille selon le type (tank plus gros, rapide plus petit ; élite encore plus gros).
-    // On scale AVANT setSize pour que la hitbox physique suive la taille affichée.
-    const s = (def.scale ?? 1) * (elite ? 1.4 : 1)
+    // taille : boss >> élite > normal. On scale AVANT setSize (la hitbox suit la taille affichée).
+    const s = (def.scale ?? 1) * (boss ? BOSS_SCALE_MUL : elite ? 1.4 : 1)
     this.setScale(s)
     this.barOffsetY = Math.round(9 * s + 3) // barre de vie remontée pour les gros
 
@@ -135,6 +146,16 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       .setDepth(50002)
       .setResolution(3)
       .setVisible(elite)
+
+    // BOSS : aura menaçante au sol ; sa vie s'affiche dans la barre de boss en haut de l'écran
+    // (donc on masque sa barre/étiquette au-dessus de la tête pour éviter le doublon).
+    if (boss) {
+      this.aura = scene.add.ellipse(x, y + 6, 34 * s, 13 * s, 0x8a0f12, 0.32).setDepth(0)
+      scene.tweens.add({ targets: this.aura, scaleX: 1.3, scaleY: 1.3, alpha: 0.16, duration: 750, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      this.hpBarBg.setVisible(false)
+      this.hpBarFg.setVisible(false)
+      this.infoText.setVisible(false)
+    }
   }
 
   /** Inflige des dégâts au monstre ; renvoie true s'il meurt. */
@@ -155,6 +176,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
   }
 
   showHpBar() {
+    if (this.isBoss) return // le boss a sa propre barre, en haut de l'écran
     this.hpBarBg.setVisible(true)
     this.hpBarFg.setVisible(true)
     this.hpHideAt = this.scene.time.now + 2500 // se cache 2,5 s après le dernier coup
@@ -165,6 +187,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.hpBarBg.destroy()
     this.hpBarFg.destroy()
     this.infoText.destroy()
+    this.aura?.destroy()
     this.destroy()
   }
 
@@ -197,11 +220,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     } else if (this.aggroed) {
       // abandonne après avoir parcouru LEASH_RANGE depuis l'endroit où il a repéré le joueur
       const leashDist = Math.hypot(this.leashX - this.x, this.leashY - this.y)
-      if (leashDist > LEASH_RANGE) {
+      if (leashDist > this.leashRange) {
         this.aggroed = false
         this.returning = true // a lâché le joueur : rentre au spawn
       }
-    } else if (dist < def.aggro) {
+    } else if (dist < this.aggroRange) {
       this.aggroed = true
       this.leashX = this.x // pose l'ancre du leash là où il commence à poursuivre
       this.leashY = this.y
@@ -238,9 +261,14 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.updateFacing(aimX, aimY)
-    this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4) // l'étiquette suit le monstre
-    // niveau VISIBLE dès qu'on s'approche (avant d'attaquer) ; l'élite est toujours affichée
-    this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)
+    if (this.isBoss && this.aura) {
+      this.aura.setPosition(this.x, this.y + 4) // l'aura suit le boss
+      this.aura.setDepth(this.y - 1)
+    } else {
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4) // l'étiquette suit le monstre
+      // niveau VISIBLE dès qu'on s'approche (avant d'attaquer) ; l'élite est toujours affichée
+      this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)
+    }
     this.updateHpBar(time)
   }
 
