@@ -28,6 +28,8 @@ export default class UIScene extends Phaser.Scene {
     this.charOpen = false
     this.shopOpen = false
     this.shopObjects = []
+    this.dialogueOpen = false
+    this.dialogueObjects = []
     this.toast = null
     this.zoneBanner = null
     this.frameRect = null
@@ -53,8 +55,16 @@ export default class UIScene extends Phaser.Scene {
     // entrées UI
     this.input.keyboard.on('keydown-C', () => this.toggleChar())
     this.input.keyboard.on('keydown-ESC', () => {
-      if (this.charOpen) this.closeChar()
+      if (this.dialogueOpen) this.closeDialogue()
+      else if (this.charOpen) this.closeChar()
       else if (this.shopOpen) this.closeShop()
+    })
+    // E / Espace : avance le dialogue (et le ferme à la dernière phrase)
+    this.input.keyboard.on('keydown-E', () => {
+      if (this.dialogueOpen) this.advanceDialogue()
+    })
+    this.input.keyboard.on('keydown-SPACE', () => {
+      if (this.dialogueOpen) this.advanceDialogue()
     })
 
     // mort
@@ -402,6 +412,93 @@ export default class UIScene extends Phaser.Scene {
     })
 
     reg(this.add.text(cw / 2, y0 + H - 14, 'Clic = acheter / vendre  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5))
+  }
+
+  // ---------- dialogue (villageois) ----------
+
+  /** Ouvre une fenêtre de dialogue type RPG (PNJ nommé + portrait + phrases). */
+  openDialogue(name, lines, texture) {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.shopOpen) this.closeShop()
+    this.dialogueOpen = true
+    this.dlgName = name
+    this.dlgLines = lines && lines.length ? lines : ['...']
+    this.dlgTexture = texture
+    this.dlgIndex = 0
+    this.dlgOpenAt = this.time.now // anti-rebond : la touche d'ouverture ne doit pas avancer
+    this.scene.pause('GameScene')
+    this.buildDialogue()
+  }
+
+  buildDialogue() {
+    this.destroyDialogue()
+    const reg = (o) => {
+      this.dialogueObjects.push(o)
+      return o
+    }
+    const cw = this.scale.width
+    const ch = this.scale.height
+    const W = Math.min(460, cw - 40)
+    const H = 132
+    const cx = cw / 2
+    const y0 = ch - H - 24 // ancré en bas de l'écran (style RPG)
+
+    // clic n'importe où sur le panneau -> phrase suivante
+    const hit = reg(this.add.rectangle(cx, y0 + H / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
+    hit.setInteractive({ useHandCursor: true })
+    hit.on('pointerdown', () => this.advanceDialogue())
+
+    const x0 = cx - W / 2
+    // portrait du PNJ (1re frame du spritesheet)
+    reg(this.add.rectangle(x0 + 36, y0 + 38, 52, 52, 0x000000, 0.4).setStrokeStyle(2, GOLD))
+    if (this.dlgTexture && this.textures.exists(this.dlgTexture)) {
+      const port = reg(this.add.image(x0 + 36, y0 + 38, this.dlgTexture, 0))
+      port.setScale(44 / Math.max(port.width, port.height))
+    }
+    // nom (or) + phrase courante
+    reg(this.add.text(x0 + 72, y0 + 14, this.dlgName, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe066' }).setOrigin(0, 0))
+    reg(
+      this.add
+        .text(x0 + 72, y0 + 40, this.dlgLines[this.dlgIndex], {
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          color: '#ffffff',
+          lineSpacing: 4,
+          wordWrap: { width: W - 90 },
+        })
+        .setOrigin(0, 0)
+    )
+    // progression + invite
+    const last = this.dlgIndex >= this.dlgLines.length - 1
+    reg(
+      this.add
+        .text(cx, y0 + H - 13, `${this.dlgIndex + 1}/${this.dlgLines.length}   ·   ${last ? '✓ Fermer' : '▶ Suivant'}  (E / clic)`, {
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          color: '#9fb6cc',
+        })
+        .setOrigin(0.5)
+    )
+  }
+
+  advanceDialogue() {
+    if (!this.dialogueOpen) return
+    if (this.time.now - this.dlgOpenAt < 180) return // ignore la touche qui vient d'ouvrir
+    this.dlgIndex++
+    if (this.dlgIndex >= this.dlgLines.length) this.closeDialogue()
+    else this.buildDialogue()
+  }
+
+  closeDialogue() {
+    this.dialogueOpen = false
+    this.destroyDialogue()
+    this.scene.resume('GameScene')
+  }
+
+  destroyDialogue() {
+    this.dialogueObjects.forEach((o) => o.destroy())
+    this.dialogueObjects = []
   }
 
   // ---------- helpers ----------

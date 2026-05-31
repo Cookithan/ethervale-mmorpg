@@ -33,6 +33,9 @@ export default class BootScene extends Phaser.Scene {
       frameHeight: 16,
     })
 
+    // bâtiments (maisons, igloos, portails...) : spritesheet 16x16, 33 colonnes
+    this.load.spritesheet('house', 'assets/tiles/house.png', { frameWidth: 16, frameHeight: 16 })
+
     // héros : spritesheet 16x16
     this.load.spritesheet('player', 'assets/sprites/player.png', {
       frameWidth: 16,
@@ -51,6 +54,11 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('npc_merchant', 'assets/sprites/npc_merchant.png', { frameWidth: 16, frameHeight: 16 })
     this.load.image('merchant_face', 'assets/items/merchant_face.png')
 
+    // villageois (PNJ statiques, frame 0 = face)
+    for (const n of ['npc_villager', 'npc_woman', 'npc_boy']) {
+      this.load.spritesheet(n, `assets/sprites/${n}.png`, { frameWidth: 16, frameHeight: 16 })
+    }
+
     // sprites d'objets ramassables (pack Ninja Adventure)
     // la pièce est une spritesheet 10x10 (4 frames = rotation), cœur/gemme sont statiques
     this.load.spritesheet('drop_gold', 'assets/items/gold.png', { frameWidth: 10, frameHeight: 10 })
@@ -67,6 +75,7 @@ export default class BootScene extends Phaser.Scene {
     this.createGeneratedTextures()
     this.createPlayerAnimations()
     this.createMonsterAnimations()
+    this.createNpcAnimations()
     this.createItemAnimations()
     this.scene.start('GameScene')
   }
@@ -190,6 +199,99 @@ export default class BootScene extends Phaser.Scene {
       g.generateTexture('ice_gen', 64, 16)
       g.destroy()
     }
+
+    // 'campfire' : feu de camp 24x24 (pierres + bûches + flamme) — élément central du village
+    if (!this.textures.exists('campfire')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x000000, 0.18) // ombre
+      g.fillEllipse(12, 20, 20, 6)
+      const stones = [[4, 18], [9, 21], [15, 21], [20, 18], [3, 15], [21, 15]]
+      g.fillStyle(0x9a9a9a, 1) // pierres claires
+      for (const [sx, sy] of stones) g.fillCircle(sx, sy, 3)
+      g.fillStyle(0x767676, 1) // ombrage pierres
+      for (const [sx, sy] of stones) g.fillCircle(sx, sy + 1, 2)
+      g.fillStyle(0x6b4423, 1) // bûches
+      g.fillRect(5, 16, 14, 3)
+      g.fillRect(8, 14, 3, 6)
+      g.fillStyle(0xe8541a, 1) // flamme externe
+      g.fillTriangle(7, 17, 17, 17, 12, 3)
+      g.fillStyle(0xff8a2a, 1) // flamme
+      g.fillTriangle(9, 17, 15, 17, 12, 7)
+      g.fillStyle(0xffd24d, 1) // cœur
+      g.fillTriangle(10, 17, 14, 17, 12, 10)
+      g.generateTexture('campfire', 24, 24)
+      g.destroy()
+    }
+
+    // clôture en bois : 'fence_h' (course horizontale) + 'fence_v' (course verticale)
+    if (!this.textures.exists('fence_h')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x8a5a2b, 1) // lisses horizontales
+      g.fillRect(0, 6, 16, 2)
+      g.fillRect(0, 10, 16, 2)
+      g.fillStyle(0x6b4423, 1) // poteau
+      g.fillRect(6, 3, 4, 12)
+      g.fillStyle(0xa3702f, 1) // reflet haut du poteau
+      g.fillRect(6, 3, 4, 1)
+      g.generateTexture('fence_h', 16, 16)
+      g.destroy()
+    }
+    if (!this.textures.exists('fence_v')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x8a5a2b, 1) // lisses verticales
+      g.fillRect(6, 0, 2, 16)
+      g.fillRect(10, 0, 2, 16)
+      g.fillStyle(0x6b4423, 1) // poteau
+      g.fillRect(3, 6, 12, 4)
+      g.generateTexture('fence_v', 16, 16)
+      g.destroy()
+    }
+
+    // 'lamppost' : lampadaire 16x32 (poteau + lanterne lumineuse)
+    if (!this.textures.exists('lamppost')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x3a3340, 1) // poteau
+      g.fillRect(7, 9, 3, 21)
+      g.fillRect(5, 29, 7, 2) // base
+      g.fillStyle(0x2a2530, 1) // cadre lanterne
+      g.fillRect(5, 1, 7, 9)
+      g.fillStyle(0xffe066, 1) // lumière
+      g.fillRect(6, 2, 5, 7)
+      g.fillStyle(0xfff6c0, 1) // cœur lumineux
+      g.fillRect(7, 3, 3, 4)
+      g.generateTexture('lamppost', 16, 32)
+      g.destroy()
+    }
+
+    // 'barrel' : barrique 14x16 (bois + cerceaux)
+    if (!this.textures.exists('barrel')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x8a5a2b, 1)
+      g.fillRect(2, 2, 10, 13)
+      g.fillStyle(0xa3702f, 1) // reflet
+      g.fillRect(4, 2, 2, 13)
+      g.fillStyle(0x5e3d1c, 1) // cerceaux
+      g.fillRect(2, 4, 10, 1)
+      g.fillRect(2, 8, 10, 1)
+      g.fillRect(2, 12, 10, 1)
+      g.generateTexture('barrel', 14, 16)
+      g.destroy()
+    }
+
+    // 'crate' : caisse 16x16 (bois + cadre + planche)
+    if (!this.textures.exists('crate')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x9a6a35, 1)
+      g.fillRect(1, 2, 14, 13)
+      g.fillStyle(0x6b4423, 1) // cadre
+      g.fillRect(1, 2, 14, 1)
+      g.fillRect(1, 14, 14, 1)
+      g.fillRect(1, 2, 1, 13)
+      g.fillRect(14, 2, 1, 13)
+      g.fillRect(1, 8, 14, 1) // planche
+      g.generateTexture('crate', 16, 16)
+      g.destroy()
+    }
   }
 
   /**
@@ -246,6 +348,31 @@ export default class BootScene extends Phaser.Scene {
           frameRate: 6,
           repeat: -1,
         })
+      }
+    }
+  }
+
+  /**
+   * Anim des villageois : mêmes spritesheets 4x7 que le héros (par colonne = direction).
+   * Marche directionnelle (frames espacées de 4) + idle (1re frame de chaque direction).
+   */
+  createNpcAnimations() {
+    const dirs = { down: 0, up: 1, left: 2, right: 3 }
+    for (const n of ['npc_villager', 'npc_woman', 'npc_boy']) {
+      for (const [dir, col] of Object.entries(dirs)) {
+        const wk = `${n}-walk-${dir}`
+        if (!this.anims.exists(wk)) {
+          this.anims.create({
+            key: wk,
+            frames: this.anims.generateFrameNumbers(n, { frames: [col, col + 4, col + 8, col + 12] }),
+            frameRate: 6,
+            repeat: -1,
+          })
+        }
+        const idle = `${n}-idle-${dir}`
+        if (!this.anims.exists(idle)) {
+          this.anims.create({ key: idle, frames: this.anims.generateFrameNumbers(n, { frames: [col] }), frameRate: 1, repeat: 0 })
+        }
       }
     }
   }

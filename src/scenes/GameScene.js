@@ -12,6 +12,9 @@ const DRY_COUNT = 9 // lacs asséchés (terre craquelée) dans le désert
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
 const EDGE_INSET = 16 // marge intérieure caméra/monde (1 tuile) : empêche de voir le fond hors-map au bord
 const MERCHANT_RANGE = 44 // distance pour pouvoir parler au marchand (px)
+const NPC_TALK_RANGE = 60 // distance à laquelle un villageois s'arrête et te parle (px)
+const PLAZA_R = 5 // rayon (tuiles) de la place verte du village
+const PRAIRIE_TILE_R = 20 // rayon (tuiles) de la prairie centrale = CERCLE net
 const WORLD_SEED = 1337 // graine fixe -> la map est TOUJOURS la même (monde persistant)
 
 /** PRNG déterministe (mulberry32) : remplace Math.random pendant la génération du monde. */
@@ -99,6 +102,18 @@ const ROCKS = [295, 296, 297]
 const FLOWERS = [264, 265, 267] // tournesol, fleur, tulipe
 const BUSHES = [240, 241, 242, 268, 269, 273] // buissons / herbes hautes
 
+// --- bâtiments (TilesetHouse / house.png, 33 colonnes) : rectangles {col,row,w,h} ---
+const HOUSE_COLS = 33
+const BUILDINGS = {
+  // village (bois, style spawn) — VÉRIFIÉS complets sur fond magenta. door = [dx,dy] de la porte
+  cottage: { col: 26, row: 0, w: 3, h: 3, door: [1, 2] }, // orange 2 étages (bois)
+  house_orange: { col: 8, row: 0, w: 4, h: 3, door: [1, 2] }, // orange chaume, 1 porte
+  house_long: { col: 0, row: 0, w: 4, h: 3, door: [1, 2] }, // orange chaume (variante)
+  cabin: { col: 25, row: 7, w: 4, h: 7, door: [1, 6] }, // grande cabane A-frame BOIS (trop grande pour la place)
+  // neige — VÉRIFIÉ
+  igloo: { col: 0, row: 11, w: 3, h: 3, door: [1, 2] },
+}
+
 // --- eau (TilesetWater / water.png, 28 colonnes) ---
 const RIVERS_ENABLED = true // rivières avec eau GÉNÉRÉE PAR CODE ('water_gen', 4 variantes)
 
@@ -154,6 +169,7 @@ export default class GameScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup()
     this.trees = []
     this.occupied = new Set()
+    this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnForest()
     this.spawnBiomeTrees()
     this.spawnRocks()
@@ -188,8 +204,9 @@ export default class GameScene extends Phaser.Scene {
     this.drops = this.physics.add.group()
     this.physics.add.overlap(this.player, this.drops, (pl, drop) => this.collectDrop(drop))
 
-    // --- marchand (PNJ près du spawn) ---
+    // --- village : marchand + villageois (props/clôture retirés : assets à revoir) ---
     this.spawnMerchant()
+    this.spawnVillagers()
 
     // --- caméra ---
     const cam = this.cameras.main
@@ -204,8 +221,10 @@ export default class GameScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
     this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
     this.input.keyboard.on('keydown-F', () => this.shootForward())
-    this.input.keyboard.on('keydown-E', () => this.tryTalkMerchant())
+    this.input.keyboard.on('keydown-E', () => this.tryInteract())
     this.input.on('pointerdown', (p) => {
+      // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
+      if (this.uiBusy()) return
       // ignore les clics sur le panneau d'inventaire (géré par UIScene)
       const ui = this.scene.get('UIScene')
       if (ui?.pointerOverInventory?.(p.x, p.y)) return
@@ -329,7 +348,15 @@ export default class GameScene extends Phaser.Scene {
       this.carvePathTo(carve, this.places[0], this.places[i])
     }
 
-    this.paintBlob(cells, BLOB.dirt, true) // force : les chemins passent sur les biomes
+    // PAS de chemin dans la prairie : on retire du RENDU les cellules de chemin situées
+    // dans la prairie (le joueur la traverse à l'herbe, sort par les ponts). On garde
+    // pathCells (pour placer les ponts au bord) -> la prairie reste de l'herbe propre.
+    this.plazaCells = new Set() // (plus de place carrée)
+    for (const k of [...cells]) {
+      const [x, y] = k.split(',').map(Number)
+      if (this.biomeAt(x, y) === 'prairie') cells.delete(k)
+    }
+    this.paintBlob(cells, BLOB.dirt, true) // chemins (terre) hors de la prairie
   }
 
   /** Peint les sols des biomes en anneaux concentriques (bords ondulés organiques). */
@@ -366,19 +393,15 @@ export default class GameScene extends Phaser.Scene {
    * centre -> anneaux concentriques. Ondulation d'angle + bruit = bords organiques.
    */
   biomeAt(tx, ty) {
-    const nx = (tx - this.cx) / this.cx
-    const ny = (ty - this.cy) / this.cy
-    const ang = Math.atan2(ny, nx)
-    // ondulation LISSE seulement (pas de bruit par tuile, sinon frontières pixelisées
-    // = rivières énormes). Bords organiques mais nets pour des rivières fines.
-    const wob = Math.sin(ang * 3) * 0.06 + Math.sin(ang * 5 + 1.3) * 0.04
-    const r = Math.hypot(nx, ny) + wob
-    if (r < 0.22) return 'prairie' // hub central (sûr)
-    if (r < 0.48) return 'forest' // anneau de forêt LARGE autour du spawn
-    if (r < 0.86) {
-      // grande zone intermédiaire : NEIGE en haut, DÉSERT en bas (bord ondulé lisse)
-      const split = Math.sin(nx * 4) * 0.08
-      return ny < split ? 'snow' : 'desert'
+    const dx = tx - this.cx
+    const dy = ty - this.cy
+    const dt = Math.hypot(dx, dy) // distance RÉELLE en tuiles -> biomes en cercles concentriques
+    if (dt < PRAIRIE_TILE_R) return 'prairie' // cercle net (hub central sûr)
+    if (dt < 50) return 'forest' // anneau de forêt
+    if (dt < 92) {
+      // grande zone intermédiaire : NEIGE en haut, DÉSERT en bas (frontière légèrement ondulée)
+      const split = Math.sin(dx / 26) * 4
+      return dy < split ? 'snow' : 'desert'
     }
     return 'cursed' // bord extérieur (le plus loin = le plus dur)
   }
@@ -721,23 +744,46 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 48; i++) {
       place(Phaser.Math.Between(2, MAP_W - 3), Phaser.Math.Between(2, MAP_H - 3))
     }
+    // pierres ISOLÉES et espacées dans la prairie (décor du village)
+    for (let c = 0; c < 14; c++) {
+      const a = Phaser.Math.FloatBetween(0, Math.PI * 2)
+      const r = Phaser.Math.FloatBetween(6, PRAIRIE_TILE_R - 2)
+      place(Math.round(this.cx + Math.cos(a) * r), Math.round(this.cy + Math.sin(a) * r))
+    }
   }
 
   /** Déco sans collision : massifs de fleurs serrées + touffes de buissons/herbes. */
   spawnDecor() {
+    // renvoie true si la déco a bien été posée (sinon emplacement refusé)
     const place = (tx, ty, pool) => {
-      if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
-      if (this.occupied.has(this.key(tx, ty))) return
-      if (this.onWater(tx, ty, 1)) return // pas de déco dans une rivière
-      if (this.onPath(tx, ty, 1)) return // pas de déco sur un chemin / pont
+      if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return false
+      if (this.occupied.has(this.key(tx, ty))) return false
+      if (this.onWater(tx, ty, 1)) return false // pas de déco dans une rivière
+      if (this.onPath(tx, ty, 1)) return false // pas de déco sur un chemin / pont
+      if (this.plazaCells.has(this.key(tx, ty))) return false // pas de déco sur la place du village
       const b = this.biomeAt(tx, ty)
-      if (b !== 'prairie' && b !== 'forest') return // fleurs/herbes : prairie + forêt
+      if (b !== 'prairie' && b !== 'forest') return false // fleurs/herbes : prairie + forêt
       const px = tx * TILE + 8
       const py = ty * TILE + 8
       this.add.image(px, py, 'nature', Phaser.Utils.Array.GetRandom(pool)).setDepth(py - 4)
+      return true
     }
 
-    // massifs de fleurs serrées (côte à côte)
+    // herbes : on suit les touffes déjà posées pour qu'au MAX 2 se touchent (groupes de 2)
+    const DIRS8 = [[-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1], [1, 1], [-1, 1], [1, -1]]
+    const grass = new Set()
+    const grassNeighbors = (tx, ty) => DIRS8.filter(([ax, ay]) => grass.has(this.key(tx + ax, ty + ay)))
+    const placeGrass = (tx, ty) => {
+      const n = grassNeighbors(tx, ty)
+      if (n.length > 1) return // toucherait déjà 2 touffes -> ferait un groupe de 3+
+      if (n.length === 1) {
+        const [nx, ny] = n[0]
+        if (grassNeighbors(nx, ny).length > 0) return // ce voisin est déjà en paire
+      }
+      if (place(tx, ty, BUSHES)) grass.add(this.key(tx, ty))
+    }
+
+    // massifs de fleurs serrées (côte à côte) — les fleurs restent groupées, c'est voulu
     for (let c = 0; c < 24; c++) {
       const cx = Phaser.Math.Between(4, MAP_W - 4)
       const cy = Phaser.Math.Between(4, MAP_H - 4)
@@ -746,12 +792,23 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // touffes de buissons / herbes hautes
+    // touffes de buissons / herbes hautes (espacées : 2 max collées)
     for (let c = 0; c < 48; c++) {
       const cx = Phaser.Math.Between(3, MAP_W - 3)
       const cy = Phaser.Math.Between(3, MAP_H - 3)
       for (let i = 0; i < Phaser.Math.Between(3, 6); i++) {
-        place(cx + Phaser.Math.Between(-2, 2), cy + Phaser.Math.Between(-2, 2), BUSHES)
+        placeGrass(cx + Phaser.Math.Between(-2, 2), cy + Phaser.Math.Between(-2, 2))
+      }
+    }
+
+    // herbe verte dans la prairie (village) : la verdit, toujours 2 max collées
+    for (let c = 0; c < 60; c++) {
+      const a = Phaser.Math.FloatBetween(0, Math.PI * 2)
+      const r = Phaser.Math.FloatBetween(5, PRAIRIE_TILE_R - 1)
+      const tx = Math.round(this.cx + Math.cos(a) * r)
+      const ty = Math.round(this.cy + Math.sin(a) * r)
+      for (let i = 0; i < Phaser.Math.Between(2, 4); i++) {
+        placeGrass(tx + Phaser.Math.Between(-1, 1), ty + Phaser.Math.Between(-1, 1))
       }
     }
   }
@@ -794,6 +851,163 @@ export default class GameScene extends Phaser.Scene {
     return false
   }
 
+  /** Pose un bâtiment (bloc de tuiles 'house') à (tx,ty) si l'emplacement est libre. */
+  placeBuilding(tx, ty, key) {
+    const b = BUILDINGS[key]
+    // emplacement libre ? (pas chemin / eau / déjà occupé / hors map)
+    for (let dx = 0; dx < b.w; dx++) {
+      for (let dy = 0; dy < b.h; dy++) {
+        const x = tx + dx
+        const y = ty + dy
+        if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1) return null
+        if (this.onPath(x, y, 1) || this.onWater(x, y, 1) || this.occupied.has(this.key(x, y))) return null
+      }
+    }
+    // tuiles du bâtiment (tri Y sur la base, comme les arbres)
+    const depth = (ty + b.h) * TILE
+    for (let dy = 0; dy < b.h; dy++) {
+      for (let dx = 0; dx < b.w; dx++) {
+        const frame = (b.row + dy) * HOUSE_COLS + (b.col + dx)
+        this.add.image((tx + dx) * TILE + 8, (ty + dy) * TILE + 8, 'house', frame).setDepth(depth)
+      }
+    }
+    // collision sur la BASE (2 rangées du bas) ; le toit déborde au-dessus (walk-behind)
+    const wpx = b.w * TILE
+    const collRows = Math.min(2, b.h)
+    const top = ty + b.h - collRows
+    const rect = this.add.rectangle(tx * TILE + wpx / 2, (top + collRows / 2) * TILE, wpx - 2, collRows * TILE)
+    this.physics.add.existing(rect, true)
+    this.obstacles.add(rect)
+    // empreinte (+1 de marge) occupée : déco/monstres l'évitent
+    for (let dx = -1; dx <= b.w; dx++)
+      for (let dy = -1; dy <= b.h; dy++) this.occupied.add(this.key(tx + dx, ty + dy))
+    return { tx, ty } // position réellement posée (pour aligner le PNJ devant)
+  }
+
+  /** Village au spawn : CHAQUE villageois a sa maison, éparpillées dans la prairie
+   *  (pour la remplir). Le villageois se tient devant sa porte. + maisons au désert. */
+  spawnVillage() {
+    const cx = this.cx
+    const cy = this.cy
+    // plan partagé (maison + PNJ) : positions étalées autour du marchand central
+    this.villagers = [
+      {
+        hx: cx - 1, hy: cy - 6, key: 'cottage', tex: 'npc_villager', name: 'Aldric le Garde',
+        lines: [
+          'Bienvenue, aventurier ! Clique sur le sol pour te déplacer.',
+          'Pour combattre : approche un monstre et clique dessus, ton héros frappe à l\'épée.',
+          'Chaque monstre vaincu donne de l\'XP. Monte de niveau pour devenir plus fort !',
+          'La prairie est un havre de paix : aucun monstre n\'ose y entrer.',
+        ],
+      },
+      {
+        hx: cx + 5, hy: cy - 2, key: 'house_orange', tex: 'npc_woman', name: 'Mira',
+        lines: [
+          'Le marchand est au centre du village. Parle-lui avec la touche E.',
+          'Appuie sur C pour ouvrir ta fiche : équipe armes et armures dans ton sac.',
+          'Les monstres lâchent de l\'or et de l\'équipement, ramasse tout en marchant dessus !',
+          'Reviens vendre ton butin au marchand pour t\'acheter mieux.',
+        ],
+      },
+      {
+        hx: cx - 8, hy: cy - 2, key: 'house_long', tex: 'npc_boy', name: 'Tom',
+        lines: [
+          'Franchis les ponts pour sortir de la prairie et explorer le monde !',
+          'À l\'est et au sud : la forêt puis le désert. Au nord : les terres gelées.',
+          'Plus tu t\'éloignes du village, plus les monstres sont coriaces.',
+          'Au-delà du grand lac noir, les terres maudites... personne n\'en revient !',
+        ],
+      },
+    ]
+    for (const v of this.villagers) {
+      // pose la maison ; si bloquée (chemin invisible/lac), repli en spirale -> garantit l'apparition
+      let pos = this.placeBuilding(v.hx, v.hy, v.key)
+      for (let r = 1; !pos && r <= 6; r++) {
+        for (const [dx, dy] of [[0, -r], [r, 0], [-r, 0], [0, r], [r, -r], [-r, -r], [r, r], [-r, r]]) {
+          pos = this.placeBuilding(v.hx + dx, v.hy + dy, v.key)
+          if (pos) break
+        }
+      }
+      const b = BUILDINGS[v.key]
+      const hx = pos ? pos.tx : v.hx
+      const hy = pos ? pos.ty : v.hy
+      v.nx = hx + b.door[0] // PNJ devant la porte (même colonne)
+      v.ny = hy + b.h // une rangée sous la base de la maison réellement posée
+    }
+    this.paintVillageGround() // place + chemins reliant les 3 maisons (look "village")
+    // hameaux inhabités du désert (bande du bas) : coins OPPOSÉS, loin du centre
+    this.placeBuildingNear(cx - 52, cy + 44, 'house_long') // désert sud-ouest
+    this.placeBuildingNear(cx + 50, cy + 44, 'house_orange') // désert sud-est
+  }
+
+  /** Sol du village : une place (herbe foncée) au centre + des chemins de terre qui
+   *  relient chaque porte au centre (où se tient le marchand) -> ambiance "village". */
+  paintVillageGround() {
+    const cx = this.cx
+    const cy = this.cy
+    // place centrale (herbe foncée) : ellipse autour du spawn/marchand
+    const plaza = new Set()
+    for (let dx = -8; dx <= 8; dx++) {
+      for (let dy = -5; dy <= 5; dy++) {
+        if ((dx * dx) / 64 + (dy * dy) / 25 <= 1) plaza.add(this.key(cx + dx, cy + dy))
+      }
+    }
+    // rabote les "tétons" d'1 tuile (haut/bas) : retire les cellules isolées horizontalement
+    for (const k of [...plaza]) {
+      const [x, y] = k.split(',').map(Number)
+      if (!plaza.has(this.key(x - 1, y)) && !plaza.has(this.key(x + 1, y))) plaza.delete(k)
+    }
+    // chemins de terre : de chaque porte vers le centre (tracé en L, largeur 2)
+    const road = new Set()
+    const put = (x, y) => {
+      if (x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1) road.add(this.key(x, y))
+    }
+    const carveLine = (x0, y0, x1, y1) => {
+      const sx = Math.sign(x1 - x0) || 1
+      for (let x = x0; x !== x1 + sx; x += sx) {
+        put(x, y0)
+        put(x, y0 + 1) // largeur 2
+      }
+      const sy = Math.sign(y1 - y0) || 1
+      for (let y = y0; y !== y1 + sy; y += sy) {
+        put(x1, y)
+        put(x1 + 1, y)
+      }
+    }
+    for (const v of this.villagers) carveLine(v.nx, v.ny, cx, cy)
+
+    // place SOUS (couche sol), chemins de terre PAR-DESSUS (couche overlay)
+    this.paintBlob(plaza, BLOB.darkGrass, true, this.groundLayer)
+    this.paintBlob(road, BLOB.dirt, true)
+    // la déco (fleurs/herbes) évite la place et les chemins du village
+    this.plazaCells = plaza
+    for (const k of road) this.pathCells.add(k)
+  }
+
+  /** Animation d'idle "respiration" : léger souffle (le pack n'a pas de frames d'idle). */
+  addBreathing(sprite, period = 1100) {
+    this.tweens.add({
+      targets: sprite,
+      scaleY: sprite.scaleY * 1.05,
+      scaleX: sprite.scaleX * 0.985,
+      duration: period,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    })
+  }
+
+  /** Place un bâtiment en cherchant un spot libre en spirale autour de (tx,ty). */
+  placeBuildingNear(tx, ty, key) {
+    if (this.placeBuilding(tx, ty, key)) return true
+    for (let r = 1; r <= 10; r++) {
+      for (const [dx, dy] of [[r, 0], [-r, 0], [0, r], [0, -r], [r, r], [-r, -r], [r, -r], [-r, r]]) {
+        if (this.placeBuilding(tx + dx, ty + dy, key)) return true
+      }
+    }
+    return false
+  }
+
   /** Place le marchand près du spawn (PNJ statique avec collision) + son indice "E". */
   spawnMerchant() {
     const mx = this.worldW / 2 + 3 * TILE
@@ -803,9 +1017,17 @@ export default class GameScene extends Phaser.Scene {
     this.merchant.body.setSize(12, 12).setOffset(2, 4)
     this.physics.add.collider(this.player, this.merchant)
 
-    // indice "Parler (E)" affiché quand le héros est proche
+    // nom du marchand au-dessus (ORANGE = personnage important, se démarque des villageois)
+    this.add
+      .text(mx, my - 14, 'Marchand', { fontFamily: 'monospace', fontSize: '7px', color: '#ff9d3c', stroke: '#000000', strokeThickness: 3 })
+      .setOrigin(0.5, 1)
+      .setDepth(60000)
+      .setResolution(3)
+    this.addBreathing(this.merchant, 1300) // idle vivant
+
+    // indice "Parler (E)" affiché quand le héros est proche (au-dessus du nom)
     this.merchantHint = this.add
-      .text(mx, my - 16, 'Parler (E)', {
+      .text(mx, my - 24, 'Parler (E)', {
         fontFamily: 'monospace',
         fontSize: '8px',
         color: '#ffffff',
@@ -818,11 +1040,166 @@ export default class GameScene extends Phaser.Scene {
       .setVisible(false)
   }
 
-  /** Ouvre la boutique si le héros est assez proche du marchand. */
-  tryTalkMerchant() {
-    if (this.gameOver || !this.merchant) return
-    if (this.dist(this.player.x, this.player.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE) {
+  /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
+  uiBusy() {
+    const ui = this.scene.get('UIScene')
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen))
+  }
+
+  /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
+  tryInteract() {
+    if (this.gameOver || this.uiBusy()) return
+    const p = this.player
+    if (this.merchant && this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE) {
       this.scene.get('UIScene').openShop()
+      return
+    }
+    // villageois le plus proche à portée
+    let best = null
+    let bestD = NPC_TALK_RANGE
+    for (const npc of this.npcs || []) {
+      const d = this.dist(p.x, p.y, npc.x, npc.y)
+      if (d <= bestD) {
+        bestD = d
+        best = npc
+      }
+    }
+    if (best) this.scene.get('UIScene').openDialogue(best.name, best.lines, best.texture)
+  }
+
+  /**
+   * Villageois style WoW : IMMOBILE, avec son NOM affiché au-dessus, et CLIQUABLE.
+   * Clic dessus (ou touche E si proche) -> ouvre une vraie fenêtre de dialogue (UIScene).
+   */
+  addNpc(tx, ty, texture, name, lines) {
+    const x = tx * TILE + 8
+    const y = ty * TILE + 8
+    const sprite = this.add.sprite(x, y, texture, 0).setDepth(y)
+    this.physics.add.existing(sprite, true) // corps STATIQUE (il ne bouge pas)
+    sprite.body.setSize(12, 12).setOffset(2, 4)
+    this.physics.add.collider(this.player, sprite)
+    sprite.anims.play(`${texture}-idle-down`, true)
+
+    // étiquette de nom au-dessus (toujours visible, comme une plaque de PNJ)
+    const label = this.add
+      .text(x, y - 14, name, { fontFamily: 'monospace', fontSize: '7px', color: '#ffe066', stroke: '#000000', strokeThickness: 3 })
+      .setOrigin(0.5, 1)
+      .setDepth(60000)
+      .setResolution(3)
+
+    this.addBreathing(sprite, 1000 + this.npcs.length * 160) // idle vivant (souffle désynchronisé)
+
+    const npc = { sprite, x, y, texture, name, lines, facing: 'down', label }
+    this.occupied.add(this.key(tx, ty))
+    this.npcs.push(npc)
+
+    // clic sur le PNJ : si proche -> parle ; sinon -> va vers lui
+    sprite.setInteractive({ useHandCursor: true })
+    sprite.on('pointerdown', (pointer, lx, ly, event) => {
+      event?.stopPropagation?.() // n'enclenche pas le clic-déplacement global
+      this.talkOrApproach(npc)
+    })
+    return npc
+  }
+
+  /** Oriente les villageois vers le héros quand il est à portée (sinon ils regardent en bas). */
+  updateNpcs() {
+    const p = this.player
+    for (const npc of this.npcs || []) {
+      const s = npc.sprite
+      let dir = 'down'
+      if (this.dist(p.x, p.y, s.x, s.y) <= NPC_TALK_RANGE + 20) {
+        const dx = p.x - s.x
+        const dy = p.y - s.y
+        dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down')
+      }
+      if (dir !== npc.facing) {
+        npc.facing = dir
+        s.anims.play(`${npc.texture}-idle-${dir}`, true)
+      }
+    }
+  }
+
+  /** Parle au villageois s'il est à portée, sinon marche vers lui. */
+  talkOrApproach(npc) {
+    if (this.gameOver || this.uiBusy()) return
+    if (this.dist(this.player.x, this.player.y, npc.x, npc.y) <= NPC_TALK_RANGE) {
+      this.scene.get('UIScene').openDialogue(npc.name, npc.lines, npc.texture)
+    } else {
+      this.player.moveTo(npc.x, npc.y + 10) // vient lui parler
+      this.showMoveMarker(npc.x, npc.y + 10)
+    }
+  }
+
+  /** Décorations du village : lampadaires, barriques, caisses, fleurs (spots libres). */
+  spawnVillageDecor() {
+    const cx = this.cx
+    const cy = this.cy
+    const free = (tx, ty) =>
+      tx > 1 && ty > 1 && tx < MAP_W - 1 && ty < MAP_H - 1 && !this.occupied.has(this.key(tx, ty)) && !this.onPath(tx, ty, 1) && !this.onWater(tx, ty, 1)
+    const prop = (tx, ty, key, tall = false) => {
+      if (!free(tx, ty) || (tall && !free(tx, ty - 1))) return
+      const x = tx * TILE + 8
+      const img = tall ? this.add.image(x, (ty + 1) * TILE, key) : this.add.image(x, ty * TILE + 12, key)
+      img.setOrigin(0.5, 1).setDepth(ty * TILE + 12)
+      const rect = this.add.rectangle(x, ty * TILE + 12, 12, 7)
+      this.physics.add.existing(rect, true)
+      this.obstacles.add(rect)
+      this.occupied.add(this.key(tx, ty))
+    }
+    const flower = (tx, ty) => {
+      if (!free(tx, ty)) return
+      this.add.image(tx * TILE + 8, ty * TILE + 8, 'nature', Phaser.Utils.Array.GetRandom(FLOWERS)).setDepth(ty * TILE + 4)
+      this.occupied.add(this.key(tx, ty))
+    }
+    // lampadaires (vers les coins, flanquent les zones)
+    for (const [dx, dy] of [[-3, -3], [3, -3], [-3, 3], [3, -1]]) prop(cx + dx, cy + dy, 'lamppost', true)
+    // barriques / caisses près des maisons
+    for (const [dx, dy, k] of [[4, -4, 'barrel'], [-4, -3, 'crate'], [2, 4, 'barrel'], [-3, -4, 'crate'], [4, 3, 'barrel']]) prop(cx + dx, cy + dy, k)
+    // fleurs en touffes
+    for (const [dx, dy] of [[-4, -4], [4, -2], [-2, 4], [3, 4], [-4, 2], [2, -4]]) flower(cx + dx, cy + dy)
+  }
+
+  /** Feu de camp central (élément focal de la place, avec collision). */
+  spawnCampfire() {
+    const tx = this.cx
+    const ty = this.cy - 2 // au nord du spawn, bien visible
+    this.add.image(tx * TILE + 8, ty * TILE + 8, 'campfire').setDepth((ty + 1) * TILE)
+    const rect = this.add.rectangle(tx * TILE + 8, ty * TILE + 12, 14, 8)
+    this.physics.add.existing(rect, true)
+    this.obstacles.add(rect)
+    this.occupied.add(this.key(tx, ty))
+  }
+
+  /** Clôture en bois autour de la place (juste à l'extérieur), avec entrées aux chemins. */
+  buildFence() {
+    const R = PLAZA_R + 1 // un cran à l'extérieur de la place verte
+    const cx = this.cx
+    const cy = this.cy
+    const add = (tx, ty, key) => {
+      if (tx < 1 || ty < 1 || tx >= MAP_W - 1 || ty >= MAP_H - 1) return
+      if (this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1) || this.occupied.has(this.key(tx, ty))) return // gap aux entrées
+      this.add.image(tx * TILE + 8, ty * TILE + 8, key).setDepth(ty * TILE)
+      const rect = this.add.rectangle(tx * TILE + 8, ty * TILE + 10, 14, 8)
+      this.physics.add.existing(rect, true)
+      this.obstacles.add(rect)
+      this.occupied.add(this.key(tx, ty))
+    }
+    for (let dx = -R; dx <= R; dx++) {
+      add(cx + dx, cy - R, 'fence_h') // haut
+      add(cx + dx, cy + R, 'fence_h') // bas
+    }
+    for (let dy = -R + 1; dy <= R - 1; dy++) {
+      add(cx - R, cy + dy, 'fence_v') // gauche
+      add(cx + R, cy + dy, 'fence_v') // droite
+    }
+  }
+
+  /** Villageois du spawn : immobiles, nommés, chacun devant SA maison (cf. spawnVillage). */
+  spawnVillagers() {
+    this.npcs = []
+    for (const v of this.villagers || []) {
+      this.addNpc(v.nx, v.ny, v.tex, v.name, v.lines)
     }
   }
 
@@ -847,6 +1224,7 @@ export default class GameScene extends Phaser.Scene {
 
   /** Coup d'épée : arc devant le héros, dégâts aux monstres dans la zone. */
   doAttack() {
+    if (this.uiBusy()) return
     const p = this.player
     if (!p.startAttack(this.time.now)) return
 
@@ -889,6 +1267,7 @@ export default class GameScene extends Phaser.Scene {
    * la boule la prend pour cible et la suit jusqu'au contact.
    */
   shootForward() {
+    if (this.uiBusy()) return
     const p = this.player
     const target = this.nearestMonster(p.x, p.y, HOMING_RANGE)
     if (target) {
@@ -1070,7 +1449,9 @@ export default class GameScene extends Phaser.Scene {
       this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES[biome])
     }
 
-    // indice du marchand quand on est proche
+    this.updateNpcs(time) // villageois qui se baladent
+
+    // indice "Parler (E)" du marchand quand on est proche (les villageois parlent tout seuls)
     this.merchantHint.setVisible(this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE)
 
     const body = new Phaser.Geom.Rectangle(p.x - 6, p.y - 14, 12, 20)
