@@ -44,6 +44,10 @@ export default class BootScene extends Phaser.Scene {
       })
     }
 
+    // marchand : spritesheet 16x16 (on n'utilise que la frame 0 = face) + portrait
+    this.load.spritesheet('npc_merchant', 'assets/sprites/npc_merchant.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.image('merchant_face', 'assets/items/merchant_face.png')
+
     // sprites d'objets ramassables (pack Ninja Adventure)
     // la pièce est une spritesheet 10x10 (4 frames = rotation), cœur/gemme sont statiques
     this.load.spritesheet('drop_gold', 'assets/items/gold.png', { frameWidth: 10, frameHeight: 10 })

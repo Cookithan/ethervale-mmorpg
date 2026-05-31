@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { SLOTS, SLOT_LABELS, describeStats, RARITY } from '../data/items.js'
+import { SLOTS, SLOT_LABELS, describeStats, RARITY, SHOP_STOCK, sellPrice, cloneItem } from '../data/items.js'
 
 // palette UI (style WoW lisible)
 const GOLD = 0xc8a24a
@@ -26,6 +26,9 @@ export default class UIScene extends Phaser.Scene {
     this.charObjects = []
     this.builtInvVersion = -1
     this.charOpen = false
+    this.shopOpen = false
+    this.shopObjects = []
+    this.toast = null
     this.frameRect = null
     this.xpRect = null
     this.bagRect = null
@@ -48,7 +51,10 @@ export default class UIScene extends Phaser.Scene {
 
     // entrées UI
     this.input.keyboard.on('keydown-C', () => this.toggleChar())
-    this.input.keyboard.on('keydown-ESC', () => this.charOpen && this.closeChar())
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (this.charOpen) this.closeChar()
+      else if (this.shopOpen) this.closeShop()
+    })
 
     // mort
     this.game_.events.on('gameover', this.showGameOver, this)
@@ -133,8 +139,10 @@ export default class UIScene extends Phaser.Scene {
     this.staticObjects = []
     this.destroyBag()
     if (this.charOpen) this.destroyChar()
+    if (this.shopOpen) this.destroyShop()
     this.buildHud()
     if (this.charOpen) this.buildCharPanel()
+    if (this.shopOpen) this.buildShop()
   }
 
   // ---------- sac (toujours visible) ----------
@@ -185,6 +193,7 @@ export default class UIScene extends Phaser.Scene {
       reg(this.addIcon(bx, gy, item.icon, cell - 12))
       c.on('pointerdown', () => {
         p.equip(item)
+        this.showItemToast('Équipé', item)
         this.hideTip()
       })
       c.on('pointerover', () => this.showTip(item, bx, gy - cell / 2))
@@ -287,6 +296,113 @@ export default class UIScene extends Phaser.Scene {
     reg(this.add.text(cx, y0 + H - 16, 'Clic objet du sac = équiper  ·  clic slot = retirer  ·  C = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5))
   }
 
+  // ---------- boutique (marchand) ----------
+
+  openShop() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    this.shopOpen = true
+    this.scene.pause('GameScene')
+    this.buildShop()
+  }
+
+  closeShop() {
+    this.shopOpen = false
+    this.destroyShop()
+    this.hideTip()
+    this.scene.resume('GameScene')
+  }
+
+  destroyShop() {
+    this.shopObjects.forEach((o) => o.destroy())
+    this.shopObjects = []
+  }
+
+  buyItem(item) {
+    const p = this.game_.player
+    if (p.gold < item.price) return
+    p.gold -= item.price
+    p.addItem(cloneItem(item))
+    this.buildShop()
+  }
+
+  sellItem(item) {
+    const p = this.game_.player
+    if (p.removeItem(item)) {
+      p.gold += sellPrice(item)
+      this.buildShop()
+    }
+  }
+
+  /** Une ligne cliquable de la boutique : icône + nom (rareté) + prix. */
+  drawShopRow(reg, x, y, w, item, priceText, affordable, onClick) {
+    const rowH = 24
+    const hl = reg(this.add.rectangle(x, y, w, rowH, 0x6ca0d0, 0).setOrigin(0, 0))
+    reg(this.addIcon(x + 13, y + rowH / 2, item.icon, 18))
+    const rc = RARITY[item.rarity]
+    reg(this.add.text(x + 26, y + rowH / 2, item.name, { fontFamily: 'monospace', fontSize: '11px', color: rc ? rc.color : '#fff' }).setOrigin(0, 0.5))
+    reg(this.add.text(x + w - 4, y + rowH / 2, priceText, { fontFamily: 'monospace', fontSize: '11px', color: affordable ? '#ffd84d' : '#e06666' }).setOrigin(1, 0.5))
+    const zone = reg(this.add.rectangle(x, y, w, rowH, 0xffffff, 0).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+    zone.on('pointerover', () => {
+      hl.setFillStyle(0x6ca0d0, 0.2)
+      this.showTip(item, x + w / 2, y)
+    })
+    zone.on('pointerout', () => {
+      hl.setFillStyle(0x6ca0d0, 0)
+      this.hideTip()
+    })
+    zone.on('pointerdown', onClick)
+  }
+
+  buildShop() {
+    const p = this.game_.player
+    if (!p) return
+    this.destroyShop()
+    const reg = (o) => {
+      this.shopObjects.push(o)
+      return o
+    }
+    const cw = this.scale.width
+    const ch = this.scale.height
+
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0))
+    const W = 480
+    const H = 394
+    const x0 = cw / 2 - W / 2
+    const y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
+
+    // portrait + en-tête
+    reg(this.add.rectangle(x0 + 32, y0 + 32, 44, 44, 0x000000, 0.4).setStrokeStyle(2, GOLD))
+    const port = reg(this.add.image(x0 + 32, y0 + 32, 'merchant_face'))
+    port.setScale(38 / Math.max(port.width, port.height))
+    reg(this.add.text(x0 + 62, y0 + 16, 'Marchand', { fontFamily: 'monospace', fontSize: '15px', color: '#ffffff' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + 62, y0 + 38, 'Bienvenue ! Que puis-je pour toi ?', { fontFamily: 'monospace', fontSize: '10px', color: '#cfe8ff' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + W - 14, y0 + 18, `Or : ${p.gold}`, { fontFamily: 'monospace', fontSize: '14px', color: '#ffd84d' }).setOrigin(1, 0))
+
+    const colTop = y0 + 78
+    const colW = W / 2 - 26
+    const rowH = 24
+    reg(this.add.text(x0 + 14, colTop - 16, 'Acheter', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe066' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + W / 2 + 10, colTop - 16, 'Vendre (sac)', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe066' }).setOrigin(0, 0))
+    reg(this.add.rectangle(cw / 2, colTop + 140, 1, 280, 0x49617f, 0.6))
+
+    SHOP_STOCK.forEach((item, i) => {
+      const aff = p.gold >= item.price
+      this.drawShopRow(reg, x0 + 12, colTop + i * rowH, colW, item, `${item.price} or`, aff, () => this.buyItem(item))
+    })
+
+    if (p.inventory.length === 0) {
+      reg(this.add.text(x0 + W / 2 + 14, colTop + 4, '(sac vide)', { fontFamily: 'monospace', fontSize: '10px', color: '#7c8aa0' }).setOrigin(0, 0))
+    }
+    p.inventory.forEach((item, i) => {
+      if (i >= 12) return
+      this.drawShopRow(reg, x0 + W / 2 + 10, colTop + i * rowH, colW, item, `+${sellPrice(item)} or`, true, () => this.sellItem(item))
+    })
+
+    reg(this.add.text(cw / 2, y0 + H - 14, 'Clic = acheter / vendre  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5))
+  }
+
   // ---------- helpers ----------
 
   pointerOverInventory(x, y) {
@@ -308,6 +424,43 @@ export default class UIScene extends Phaser.Scene {
 
   hideTip() {
     this.tip.setVisible(false)
+  }
+
+  /** Message bref au-dessus de la hotbar (ramassage, équipement...). */
+  showToast(text, color) {
+    if (this.toast) {
+      this.tweens.killTweensOf(this.toast)
+      this.toast.destroy()
+    }
+    const topY = (this.bagRect ? this.bagRect.y : this.scale.height - 80) - 12
+    const t = this.add
+      .text(this.scale.width / 2, topY, text, {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: color || '#ffffff',
+        stroke: '#000',
+        strokeThickness: 4,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(130)
+    this.toast = t
+    this.tweens.add({
+      targets: t,
+      y: topY - 22,
+      alpha: 0,
+      delay: 900,
+      duration: 600,
+      onComplete: () => {
+        t.destroy()
+        if (this.toast === t) this.toast = null
+      },
+    })
+  }
+
+  /** Toast pour un objet (préfixe + nom coloré selon la rareté). */
+  showItemToast(prefix, item) {
+    const rc = RARITY[item.rarity]
+    this.showToast(`${prefix} : ${item.name}`, rc ? rc.color : '#ffffff')
   }
 
   // ---------- update ----------

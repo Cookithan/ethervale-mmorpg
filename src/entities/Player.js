@@ -98,6 +98,15 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.invVersion++
   }
 
+  /** Retire un objet du sac (revente). Renvoie true si trouvé. */
+  removeItem(item) {
+    const i = this.inventory.indexOf(item)
+    if (i === -1) return false
+    this.inventory.splice(i, 1)
+    this.invVersion++
+    return true
+  }
+
   /** Équipe un objet du sac (renvoie l'ancien du même slot au sac). */
   equip(item) {
     const i = this.inventory.indexOf(item)

@@ -3,11 +3,24 @@ import Player from '../entities/Player.js'
 import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
-import { ITEMS, cloneItem } from '../data/items.js'
+import { ITEMS, cloneItem, RARITY } from '../data/items.js'
 
 const MONSTER_COUNT = 24 // nombre de monstres sur la map
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
 const EDGE_INSET = 16 // marge intérieure caméra/monde (1 tuile) : empêche de voir le fond hors-map au bord
+const MERCHANT_RANGE = 44 // distance pour pouvoir parler au marchand (px)
+const WORLD_SEED = 1337 // graine fixe -> la map est TOUJOURS la même (monde persistant)
+
+/** PRNG déterministe (mulberry32) : remplace Math.random pendant la génération du monde. */
+function makeSeededRandom(seed) {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
 
 const TILE = 16
 const MAP_W = 80
@@ -49,6 +62,13 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // monde DÉTERMINISTE : pendant toute la génération (terrain, chemins, forêt,
+    // rochers, déco, monstres), Math.random est remplacé par un PRNG à graine fixe
+    // -> exactement la même map à chaque chargement. Restauré à la fin pour que le
+    // gameplay (IA, loot, attaques) reste aléatoire.
+    const origRandom = Math.random
+    Math.random = makeSeededRandom(WORLD_SEED)
+
     this.worldW = MAP_W * TILE
     this.worldH = MAP_H * TILE
     this.cx = Math.floor(MAP_W / 2)
@@ -110,6 +130,9 @@ export default class GameScene extends Phaser.Scene {
     this.drops = this.physics.add.group()
     this.physics.add.overlap(this.player, this.drops, (pl, drop) => this.collectDrop(drop))
 
+    // --- marchand (PNJ près du spawn) ---
+    this.spawnMerchant()
+
     // --- caméra ---
     const cam = this.cameras.main
     cam.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
@@ -123,6 +146,7 @@ export default class GameScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
     this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
     this.input.keyboard.on('keydown-F', () => this.shootForward())
+    this.input.keyboard.on('keydown-E', () => this.tryTalkMerchant())
     this.input.on('pointerdown', (p) => {
       // ignore les clics sur le panneau d'inventaire (géré par UIScene)
       const ui = this.scene.get('UIScene')
@@ -138,6 +162,9 @@ export default class GameScene extends Phaser.Scene {
     this.gameOver = false
     // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
     if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
+
+    // fin de la génération : on rend l'aléatoire réel au gameplay (IA, loot...)
+    Math.random = origRandom
   }
 
   // ---------- helpers généraux ----------
@@ -421,6 +448,38 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Place le marchand près du spawn (PNJ statique avec collision) + son indice "E". */
+  spawnMerchant() {
+    const mx = this.worldW / 2 + 3 * TILE
+    const my = this.worldH / 2
+    this.merchant = this.add.sprite(mx, my, 'npc_merchant', 0).setDepth(my)
+    this.physics.add.existing(this.merchant, true)
+    this.merchant.body.setSize(12, 12).setOffset(2, 4)
+    this.physics.add.collider(this.player, this.merchant)
+
+    // indice "Parler (E)" affiché quand le héros est proche
+    this.merchantHint = this.add
+      .text(mx, my - 16, 'Parler (E)', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#ffffff',
+        backgroundColor: '#000000aa',
+        padding: { x: 3, y: 2 },
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(60000)
+      .setResolution(3) // net malgré le zoom caméra x3
+      .setVisible(false)
+  }
+
+  /** Ouvre la boutique si le héros est assez proche du marchand. */
+  tryTalkMerchant() {
+    if (this.gameOver || !this.merchant) return
+    if (this.dist(this.player.x, this.player.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE) {
+      this.scene.get('UIScene').openShop()
+    }
+  }
+
   /** Marqueur visuel à l'endroit cliqué (anneau qui se rétracte puis disparaît). */
   showMoveMarker(x, y) {
     if (this.moveMarker) this.moveMarker.destroy()
@@ -594,7 +653,8 @@ export default class GameScene extends Phaser.Scene {
     } else if (drop.type === 'equip') {
       p.addItem(drop.item)
       text = drop.item.name
-      color = '#9be1ff'
+      color = RARITY[drop.item.rarity]?.color ?? '#9be1ff'
+      this.scene.get('UIScene')?.showItemToast?.('Obtenu', drop.item) // toast HUD lisible
     }
     this.floatingText(drop.x, drop.y, text, color)
   }
@@ -652,6 +712,9 @@ export default class GameScene extends Phaser.Scene {
     })
 
     if (p.hp <= 0) this.handleDeath()
+
+    // indice du marchand quand on est proche
+    this.merchantHint.setVisible(this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE)
 
     const body = new Phaser.Geom.Rectangle(p.x - 6, p.y - 14, 12, 20)
     for (const tree of this.trees) {
