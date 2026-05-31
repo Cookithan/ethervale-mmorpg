@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { SLOTS, SLOT_LABELS, describeStats } from '../data/items.js'
+import { SLOTS, SLOT_LABELS, describeStats, RARITY } from '../data/items.js'
 
 // palette UI (style WoW lisible)
 const GOLD = 0xc8a24a
@@ -177,8 +177,9 @@ export default class UIScene extends Phaser.Scene {
     const gx = panelX + pad + cell / 2
     for (let i = 0; i < display; i++) {
       const bx = gx + i * (cell + gap)
-      reg(this.add.rectangle(bx, gy, cell, cell, CELL, 1).setStrokeStyle(1, CELL_BORDER))
       const item = p.inventory[i]
+      const border = item ? RARITY[item.rarity]?.tint ?? CELL_BORDER : CELL_BORDER
+      reg(this.add.rectangle(bx, gy, cell, cell, CELL, 1).setStrokeStyle(item ? 2 : 1, border))
       if (!item) continue
       const c = reg(this.add.rectangle(bx, gy, cell, cell, 0x000000, 0).setInteractive({ useHandCursor: true }))
       reg(this.addIcon(bx, gy, item.icon, cell - 12))
@@ -257,8 +258,9 @@ export default class UIScene extends Phaser.Scene {
     SLOTS.forEach((slot) => {
       const pos = place[slot]
       reg(this.add.text(pos.lx, pos.ly, SLOT_LABELS[slot], { fontFamily: 'monospace', fontSize: '11px', color: '#9fb6cc' }).setOrigin(0.5))
-      const c = reg(this.add.rectangle(pos.x, pos.y, cellSz, cellSz, CELL, 1).setStrokeStyle(2, GOLD))
       const item = p.equipped[slot]
+      const border = item ? RARITY[item.rarity]?.tint ?? GOLD : GOLD
+      const c = reg(this.add.rectangle(pos.x, pos.y, cellSz, cellSz, CELL, 1).setStrokeStyle(2, border))
       if (item) {
         reg(this.addIcon(pos.x, pos.y, item.icon, cellSz - 14))
         c.setInteractive({ useHandCursor: true })
@@ -299,6 +301,8 @@ export default class UIScene extends Phaser.Scene {
   }
 
   showTip(item, centerX, topY) {
+    const r = RARITY[item.rarity]
+    this.tip.setColor(r ? r.color : '#ffffff')
     this.tip.setText(`${item.name}\n${describeStats(item.stats)}`).setPosition(centerX, topY - 4).setVisible(true)
   }
 

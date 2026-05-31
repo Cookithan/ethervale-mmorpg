@@ -51,7 +51,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('drop_gem', 'assets/items/gem.png')
 
     // icônes d'équipement (armes / armure / accessoires) — pack Ninja Adventure
-    for (const key of ['weapon_sword', 'weapon_katana', 'weapon_axe', 'eq_armor', 'eq_amulet', 'eq_ring']) {
+    for (const key of ['weapon_sword', 'weapon_katana', 'weapon_axe', 'weapon_bigsword', 'eq_armor', 'eq_amulet', 'eq_ring']) {
       this.load.image(key, `assets/items/${key}.png`)
     }
   }

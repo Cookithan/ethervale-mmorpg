@@ -4,10 +4,21 @@ import Phaser from 'phaser'
  * Définitions des 3 types de monstres (MVP du brief).
  * Sprites 16x16, spritesheet 4x4 (la 1re ligne = frames 0-3 d'animation).
  */
+// loot : or (min/max), % de drop d'équipement, pondération de rareté de cet équipement.
+// Plus la créature est forte, plus le butin est généreux et rare.
 export const MONSTER_TYPES = {
-  mushroom: { key: 'mon_mushroom', hp: 90, speed: 22, damage: 12, xp: 25, aggro: 70, scale: 1.5, name: 'Champignon' },
-  lizard: { key: 'mon_lizard', hp: 30, speed: 72, damage: 5, xp: 10, aggro: 130, scale: 0.9, name: 'Lézard' },
-  racoon: { key: 'mon_racoon', hp: 55, speed: 46, damage: 8, xp: 15, aggro: 105, scale: 1.1, name: 'Raton' },
+  mushroom: {
+    key: 'mon_mushroom', hp: 90, speed: 22, damage: 24, xp: 36, aggro: 70, scale: 1.5, name: 'Champignon',
+    loot: { gold: [4, 9], equipChance: 18, rarity: { common: 50, rare: 35, epic: 15 } },
+  },
+  lizard: {
+    key: 'mon_lizard', hp: 30, speed: 72, damage: 5, xp: 8, aggro: 130, scale: 0.9, name: 'Lézard',
+    loot: { gold: [1, 3], equipChance: 6, rarity: { common: 92, rare: 8, epic: 0 } },
+  },
+  racoon: {
+    key: 'mon_racoon', hp: 55, speed: 46, damage: 8, xp: 16, aggro: 105, scale: 1.1, name: 'Raton',
+    loot: { gold: [2, 5], equipChance: 11, rarity: { common: 72, rare: 25, epic: 3 } },
+  },
 }
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)

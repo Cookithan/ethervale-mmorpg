@@ -3,7 +3,7 @@ import Player from '../entities/Player.js'
 import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
-import { ITEMS } from '../data/items.js'
+import { ITEMS, cloneItem } from '../data/items.js'
 
 const MONSTER_COUNT = 24 // nombre de monstres sur la map
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
@@ -530,11 +530,12 @@ export default class GameScene extends Phaser.Scene {
     this.spawnDrop(mon)
   }
 
-  /** Fait apparaître un objet ramassable sur le cadavre (proba pondérée). */
+  /** Fait apparaître un objet ramassable sur le cadavre, selon la table du monstre. */
   spawnDrop(mon) {
-    // 12% : équipement (rare), tombe dans le sac
-    if (Phaser.Math.Between(1, 100) <= 12) {
-      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.randomEquipment()))
+    const loot = mon.def.loot
+    // équipement (chance + rareté propres au type de monstre), tombe dans le sac
+    if (Phaser.Math.Between(1, 100) <= loot.equipChance) {
+      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.randomEquipment(loot.rarity)))
       return
     }
     // sinon : consommable (or / gemme XP / cœur de soin)
@@ -543,7 +544,7 @@ export default class GameScene extends Phaser.Scene {
     let amount
     if (roll <= 60) {
       type = 'gold'
-      amount = Phaser.Math.Between(1, 3) + Math.floor(mon.def.xp / 5) // ~3 à 8
+      amount = Phaser.Math.Between(loot.gold[0], loot.gold[1]) // or selon le type de monstre
     } else if (roll <= 85) {
       type = 'gem'
       amount = Math.ceil(mon.def.xp * 0.5) // XP bonus
@@ -554,10 +555,21 @@ export default class GameScene extends Phaser.Scene {
     this.drops.add(new Drop(this, mon.x, mon.y, type, amount))
   }
 
-  /** Renvoie une COPIE d'un objet d'équipement aléatoire (objets distincts dans le sac). */
-  randomEquipment() {
-    const base = ITEMS[Phaser.Utils.Array.GetRandom(Object.keys(ITEMS))]
-    return { ...base, stats: { ...base.stats } }
+  /** Renvoie une COPIE d'un objet d'équipement, rareté tirée selon `weights` {common,rare,epic}. */
+  randomEquipment(weights) {
+    const entries = Object.entries(weights).filter(([, w]) => w > 0)
+    const total = entries.reduce((s, [, w]) => s + w, 0)
+    let roll = Phaser.Math.Between(1, total)
+    let chosen = entries[0][0]
+    for (const [key, w] of entries) {
+      if (roll <= w) {
+        chosen = key
+        break
+      }
+      roll -= w
+    }
+    const pool = Object.values(ITEMS).filter((it) => it.rarity === chosen)
+    return cloneItem(Phaser.Utils.Array.GetRandom(pool))
   }
 
   /** Applique l'effet d'un drop ramassé + texte flottant, puis le retire. */
