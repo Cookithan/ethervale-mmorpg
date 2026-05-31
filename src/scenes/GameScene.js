@@ -2,6 +2,7 @@ import Phaser from 'phaser'
 import Player from '../entities/Player.js'
 import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
+import Drop from '../entities/Drop.js'
 
 const MONSTER_COUNT = 24 // nombre de monstres sur la map
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
@@ -98,6 +99,10 @@ export default class GameScene extends Phaser.Scene {
     })
     // les projectiles s'arrêtent sur le décor
     this.physics.add.collider(this.projectiles, this.obstacles, (proj) => proj.kill())
+
+    // --- objets ramassables (drops) ---
+    this.drops = this.physics.add.group()
+    this.physics.add.overlap(this.player, this.drops, (pl, drop) => this.collectDrop(drop))
 
     // --- caméra ---
     const cam = this.cameras.main
@@ -509,6 +514,56 @@ export default class GameScene extends Phaser.Scene {
 
   onMonsterKilled(mon) {
     this.player.gainXp(mon.def.xp)
+    this.spawnDrop(mon)
+  }
+
+  /** Fait apparaître un objet ramassable sur le cadavre (proba pondérée). */
+  spawnDrop(mon) {
+    const roll = Phaser.Math.Between(1, 100)
+    let type
+    let amount
+    if (roll <= 60) {
+      type = 'gold'
+      amount = Phaser.Math.Between(1, 3) + Math.floor(mon.def.xp / 5) // ~3 à 8
+    } else if (roll <= 85) {
+      type = 'gem'
+      amount = Math.ceil(mon.def.xp * 0.5) // XP bonus
+    } else {
+      type = 'heart'
+      amount = Phaser.Math.Between(12, 22) // PV soignés
+    }
+    this.drops.add(new Drop(this, mon.x, mon.y, type, amount))
+  }
+
+  /** Applique l'effet d'un drop ramassé + texte flottant, puis le retire. */
+  collectDrop(drop) {
+    if (!drop.collect()) return // déjà ramassé/expiré
+    const p = this.player
+    if (drop.type === 'gold') {
+      p.gold += drop.amount
+    } else if (drop.type === 'gem') {
+      p.gainXp(drop.amount)
+    } else if (drop.type === 'heart') {
+      const healed = p.heal(drop.amount)
+      if (healed <= 0) return // PV déjà au max : pas de texte trompeur
+      drop.amount = healed
+    }
+    this.floatingText(drop.x, drop.y, drop.def.label(drop.amount), drop.def.color)
+  }
+
+  /** Petit texte qui monte et s'efface (ramassage, soin...). */
+  floatingText(x, y, text, color) {
+    const t = this.add
+      .text(x, y - 8, text, {
+        fontFamily: 'monospace',
+        fontSize: '9px',
+        color,
+        stroke: '#000000',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(20000)
+    this.tweens.add({ targets: t, y: t.y - 14, alpha: 0, duration: 800, onComplete: () => t.destroy() })
   }
 
   onLevelUp() {

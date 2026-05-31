@@ -29,6 +29,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.attackPower = 12
     this.xp = 0
     this.xpToNext = 50
+    this.gold = 0
 
     this.attacking = false
     this.attackUntil = 0
@@ -75,6 +76,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(90, () => this.clearTint())
     return true
+  }
+
+  /** Soigne le héros (plafonné aux PV max). Renvoie les PV réellement rendus. */
+  heal(amount) {
+    const before = this.hp
+    this.hp = Math.min(this.maxHp, this.hp + amount)
+    return this.hp - before
   }
 
   /** Ajoute de l'XP, gère le(s) passage(s) de niveau (cap 10). */

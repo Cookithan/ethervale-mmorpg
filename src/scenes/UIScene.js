@@ -45,6 +45,17 @@ export default class UIScene extends Phaser.Scene {
       })
       .setOrigin(0, 0)
 
+    // --- or ---
+    this.goldText = this.add
+      .text(PAD, PAD + BAR_H + 28, '', {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: '#ffd84d',
+        backgroundColor: '#00000088',
+        padding: { x: 5, y: 3 },
+      })
+      .setOrigin(0, 0)
+
     // --- aide en bas ---
     this.add
       .text(PAD, this.scale.height - PAD, 'Clic = aller  ·  Espace = épée  ·  F = tir  ·  Clic droit = tir visé', {
@@ -122,5 +133,6 @@ export default class UIScene extends Phaser.Scene {
     this.lvlText.setText(
       p.level >= 10 ? 'Niv 10 (MAX)' : `Niv ${p.level}    XP ${p.xp}/${p.xpToNext}`
     )
+    this.goldText.setText(`Or : ${p.gold}`)
   }
 }

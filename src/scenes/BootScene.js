@@ -54,19 +54,54 @@ export default class BootScene extends Phaser.Scene {
 
   /**
    * Textures dessinées par code (pas de fichier à charger) :
-   * - 'proj' : boule d'énergie verte (projectile du héros).
-   * generateTexture() la met dans le cache comme une vraie image.
+   * - 'proj'       : boule d'énergie verte (projectile du héros)
+   * - 'drop_gold'  : pièce d'or, 'drop_heart' : cœur (soin), 'drop_gem' : gemme (XP)
+   * generateTexture() les met dans le cache comme de vraies images.
    */
   createGeneratedTextures() {
-    if (!this.textures.exists('proj')) {
+    const draw = (key, w, h, paint) => {
+      if (this.textures.exists(key)) return
       const g = this.make.graphics({ x: 0, y: 0, add: false })
+      paint(g)
+      g.generateTexture(key, w, h)
+      g.destroy()
+    }
+
+    // boule d'énergie verte
+    draw('proj', 10, 10, (g) => {
       g.fillStyle(0x9be15d, 1) // halo vert clair
       g.fillCircle(5, 5, 5)
       g.fillStyle(0xffffff, 1) // cœur lumineux
       g.fillCircle(5, 5, 2)
-      g.generateTexture('proj', 10, 10)
-      g.destroy()
-    }
+    })
+
+    // pièce d'or
+    draw('drop_gold', 10, 10, (g) => {
+      g.fillStyle(0xb8860b, 1) // bord doré foncé
+      g.fillCircle(5, 5, 5)
+      g.fillStyle(0xffd84d, 1) // or
+      g.fillCircle(5, 5, 4)
+      g.fillStyle(0xfff1a8, 1) // reflet
+      g.fillCircle(4, 4, 1.4)
+    })
+
+    // cœur de soin
+    draw('drop_heart', 12, 12, (g) => {
+      g.fillStyle(0xff5566, 1)
+      g.fillCircle(3.5, 4, 3)
+      g.fillCircle(8.5, 4, 3)
+      g.fillTriangle(0.7, 5, 11.3, 5, 6, 11)
+      g.fillStyle(0xff99a8, 1) // reflet
+      g.fillCircle(3, 3, 1)
+    })
+
+    // gemme d'XP (losange)
+    draw('drop_gem', 10, 12, (g) => {
+      g.fillStyle(0x33c4d6, 1)
+      g.fillPoints([{ x: 5, y: 0 }, { x: 10, y: 5 }, { x: 5, y: 11 }, { x: 0, y: 5 }], true)
+      g.fillStyle(0x9beaf5, 1) // facette claire
+      g.fillPoints([{ x: 5, y: 0 }, { x: 7, y: 4 }, { x: 5, y: 5 }, { x: 3, y: 4 }], true)
+    })
   }
 
   /**
