@@ -4,6 +4,8 @@ import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY } from '../data/items.js'
+import { DEFAULT_CHARACTER } from '../data/classes.js'
+import { makeSave, writeSave } from '../data/save.js'
 
 const MONSTER_COUNT = 70 // nombre de monstres sur la map
 const MONSTER_GAP = 7 // distance mini entre deux monstres au spawn (en tuiles, anti-paquets)
@@ -145,7 +147,11 @@ export default class GameScene extends Phaser.Scene {
     super('GameScene')
   }
 
-  create() {
+  create(initData) {
+    // personnage choisi (création) ou repris (sauvegarde)
+    this.saveData = initData?.save ?? null
+    this.character = this.saveData?.character ?? initData?.character ?? DEFAULT_CHARACTER
+
     // monde DÉTERMINISTE : pendant toute la génération (terrain, chemins, forêt,
     // rochers, déco, monstres), Math.random est remplacé par un PRNG à graine fixe
     // -> exactement la même map à chaque chargement. Restauré à la fin pour que le
@@ -180,7 +186,9 @@ export default class GameScene extends Phaser.Scene {
 
     // --- physique / héros ---
     this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
-    this.player = new Player(this, this.worldW / 2, this.worldH / 2)
+    const spawnX = this.saveData ? this.saveData.x : this.worldW / 2
+    const spawnY = this.saveData ? this.saveData.y : this.worldH / 2
+    this.player = new Player(this, spawnX, spawnY, { character: this.character, save: this.saveData })
 
     // --- décors ---
     this.obstacles = this.physics.add.staticGroup()
@@ -269,8 +277,17 @@ export default class GameScene extends Phaser.Scene {
     // bandeau de bienvenue (laisse l'UIScene démarrer)
     this.time.delayedCall(600, () => this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES.prairie))
 
+    // sauvegarde automatique périodique (toutes les 30 s)
+    this.time.addEvent({ delay: 30000, loop: true, callback: () => this.saveGame() })
+
     // fin de la génération : on rend l'aléatoire réel au gameplay (IA, loot...)
     Math.random = origRandom
+  }
+
+  /** Sauvegarde la partie (personnage + progression + position) dans le navigateur. */
+  saveGame() {
+    if (this.gameOver || !this.player) return
+    writeSave(makeSave(this.player, this.character))
   }
 
   // ---------- helpers généraux ----------
@@ -1147,7 +1164,7 @@ export default class GameScene extends Phaser.Scene {
   /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
   uiBusy() {
     const ui = this.scene.get('UIScene')
-    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen))
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.pauseOpen))
   }
 
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
@@ -1560,6 +1577,7 @@ export default class GameScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(20000)
     this.tweens.add({ targets: t, y: t.y - 16, alpha: 0, duration: 900, onComplete: () => t.destroy() })
+    this.saveGame() // sauvegarde à chaque montée de niveau
   }
 
   /** Retour visuel quand le héros encaisse : léger flash rouge sur les bords + shake doux. */

@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { HEROES } from '../data/classes.js'
 
 // monstres (sprites mon_<nom>.png, grille 4x4) — chargement + animations directionnelles
 const MONSTER_SPRITES = ['mushroom', 'lizard', 'racoon', 'snake', 'spider', 'bear', 'owl', 'skull', 'spirit', 'flam']
@@ -36,11 +37,15 @@ export default class BootScene extends Phaser.Scene {
     // bâtiments (maisons, igloos, portails...) : spritesheet 16x16, 33 colonnes
     this.load.spritesheet('house', 'assets/tiles/house.png', { frameWidth: 16, frameHeight: 16 })
 
-    // héros : spritesheet 16x16
+    // héros : spritesheet 16x16 (NinjaGreen historique = 'player')
     this.load.spritesheet('player', 'assets/sprites/player.png', {
       frameWidth: 16,
       frameHeight: 16,
     })
+    // apparences jouables (choix du personnage) : spritesheets 16x16 (4×7)
+    for (const h of HEROES) {
+      this.load.spritesheet(h.key, `assets/sprites/${h.key}.png`, { frameWidth: 16, frameHeight: 16 })
+    }
 
     // monstres : spritesheets 16x16 (4x4)
     for (const m of MONSTER_SPRITES) {
@@ -49,6 +54,9 @@ export default class BootScene extends Phaser.Scene {
         frameHeight: 16,
       })
     }
+
+    // logo du menu (titre "NINJA ADVENTURE" extrait de la cover du pack)
+    this.load.image('title_logo', 'assets/ui/title.png')
 
     // marchand : spritesheet 16x16 (on n'utilise que la frame 0 = face) + portrait
     this.load.spritesheet('npc_merchant', 'assets/sprites/npc_merchant.png', { frameWidth: 16, frameHeight: 16 })
@@ -77,7 +85,7 @@ export default class BootScene extends Phaser.Scene {
     this.createMonsterAnimations()
     this.createNpcAnimations()
     this.createItemAnimations()
-    this.scene.start('GameScene')
+    this.scene.start('MenuScene') // écran d'accueil (puis création de perso -> jeu)
   }
 
   /** Animations des objets (pièce qui tourne). */
@@ -301,32 +309,29 @@ export default class BootScene extends Phaser.Scene {
    * On prend les 4 premières lignes pour le walk -> indices espacés de 4.
    */
   createPlayerAnimations() {
-    const add = (key, indices, frameRate = 8, repeat = -1) => {
-      if (this.anims.exists(key)) return
-      this.anims.create({
-        key,
-        frames: this.anims.generateFrameNumbers('player', { frames: indices }),
-        frameRate,
-        repeat,
-      })
+    // une série d'anims PAR apparence jouable (préfixe = clé du héros)
+    for (const h of HEROES) {
+      const key = h.key
+      const add = (suffix, indices, frameRate = 8, repeat = -1) => {
+        const k = `${key}-${suffix}`
+        if (this.anims.exists(k)) return
+        this.anims.create({ key: k, frames: this.anims.generateFrameNumbers(key, { frames: indices }), frameRate, repeat })
+      }
+      add('walk-down', [0, 4, 8, 12])
+      add('walk-up', [1, 5, 9, 13])
+      add('walk-left', [2, 6, 10, 14])
+      add('walk-right', [3, 7, 11, 15])
+      // immobile = 1re frame de chaque direction (1re ligne)
+      add('idle-down', [0], 1, 0)
+      add('idle-up', [1], 1, 0)
+      add('idle-left', [2], 1, 0)
+      add('idle-right', [3], 1, 0)
+      // attaque : lignes 4-6 (frames 16-27), même logique par colonne=direction
+      add('attack-down', [16, 20, 24], 14, 0)
+      add('attack-up', [17, 21, 25], 14, 0)
+      add('attack-left', [18, 22, 26], 14, 0)
+      add('attack-right', [19, 23, 27], 14, 0)
     }
-
-    add('walk-down', [0, 4, 8, 12])
-    add('walk-up', [1, 5, 9, 13])
-    add('walk-left', [2, 6, 10, 14])
-    add('walk-right', [3, 7, 11, 15])
-
-    // immobile = 1re frame de chaque direction (1re ligne)
-    add('idle-down', [0], 1, 0)
-    add('idle-up', [1], 1, 0)
-    add('idle-left', [2], 1, 0)
-    add('idle-right', [3], 1, 0)
-
-    // attaque : lignes 4-6 (frames 16-27), même logique par colonne=direction
-    add('attack-down', [16, 20, 24], 14, 0)
-    add('attack-up', [17, 21, 25], 14, 0)
-    add('attack-left', [18, 22, 26], 14, 0)
-    add('attack-right', [19, 23, 27], 14, 0)
   }
 
   /**

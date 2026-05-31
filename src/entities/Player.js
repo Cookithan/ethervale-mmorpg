@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { ITEMS, effectiveStats, cloneItem } from '../data/items.js'
+import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
 
 const SPEED = 65 // vitesse de déplacement (px/s)
 const ATTACK_MS = 320 // durée de l'animation d'attaque (déplacement bloqué)
@@ -12,16 +13,22 @@ const SHOOT_COOLDOWN = 450 // délai mini entre deux tirs à distance (ms)
  * Gère aussi : attaque épée (espace), PV, XP/niveau, dégâts reçus avec i-frames.
  */
 export default class Player extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, x, y) {
-    super(scene, x, y, 'player', 0)
+  constructor(scene, x, y, opts = {}) {
+    const character = opts.character ?? DEFAULT_CHARACTER
+    const heroKey = character.hero ?? 'hero_green'
+    super(scene, x, y, heroKey, 0)
     scene.add.existing(this)
     scene.physics.add.existing(this)
+
+    this.heroKey = heroKey // apparence -> texture + préfixe d'animation
+    this.character = character
+    this.className = character.classKey ?? 'warrior'
 
     this.setCollideWorldBounds(true)
     this.body.setSize(10, 8).setOffset(3, 7)
 
     this.facing = 'down'
-    this.anims.play('idle-down')
+    this.anims.play(`${heroKey}-idle-down`)
 
     // état combat / progression
     this.level = 1
@@ -29,11 +36,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.xpToNext = 50
     this.gold = 0
 
-    // stats de BASE (augmentent au niveau). Les totaux (maxHp/attackPower/defense)
-    // = base + bonus des objets équipés, recalculés par recomputeStats().
-    this.baseMaxHp = 100
-    this.baseAttack = 12
-    this.baseDefense = 0
+    // stats de BASE selon la CLASSE (augmentent au niveau). Les totaux (maxHp/attackPower/
+    // defense) = base + bonus des objets équipés, recalculés par recomputeStats().
+    const cls = CLASSES[this.className] ?? CLASSES.warrior
+    this.baseMaxHp = cls.hp
+    this.baseAttack = cls.attack
+    this.baseDefense = cls.defense
 
     // équipement (3 slots) + sac. Quelques objets de départ pour tester.
     this.equipped = { weapon: null, armor: null, accessory: null }
@@ -55,6 +63,24 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.cursors = scene.input.keyboard.createCursorKeys()
     this.keys = scene.input.keyboard.addKeys('W,A,S,D,Z,Q')
+
+    if (opts.save) this.applySave(opts.save) // reprise d'une partie sauvegardée
+  }
+
+  /** Restaure la progression depuis une sauvegarde (la position est gérée par GameScene). */
+  applySave(s) {
+    this.level = s.level ?? this.level
+    this.xp = s.xp ?? 0
+    this.xpToNext = s.xpToNext ?? this.xpToNext
+    this.gold = s.gold ?? 0
+    this.baseMaxHp = s.baseMaxHp ?? this.baseMaxHp
+    this.baseAttack = s.baseAttack ?? this.baseAttack
+    this.baseDefense = s.baseDefense ?? this.baseDefense
+    if (s.equipped) this.equipped = s.equipped
+    if (s.inventory) this.inventory = s.inventory
+    this.recomputeStats()
+    this.hp = Math.min(s.hp ?? this.maxHp, this.maxHp)
+    this.invVersion++
   }
 
   /** Déplace le perso vers un point du monde (annulé dès qu'on utilise le clavier). */
@@ -71,7 +97,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.nextAttackAt = now + ATTACK_COOLDOWN
     this.moveTarget = null
     this.setVelocity(0, 0)
-    this.anims.play('attack-' + this.facing, true)
+    this.anims.play(`${this.heroKey}-attack-` + this.facing, true)
     return true
   }
 
@@ -242,6 +268,6 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     else if (vy > 0) this.facing = 'down'
 
     const moving = vx !== 0 || vy !== 0
-    this.anims.play((moving ? 'walk-' : 'idle-') + this.facing, true)
+    this.anims.play(`${this.heroKey}-` + (moving ? 'walk-' : 'idle-') + this.facing, true)
   }
 }

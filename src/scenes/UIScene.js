@@ -32,6 +32,8 @@ export default class UIScene extends Phaser.Scene {
     this.dialogueObjects = []
     this.forgeOpen = false
     this.forgeObjects = []
+    this.pauseOpen = false
+    this.pauseObjects = []
     this.shopTab = 'buy'
     this.toast = null
     this.zoneBanner = null
@@ -62,6 +64,8 @@ export default class UIScene extends Phaser.Scene {
       else if (this.forgeOpen) this.closeForge()
       else if (this.charOpen) this.closeChar()
       else if (this.shopOpen) this.closeShop()
+      else if (this.pauseOpen) this.closePause()
+      else this.openPause() // rien d'ouvert -> menu pause
     })
     // E / Espace : avance le dialogue (et le ferme à la dernière phrase)
     this.input.keyboard.on('keydown-E', () => {
@@ -92,7 +96,7 @@ export default class UIScene extends Phaser.Scene {
     // aide (haut-centre)
     reg(
       this.add
-        .text(cw / 2, 8, 'Clic = aller  ·  Espace = épée  ·  F = tir  ·  C = perso', {
+        .text(cw / 2, 8, 'Clic = aller · Espace = épée · F = tir · C = perso · Échap = menu', {
           fontFamily: 'monospace',
           fontSize: '11px',
           color: '#ffffff',
@@ -115,7 +119,7 @@ export default class UIScene extends Phaser.Scene {
     const px = fx + 10
     const py = fy + 10
     reg(this.add.rectangle(px, py, pSize, pSize, 0x000000, 0.5).setOrigin(0, 0).setStrokeStyle(2, GOLD))
-    const portrait = reg(this.add.image(px + pSize / 2, py + pSize / 2, 'player', 0))
+    const portrait = reg(this.add.image(px + pSize / 2, py + pSize / 2, this.game_.player?.heroKey ?? 'player', 0))
     portrait.setScale((pSize - 8) / portrait.width)
 
     // vie + niveau + or à droite du portrait
@@ -236,7 +240,7 @@ export default class UIScene extends Phaser.Scene {
   // ---------- fiche personnage (touche C) ----------
 
   toggleChar() {
-    if (this.game_.gameOver) return
+    if (this.game_.gameOver || this.pauseOpen) return
     if (this.charOpen) this.closeChar()
     else this.openChar()
   }
@@ -278,14 +282,17 @@ export default class UIScene extends Phaser.Scene {
     const x0 = cw / 2 - W / 2
     const y0 = ch / 2 - H / 2
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.97).setStrokeStyle(2, GOLD))
-    reg(this.add.text(cw / 2, y0 + 14, 'Personnage', { fontFamily: 'monospace', fontSize: '15px', color: '#ffffff' }).setOrigin(0.5, 0))
+    const ch_ = this.game_.character ?? {}
+    const clsName = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank' }[p.className] ?? ''
+    reg(this.add.text(cw / 2, y0 + 12, ch_.name ?? 'Personnage', { fontFamily: 'monospace', fontSize: '16px', color: '#ffe066' }).setOrigin(0.5, 0))
+    reg(this.add.text(cw / 2, y0 + 32, `${clsName}  ·  Niveau ${p.level}`, { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5, 0))
 
     // portrait au centre
     const cx = cw / 2
     const pSize = 64
     const pY = y0 + 96
     reg(this.add.rectangle(cx, pY, pSize, pSize, 0x000000, 0.5).setStrokeStyle(2, GOLD))
-    const portrait = reg(this.add.image(cx, pY, 'player', 0))
+    const portrait = reg(this.add.image(cx, pY, this.game_.player?.heroKey ?? 'player', 0))
     portrait.setScale((pSize - 10) / portrait.width)
 
     // 3 slots autour du portrait (paper-doll) : Arme à gauche, Armure à droite, Accessoire dessous
@@ -593,6 +600,76 @@ export default class UIScene extends Phaser.Scene {
     this.buildForge()
   }
 
+  // ---------- menu pause (Échap) ----------
+
+  openPause() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    this.pauseOpen = true
+    this.scene.pause('GameScene')
+    this.buildPause()
+  }
+
+  closePause() {
+    this.pauseOpen = false
+    this.destroyPause()
+    this.scene.resume('GameScene')
+  }
+
+  destroyPause() {
+    this.pauseObjects.forEach((o) => o.destroy())
+    this.pauseObjects = []
+  }
+
+  buildPause() {
+    this.destroyPause()
+    const reg = (o) => {
+      this.pauseObjects.push(o)
+      return o
+    }
+    const cw = this.scale.width
+    const ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0))
+    const W = 260
+    const H = 232
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
+    reg(this.add.text(cw / 2, ch / 2 - H / 2 + 24, 'Pause', { fontFamily: 'monospace', fontSize: '22px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5))
+    let y = ch / 2 - 42
+    this.menuButton(reg, cw / 2, y, 'Reprendre', () => this.closePause())
+    y += 48
+    this.menuButton(reg, cw / 2, y, 'Sauvegarder', () => {
+      this.game_.saveGame()
+      this.showToast('Partie sauvegardée', '#6fdc6f')
+    })
+    y += 48
+    this.menuButton(reg, cw / 2, y, 'Quitter au menu', () => this.quitToMenu())
+  }
+
+  menuButton(reg, x, y, label, cb) {
+    const w = 200
+    const h = 38
+    const bg = reg(this.add.rectangle(x, y, w, h, 0x1a2233, 1).setStrokeStyle(2, GOLD))
+    const txt = reg(this.add.text(x, y, label, { fontFamily: 'monospace', fontSize: '14px', color: '#ffffff' }).setOrigin(0.5))
+    const z = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }))
+    z.on('pointerover', () => {
+      bg.setFillStyle(0x26344b, 1)
+      txt.setColor('#ffe066')
+    })
+    z.on('pointerout', () => {
+      bg.setFillStyle(0x1a2233, 1)
+      txt.setColor('#ffffff')
+    })
+    z.on('pointerdown', cb)
+  }
+
+  quitToMenu() {
+    this.game_.saveGame()
+    this.pauseOpen = false
+    this.scene.stop('GameScene')
+    this.scene.start('MenuScene')
+    this.scene.stop() // arrête l'UIScene
+  }
+
   // ---------- dialogue (villageois) ----------
 
   /** Ouvre une fenêtre de dialogue type RPG (PNJ nommé + portrait + phrases). */
@@ -806,11 +883,11 @@ export default class UIScene extends Phaser.Scene {
     const veil = this.add.rectangle(0, 0, cw, ch, 0x000000, 0).setOrigin(0, 0).setDepth(150)
     this.tweens.add({ targets: veil, fillAlpha: 0.7, duration: 500 })
 
-    const panel = this.add.rectangle(cw / 2, ch / 2, 240, 110, 0x1a1a1a, 0.96).setDepth(150)
+    const panel = this.add.rectangle(cw / 2, ch / 2, 260, 180, 0x1a1a1a, 0.96).setDepth(150)
     panel.setStrokeStyle(2, 0xe23b3b)
 
     const title = this.add
-      .text(cw / 2, ch / 2 - 28, 'GAME OVER', {
+      .text(cw / 2, ch / 2 - 60, 'GAME OVER', {
         fontFamily: 'monospace',
         fontSize: '26px',
         fontStyle: 'bold',
@@ -823,19 +900,20 @@ export default class UIScene extends Phaser.Scene {
     this.tweens.add({ targets: title, scale: { from: 0.6, to: 1 }, ease: 'Back.out', duration: 450 })
 
     this.add
-      .text(cw / 2, ch / 2 + 4, `Niveau atteint : ${level}`, { fontFamily: 'monospace', fontSize: '12px', color: '#dddddd' })
+      .text(cw / 2, ch / 2 - 30, `Niveau atteint : ${level}`, { fontFamily: 'monospace', fontSize: '12px', color: '#dddddd' })
       .setOrigin(0.5)
       .setDepth(151)
 
-    const hint = this.add
-      .text(cw / 2, ch / 2 + 32, 'Clique pour recommencer', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe066' })
-      .setOrigin(0.5)
-      .setDepth(151)
-    this.tweens.add({ targets: hint, alpha: 0.3, duration: 600, yoyo: true, repeat: -1 })
-
-    this.input.once('pointerdown', () => {
-      this.game_.scene.restart()
+    // boutons (depth élevé pour passer au-dessus du voile)
+    const reg = (o) => o.setDepth(151)
+    this.menuButton(reg, cw / 2, ch / 2 + 6, 'Recommencer', () => {
+      this.game_.scene.restart({ character: this.game_.character })
       this.scene.restart()
+    })
+    this.menuButton(reg, cw / 2, ch / 2 + 52, 'Menu principal', () => {
+      this.game_.scene.stop('GameScene')
+      this.scene.start('MenuScene')
+      this.scene.stop()
     })
   }
 }
