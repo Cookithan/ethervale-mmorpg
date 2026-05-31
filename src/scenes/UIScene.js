@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { SLOTS, SLOT_LABELS, describeStats, RARITY, SHOP_STOCK, sellPrice, cloneItem } from '../data/items.js'
+import { SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost } from '../data/items.js'
 
 // palette UI (style WoW lisible)
 const GOLD = 0xc8a24a
@@ -30,6 +30,9 @@ export default class UIScene extends Phaser.Scene {
     this.shopObjects = []
     this.dialogueOpen = false
     this.dialogueObjects = []
+    this.forgeOpen = false
+    this.forgeObjects = []
+    this.shopTab = 'buy'
     this.toast = null
     this.zoneBanner = null
     this.frameRect = null
@@ -56,6 +59,7 @@ export default class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-C', () => this.toggleChar())
     this.input.keyboard.on('keydown-ESC', () => {
       if (this.dialogueOpen) this.closeDialogue()
+      else if (this.forgeOpen) this.closeForge()
       else if (this.charOpen) this.closeChar()
       else if (this.shopOpen) this.closeShop()
     })
@@ -203,8 +207,9 @@ export default class UIScene extends Phaser.Scene {
       const c = reg(this.add.rectangle(bx, gy, cell, cell, 0x000000, 0).setInteractive({ useHandCursor: true }))
       reg(this.addIcon(bx, gy, item.icon, cell - 12))
       c.on('pointerdown', () => {
-        p.equip(item)
-        this.showItemToast('Équipé', item)
+        if (item.type === 'consumable') this.useConsumable(item)
+        else if (p.equip(item)) this.showItemToast('Équipé', item)
+        else this.showToast('Objet cassé — à réparer chez Aldric', '#e06666')
         this.hideTip()
       })
       c.on('pointerover', () => this.showTip(item, bx, gy - cell / 2))
@@ -213,6 +218,19 @@ export default class UIScene extends Phaser.Scene {
     if (overflow > 0) {
       reg(this.add.text(panelX + panelW + 6, gy, `+${overflow}`, { fontFamily: 'monospace', fontSize: '13px', color: '#ffe066' }).setOrigin(0, 0.5))
     }
+  }
+
+  /** Boit une potion : soigne, retire l'objet du sac, toast. */
+  useConsumable(item) {
+    const p = this.game_.player
+    if (this.game_.gameOver) return
+    if (p.hp >= p.maxHp) {
+      this.showToast('PV déjà au maximum', '#ffd84d')
+      return
+    }
+    const healed = p.heal(item.heal ?? 0)
+    p.removeItem(item) // retire la potion (invVersion++ -> le sac se reconstruit)
+    this.showToast(`+${healed} PV`, '#6fdc6f')
   }
 
   // ---------- fiche personnage (touche C) ----------
@@ -224,6 +242,8 @@ export default class UIScene extends Phaser.Scene {
   }
 
   openChar() {
+    if (this.forgeOpen) this.closeForge()
+    if (this.shopOpen) this.closeShop()
     this.charOpen = true
     this.scene.pause('GameScene')
     this.buildCharPanel()
@@ -312,7 +332,9 @@ export default class UIScene extends Phaser.Scene {
   openShop() {
     if (this.game_.gameOver) return
     if (this.charOpen) this.closeChar()
+    if (this.forgeOpen) this.closeForge()
     this.shopOpen = true
+    this.shopTab = 'buy' // onglet par défaut
     this.scene.pause('GameScene')
     this.buildShop()
   }
@@ -345,26 +367,6 @@ export default class UIScene extends Phaser.Scene {
     }
   }
 
-  /** Une ligne cliquable de la boutique : icône + nom (rareté) + prix. */
-  drawShopRow(reg, x, y, w, item, priceText, affordable, onClick) {
-    const rowH = 24
-    const hl = reg(this.add.rectangle(x, y, w, rowH, 0x6ca0d0, 0).setOrigin(0, 0))
-    reg(this.addIcon(x + 13, y + rowH / 2, item.icon, 18))
-    const rc = RARITY[item.rarity]
-    reg(this.add.text(x + 26, y + rowH / 2, item.name, { fontFamily: 'monospace', fontSize: '11px', color: rc ? rc.color : '#fff' }).setOrigin(0, 0.5))
-    reg(this.add.text(x + w - 4, y + rowH / 2, priceText, { fontFamily: 'monospace', fontSize: '11px', color: affordable ? '#ffd84d' : '#e06666' }).setOrigin(1, 0.5))
-    const zone = reg(this.add.rectangle(x, y, w, rowH, 0xffffff, 0).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
-    zone.on('pointerover', () => {
-      hl.setFillStyle(0x6ca0d0, 0.2)
-      this.showTip(item, x + w / 2, y)
-    })
-    zone.on('pointerout', () => {
-      hl.setFillStyle(0x6ca0d0, 0)
-      this.hideTip()
-    })
-    zone.on('pointerdown', onClick)
-  }
-
   buildShop() {
     const p = this.game_.player
     if (!p) return
@@ -375,43 +377,220 @@ export default class UIScene extends Phaser.Scene {
     }
     const cw = this.scale.width
     const ch = this.scale.height
-
     reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0))
-    const W = 480
-    const H = 394
+    const W = 500
+    const H = 470
     const x0 = cw / 2 - W / 2
     const y0 = ch / 2 - H / 2
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
+    this.drawPanelHeader(reg, x0, y0, W, 'merchant_face', undefined, 'Marchand', p.gold)
 
-    // portrait + en-tête
-    reg(this.add.rectangle(x0 + 32, y0 + 32, 44, 44, 0x000000, 0.4).setStrokeStyle(2, GOLD))
-    const port = reg(this.add.image(x0 + 32, y0 + 32, 'merchant_face'))
-    port.setScale(38 / Math.max(port.width, port.height))
-    reg(this.add.text(x0 + 62, y0 + 16, 'Marchand', { fontFamily: 'monospace', fontSize: '15px', color: '#ffffff' }).setOrigin(0, 0))
-    reg(this.add.text(x0 + 62, y0 + 38, 'Bienvenue ! Que puis-je pour toi ?', { fontFamily: 'monospace', fontSize: '10px', color: '#cfe8ff' }).setOrigin(0, 0))
-    reg(this.add.text(x0 + W - 14, y0 + 18, `Or : ${p.gold}`, { fontFamily: 'monospace', fontSize: '14px', color: '#ffd84d' }).setOrigin(1, 0))
+    // onglets Acheter / Vendre
+    const tabY = y0 + 56
+    this.drawTab(reg, x0 + 16, tabY, 'Acheter', this.shopTab === 'buy', () => { this.shopTab = 'buy'; this.buildShop() })
+    this.drawTab(reg, x0 + 120, tabY, 'Vendre', this.shopTab === 'sell', () => { this.shopTab = 'sell'; this.buildShop() })
 
-    const colTop = y0 + 78
-    const colW = W / 2 - 26
-    const rowH = 24
-    reg(this.add.text(x0 + 14, colTop - 16, 'Acheter', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe066' }).setOrigin(0, 0))
-    reg(this.add.text(x0 + W / 2 + 10, colTop - 16, 'Vendre (sac)', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe066' }).setOrigin(0, 0))
-    reg(this.add.rectangle(cw / 2, colTop + 140, 1, 280, 0x49617f, 0.6))
-
-    SHOP_STOCK.forEach((item, i) => {
-      const aff = p.gold >= item.price
-      this.drawShopRow(reg, x0 + 12, colTop + i * rowH, colW, item, `${item.price} or`, aff, () => this.buyItem(item))
-    })
-
-    if (p.inventory.length === 0) {
-      reg(this.add.text(x0 + W / 2 + 14, colTop + 4, '(sac vide)', { fontFamily: 'monospace', fontSize: '10px', color: '#7c8aa0' }).setOrigin(0, 0))
+    // grille de cartes
+    const items = this.shopTab === 'buy' ? SHOP_STOCK : p.inventory
+    const gridY = tabY + 30
+    if (items.length === 0) {
+      reg(this.add.text(cw / 2, gridY + 50, '(sac vide)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
     }
-    p.inventory.forEach((item, i) => {
-      if (i >= 12) return
-      this.drawShopRow(reg, x0 + W / 2 + 10, colTop + i * rowH, colW, item, `+${sellPrice(item)} or`, true, () => this.sellItem(item))
+    this.drawCardGrid(reg, x0 + 16, gridY, W - 32, items, (item) => {
+      if (this.shopTab === 'buy') {
+        const aff = p.gold >= item.price
+        return { text: `${item.price} or`, color: aff ? '#ffd84d' : '#e06666', onClick: () => this.buyItem(item) }
+      }
+      return { text: `+${sellPrice(item)} or`, color: '#ffd84d', onClick: () => this.sellItem(item) }
     })
+    reg(this.add.text(cw / 2, y0 + H - 14, 'Clic une carte = acheter / vendre  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5))
+  }
 
-    reg(this.add.text(cw / 2, y0 + H - 14, 'Clic = acheter / vendre  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5))
+  // ---------- helpers d'UI partagés (boutique + forge) ----------
+
+  /** En-tête de panneau : portrait + nom + or. */
+  drawPanelHeader(reg, x0, y0, W, portraitKey, frame, title, gold) {
+    reg(this.add.rectangle(x0 + 30, y0 + 30, 42, 42, 0x000000, 0.4).setStrokeStyle(2, GOLD))
+    const port = reg(this.add.image(x0 + 30, y0 + 30, portraitKey, frame))
+    port.setScale(36 / Math.max(port.width, port.height))
+    reg(this.add.text(x0 + 58, y0 + 16, title, { fontFamily: 'monospace', fontSize: '15px', color: '#ffffff' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + W - 14, y0 + 18, `Or : ${gold}`, { fontFamily: 'monospace', fontSize: '14px', color: '#ffd84d' }).setOrigin(1, 0))
+  }
+
+  /** Onglet cliquable (actif = doré). */
+  drawTab(reg, x, y, label, active, onClick) {
+    const w = 96
+    const h = 22
+    reg(this.add.rectangle(x, y, w, h, active ? GOLD : 0x2a3340, 1).setOrigin(0, 0).setStrokeStyle(1, GOLD))
+    reg(this.add.text(x + w / 2, y + h / 2, label, { fontFamily: 'monospace', fontSize: '11px', color: active ? '#1a1a1a' : '#cfe8ff' }).setOrigin(0.5))
+    const z = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+    z.on('pointerdown', onClick)
+  }
+
+  /** Barre de durabilité (verte -> rouge selon l'usure). */
+  drawDurBar(reg, x, y, w, item) {
+    const max = item.dur
+    const cur = item.durability ?? max
+    const ratio = Phaser.Math.Clamp(cur / max, 0, 1)
+    reg(this.add.rectangle(x, y, w, 4, 0x000000, 0.5).setOrigin(0, 0.5))
+    const col = ratio > 0.5 ? 0x6fdc6f : ratio > 0.2 ? 0xe0c341 : 0xe06666
+    reg(this.add.rectangle(x, y, Math.max(1, w * ratio), 4, col).setOrigin(0, 0.5))
+  }
+
+  /** Carte d'objet (icône + nom + durabilité + libellé de prix), cliquable. */
+  drawCard(reg, x, y, w, h, item, footer) {
+    const rc = RARITY[item.rarity]
+    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, rc ? rc.tint : CELL_BORDER))
+    reg(this.addIcon(x + 20, y + 22, item.icon, 26))
+    reg(this.add.text(x + 38, y + 8, itemName(item), { fontFamily: 'monospace', fontSize: '10px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 44 } }).setOrigin(0, 0))
+    if (hasDurability(item)) this.drawDurBar(reg, x + 38, y + h - 20, w - 46, item)
+    reg(this.add.text(x + w - 6, y + h - 8, footer.text, { fontFamily: 'monospace', fontSize: '10px', color: footer.color }).setOrigin(1, 1))
+    const z = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+    z.on('pointerover', () => this.showTip(item, x + w / 2, y))
+    z.on('pointerout', () => this.hideTip())
+    if (footer.onClick) z.on('pointerdown', footer.onClick)
+  }
+
+  /** Grille de cartes 3 colonnes (cb(item) -> {text,color,onClick}). */
+  drawCardGrid(reg, x, y, w, items, cb) {
+    const cols = 3
+    const gap = 8
+    const maxRows = 5
+    const cardW = (w - (cols - 1) * gap) / cols
+    const cardH = 62
+    items.slice(0, cols * maxRows).forEach((item, i) => {
+      const r = Math.floor(i / cols)
+      const c = i % cols
+      this.drawCard(reg, x + c * (cardW + gap), y + r * (cardH + gap), cardW, cardH, item, cb(item))
+    })
+    if (items.length > cols * maxRows) {
+      reg(this.add.text(x + w, y + maxRows * (cardH + gap) - gap, `+${items.length - cols * maxRows} de plus`, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(1, 0))
+    }
+  }
+
+  // ---------- forge (Aldric le forgeron) ----------
+
+  openForge() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.shopOpen) this.closeShop()
+    this.forgeOpen = true
+    this.scene.pause('GameScene')
+    this.buildForge()
+  }
+
+  closeForge() {
+    this.forgeOpen = false
+    this.destroyForge()
+    this.hideTip()
+    this.scene.resume('GameScene')
+  }
+
+  destroyForge() {
+    this.forgeObjects.forEach((o) => o.destroy())
+    this.forgeObjects = []
+  }
+
+  buildForge() {
+    const p = this.game_.player
+    if (!p) return
+    this.destroyForge()
+    const reg = (o) => {
+      this.forgeObjects.push(o)
+      return o
+    }
+    const cw = this.scale.width
+    const ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0))
+    const W = 500
+    const H = 470
+    const x0 = cw / 2 - W / 2
+    const y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
+    this.drawPanelHeader(reg, x0, y0, W, 'npc_villager', 0, 'Aldric le Forgeron', p.gold)
+    reg(this.add.text(x0 + 58, y0 + 38, 'Répare et améliore tes armes & armures', { fontFamily: 'monospace', fontSize: '9px', color: '#cfe8ff' }).setOrigin(0, 0))
+
+    // objets forgeables = armes/armures équipées + dans le sac (durabilité requise)
+    const gear = []
+    for (const slot of ['weapon', 'armor']) if (p.equipped[slot]) gear.push({ item: p.equipped[slot], equipped: true })
+    for (const it of p.inventory) if (hasDurability(it)) gear.push({ item: it, equipped: false })
+
+    const gridY = y0 + 64
+    if (gear.length === 0) {
+      reg(this.add.text(cw / 2, gridY + 70, 'Aucune arme ni armure à forger', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
+    }
+    const cols = 2
+    const gap = 10
+    const cardW = (W - 32 - (cols - 1) * gap) / cols
+    const cardH = 96
+    gear.slice(0, 6).forEach((g, i) => {
+      const r = Math.floor(i / cols)
+      const c = i % cols
+      this.drawForgeCard(reg, x0 + 16 + c * (cardW + gap), gridY + r * (cardH + gap), cardW, cardH, g.item, g.equipped)
+    })
+    if (gear.length > 6) {
+      reg(this.add.text(cw / 2, gridY + 3 * (cardH + gap), `+${gear.length - 6} autres (équipe-les ou vends-en)`, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(0.5, 0))
+    }
+    reg(this.add.text(cw / 2, y0 + H - 14, 'Réparer = durabilité pleine  ·  Améliorer = +stats (max +5)  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5))
+  }
+
+  /** Carte de forge : objet + durabilité + 2 boutons (Réparer / Améliorer). */
+  drawForgeCard(reg, x, y, w, h, item, equipped) {
+    const rc = RARITY[item.rarity]
+    const p = this.game_.player
+    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, rc ? rc.tint : CELL_BORDER))
+    reg(this.addIcon(x + 22, y + 26, item.icon, 30))
+    reg(this.add.text(x + 44, y + 8, itemName(item) + (equipped ? '  (équipé)' : ''), { fontFamily: 'monospace', fontSize: '10px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 50 } }).setOrigin(0, 0))
+    const cur = item.durability ?? item.dur
+    this.drawDurBar(reg, x + 44, y + 38, w - 54, item)
+    reg(this.add.text(x + 44, y + 42, `${cur}/${item.dur}`, { fontFamily: 'monospace', fontSize: '8px', color: '#9fb6cc' }).setOrigin(0, 0))
+    // infobulle au survol de la carte
+    const hov = reg(this.add.rectangle(x, y, w, h - 26, 0xffffff, 0.001).setOrigin(0, 0).setInteractive())
+    hov.on('pointerover', () => this.showTip(item, x + w / 2, y))
+    hov.on('pointerout', () => this.hideTip())
+    // boutons
+    const rCost = repairCost(item)
+    const uCost = upgradeCost(item)
+    const bw = (w - 24) / 2
+    const by = y + h - 22
+    this.drawForgeBtn(reg, x + 8, by, bw, rCost > 0 && p.gold >= rCost, rCost > 0 ? `Réparer ${rCost}` : 'Intact', () => this.repairItem(item))
+    this.drawForgeBtn(reg, x + 16 + bw, by, bw, uCost != null && p.gold >= uCost, uCost != null ? `+1 : ${uCost}or` : 'Max +5', () => this.upgradeItem(item))
+  }
+
+  drawForgeBtn(reg, x, y, w, enabled, label, onClick) {
+    const h = 18
+    reg(this.add.rectangle(x, y, w, h, enabled ? 0x394b63 : 0x262c36, 1).setOrigin(0, 0).setStrokeStyle(1, enabled ? GOLD : 0x3a4452))
+    reg(this.add.text(x + w / 2, y + h / 2, label, { fontFamily: 'monospace', fontSize: '9px', color: enabled ? '#ffe066' : '#6c7787' }).setOrigin(0.5))
+    if (enabled) {
+      const z = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+      z.on('pointerdown', onClick)
+    }
+  }
+
+  repairItem(item) {
+    const p = this.game_.player
+    const cost = repairCost(item)
+    if (cost <= 0 || p.gold < cost) return
+    p.gold -= cost
+    item.durability = item.dur
+    p.invVersion++
+    if (p.equipped[item.slot] === item) p.recomputeStats()
+    this.showToast(`Réparé : ${itemName(item)}`, '#6fdc6f')
+    this.buildForge()
+  }
+
+  upgradeItem(item) {
+    const p = this.game_.player
+    const cost = upgradeCost(item)
+    if (cost == null || p.gold < cost) return
+    p.gold -= cost
+    item.upgrade = (item.upgrade ?? 0) + 1
+    item.durability = item.dur // l'amélioration répare aussi
+    p.invVersion++
+    if (p.equipped[item.slot] === item) p.recomputeStats()
+    const rc = RARITY[item.rarity]
+    this.showToast(`Amélioré : ${itemName(item)}`, rc ? rc.color : '#ffe066')
+    this.buildForge()
   }
 
   // ---------- dialogue (villageois) ----------
@@ -421,6 +600,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.game_.gameOver) return
     if (this.charOpen) this.closeChar()
     if (this.shopOpen) this.closeShop()
+    if (this.forgeOpen) this.closeForge()
     this.dialogueOpen = true
     this.dlgName = name
     this.dlgLines = lines && lines.length ? lines : ['...']
@@ -517,7 +697,7 @@ export default class UIScene extends Phaser.Scene {
   showTip(item, centerX, topY) {
     const r = RARITY[item.rarity]
     this.tip.setColor(r ? r.color : '#ffffff')
-    this.tip.setText(`${item.name}\n${describeStats(item.stats)}`).setPosition(centerX, topY - 4).setVisible(true)
+    this.tip.setText(`${item.name}\n${describeItem(item)}`).setPosition(centerX, topY - 4).setVisible(true)
   }
 
   hideTip() {

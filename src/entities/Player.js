@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS } from '../data/items.js'
+import { ITEMS, effectiveStats, cloneItem } from '../data/items.js'
 
 const SPEED = 65 // vitesse de déplacement (px/s)
 const ATTACK_MS = 320 // durée de l'animation d'attaque (déplacement bloqué)
@@ -37,7 +37,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // équipement (3 slots) + sac. Quelques objets de départ pour tester.
     this.equipped = { weapon: null, armor: null, accessory: null }
-    this.inventory = [ITEMS.sword, ITEMS.leather, ITEMS.amulet]
+    // objets de départ CLONÉS (durabilité/amélioration propres, ne mutent pas le catalogue)
+    this.inventory = [cloneItem(ITEMS.sword), cloneItem(ITEMS.leather), cloneItem(ITEMS.amulet)]
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
 
     this.hp = this.baseMaxHp
@@ -82,9 +83,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     for (const slot of Object.keys(this.equipped)) {
       const it = this.equipped[slot]
       if (!it) continue
-      atk += it.stats.attack ?? 0
-      def += it.stats.defense ?? 0
-      hp += it.stats.hp ?? 0
+      const s = effectiveStats(it) // stats boostées par le niveau d'amélioration
+      atk += s.attack ?? 0
+      def += s.defense ?? 0
+      hp += s.hp ?? 0
     }
     this.attackPower = this.baseAttack + atk
     this.defense = this.baseDefense + def
@@ -107,16 +109,38 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return true
   }
 
-  /** Équipe un objet du sac (renvoie l'ancien du même slot au sac). */
+  /** Équipe un objet du sac (renvoie l'ancien du même slot au sac).
+   *  Renvoie false si l'objet est CASSÉ (durabilité 0) -> à réparer chez le forgeron. */
   equip(item) {
+    if (item.durability != null && item.durability <= 0) return false // cassé
     const i = this.inventory.indexOf(item)
-    if (i === -1) return
+    if (i === -1) return false
     this.inventory.splice(i, 1)
     const prev = this.equipped[item.slot]
     this.equipped[item.slot] = item
     if (prev) this.inventory.push(prev)
     this.recomputeStats()
     this.invVersion++
+    return true
+  }
+
+  /**
+   * Use l'objet équipé d'un slot (-1 durabilité). À 0 il CASSE : déséquipé, renvoyé au sac.
+   * Renvoie l'objet cassé (pour notifier) ou null.
+   */
+  wearSlot(slot) {
+    const it = this.equipped[slot]
+    if (!it || it.durability == null) return null
+    it.durability -= 1
+    if (it.durability <= 0) {
+      it.durability = 0
+      this.equipped[slot] = null
+      this.inventory.push(it)
+      this.recomputeStats()
+      this.invVersion++
+      return it // signale la casse
+    }
+    return null
   }
 
   /** Déséquipe un slot (renvoie l'objet au sac). */
@@ -144,6 +168,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.invulnUntil = now + HURT_IFRAMES
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(90, () => this.clearTint())
+    const broke = this.wearSlot('armor') // l'armure s'use quand on encaisse un coup
+    if (broke) this.scene.notifyBreak?.(broke)
     return true
   }
 

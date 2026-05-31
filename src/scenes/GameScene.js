@@ -12,7 +12,8 @@ const DRY_COUNT = 9 // lacs asséchés (terre craquelée) dans le désert
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
 const EDGE_INSET = 16 // marge intérieure caméra/monde (1 tuile) : empêche de voir le fond hors-map au bord
 const MERCHANT_RANGE = 44 // distance pour pouvoir parler au marchand (px)
-const NPC_TALK_RANGE = 60 // distance à laquelle un villageois s'arrête et te parle (px)
+const NPC_TALK_RANGE = 60 // distance à laquelle on peut interagir avec un PNJ (px)
+const HINT_RANGE = 26 // distance (plus courte) pour AFFICHER l'indice "(E)" -> il faut être collé
 const PLAZA_R = 5 // rayon (tuiles) de la place verte du village
 const PRAIRIE_TILE_R = 20 // rayon (tuiles) de la prairie centrale = CERCLE net
 const WORLD_SEED = 1337 // graine fixe -> la map est TOUJOURS la même (monde persistant)
@@ -83,6 +84,13 @@ const MONSTERS_BY_BIOME = {
   cursed: ['skull', 'spirit', 'flam'],
 }
 
+// niveau des monstres = selon la DISTANCE au village (cf. monsterLevelAt) : près de la
+// prairie = niveau bas, plus on s'enfonce = plus haut. Le niveau scale PV/dégâts/XP/or.
+const LEVEL_PER_TILES = 7 // +1 niveau tous les N tuiles d'éloignement du centre
+const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
+const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
+const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
+
 // groupe de décor par biome (les arbres ne doivent pas déborder sur un autre groupe)
 const DECOR_GROUP = { prairie: 'green', forest: 'green', snow: 'snow', desert: 'dead', cursed: 'dead' }
 const BORDER_MARGIN = 3 // distance mini (tuiles) entre un arbre et la frontière d'un autre groupe
@@ -101,6 +109,15 @@ const TREE_DEAD = { tl: 4, tr: 5, bl: 28, br: 29 } // arbre mort (maudit / dése
 const ROCKS = [295, 296, 297]
 const FLOWERS = [264, 265, 267] // tournesol, fleur, tulipe
 const BUSHES = [240, 241, 242, 268, 269, 273] // buissons / herbes hautes
+
+// --- props SPÉCIFIQUES par biome (nature.png) pour différencier les zones ---
+const CACTI = [203, 227] // désert : cactus (collision)
+const DESERT_SHRUBS = [220, 221] // désert : arbustes secs (sans collision)
+const STUMPS = [192, 193, 194, 195, 196, 197] // forêt : souches + troncs couchés (collision)
+const FERNS = [268, 269, 271, 272] // forêt : fougères / herbes hautes (sans collision)
+const CRYSTALS = [336, 337, 338, 339, 340, 341, 342] // maudites : cristaux + rochers à minerai (collision)
+const SNOW_ROCKS = [292, 298, 322, 323] // neige : rochers enneigés / congères (collision)
+const SNOW_TUFTS = [320, 321] // neige : herbes givrées (sans collision)
 
 // --- bâtiments (TilesetHouse / house.png, 33 colonnes) : rectangles {col,row,w,h} ---
 const HOUSE_COLS = 33
@@ -174,6 +191,7 @@ export default class GameScene extends Phaser.Scene {
     this.spawnBiomeTrees()
     this.spawnRocks()
     this.spawnDecor()
+    this.spawnBiomeProps() // props par biome (cactus, cristaux, souches, congères...)
     this.physics.add.collider(this.player, this.obstacles)
     this.physics.add.collider(this.player, this.waterLayer) // l'eau bloque (sauf ponts)
 
@@ -232,11 +250,19 @@ export default class GameScene extends Phaser.Scene {
         this.fireProjectile(p.worldX, p.worldY, null) // clic droit = tir libre vers le curseur
         return
       }
+      // clic sur un PNJ / le marchand -> aller lui parler (interaction auto en arrivant)
+      const target = this.npcAt(p.worldX, p.worldY)
+      if (target) {
+        this.clickNpc(target)
+        return
+      }
+      this.pendingNpc = null // clic au sol : annule une interaction en attente
       this.player.moveTo(p.worldX, p.worldY)
       this.showMoveMarker(p.worldX, p.worldY)
     })
 
     this.gameOver = false
+    this.pendingNpc = null // interlocuteur cliqué vers lequel on marche (interaction auto en arrivant)
     this.currentBiome = 'prairie' // suivi pour le bandeau de zone
     // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
     if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
@@ -352,11 +378,18 @@ export default class GameScene extends Phaser.Scene {
     // dans la prairie (le joueur la traverse à l'herbe, sort par les ponts). On garde
     // pathCells (pour placer les ponts au bord) -> la prairie reste de l'herbe propre.
     this.plazaCells = new Set() // (plus de place carrée)
+    const desertPath = new Set() // chemins en zone désert : à colorer différemment du sable
     for (const k of [...cells]) {
       const [x, y] = k.split(',').map(Number)
-      if (this.biomeAt(x, y) === 'prairie') cells.delete(k)
+      const b = this.biomeAt(x, y)
+      if (b === 'prairie') cells.delete(k)
+      else if (b === 'desert') desertPath.add(k)
     }
     this.paintBlob(cells, BLOB.dirt, true) // chemins (terre) hors de la prairie
+    // désert : le sol EST déjà de la terre/sable -> chemin invisible. On repeint le
+    // chemin du désert avec le bloc "terre maudite" (argile rouge) PAR-DESSUS pour
+    // qu'il ressorte du sable.
+    this.paintBlob(desertPath, BLOB.cursed, true)
   }
 
   /** Peint les sols des biomes en anneaux concentriques (bords ondulés organiques). */
@@ -752,6 +785,57 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * Props SPÉCIFIQUES par biome : donne une identité à chaque zone (cactus au désert,
+   * souches/fougères en forêt, cristaux aux terres maudites, congères en neige).
+   */
+  spawnBiomeProps() {
+    // objet SOLIDE (collision) : cactus, cristal, souche, rocher enneigé
+    const solid = (tx, ty, frames) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
+      if (this.nearSpawn(tx, ty, 4)) return
+      if (this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1)) return
+      if (!this.reserve(tx, ty, 1, 1)) return
+      const px = tx * TILE + 8
+      const py = ty * TILE + 8
+      this.add.image(px, py, 'nature', Phaser.Utils.Array.GetRandom(frames)).setDepth(py)
+      const rect = this.add.rectangle(px, py + 3, 12, 8)
+      this.physics.add.existing(rect, true)
+      this.obstacles.add(rect)
+    }
+    // flore TRAVERSABLE (sans collision) : arbustes secs, fougères, herbes givrées
+    const flora = (tx, ty, frames) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
+      if (this.occupied.has(this.key(tx, ty))) return
+      if (this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1)) return
+      this.add.image(tx * TILE + 8, ty * TILE + 8, 'nature', Phaser.Utils.Array.GetRandom(frames)).setDepth(ty * TILE + 4)
+    }
+
+    for (let i = 0; i < 520; i++) {
+      const tx = Phaser.Math.Between(2, MAP_W - 3)
+      const ty = Phaser.Math.Between(2, MAP_H - 3)
+      const roll = Phaser.Math.Between(0, 100)
+      switch (this.biomeAt(tx, ty)) {
+        case 'desert': // cactus + arbustes secs (clairsemé)
+          if (roll < 30) solid(tx, ty, CACTI)
+          else if (roll < 60) flora(tx, ty, DESERT_SHRUBS)
+          break
+        case 'forest': // souches/troncs + fougères (sous-bois)
+          if (roll < 22) solid(tx, ty, STUMPS)
+          else flora(tx, ty, FERNS)
+          break
+        case 'snow': // congères + herbes givrées
+          if (roll < 40) solid(tx, ty, SNOW_ROCKS)
+          else if (roll < 75) flora(tx, ty, SNOW_TUFTS)
+          break
+        case 'cursed': // cristaux + rochers à minerai + arbustes secs
+          if (roll < 38) solid(tx, ty, CRYSTALS)
+          else if (roll < 58) flora(tx, ty, DESERT_SHRUBS)
+          break
+      }
+    }
+  }
+
   /** Déco sans collision : massifs de fleurs serrées + touffes de buissons/herbes. */
   spawnDecor() {
     // renvoie true si la déco a bien été posée (sinon emplacement refusé)
@@ -823,18 +907,31 @@ export default class GameScene extends Phaser.Scene {
    * Place UN monstre à un endroit valide (hors spawn/décor/eau, type selon le biome).
    * `initial` = false pour un respawn -> évite d'apparaître trop près du joueur.
    */
-  spawnOneMonster(initial = false) {
+  /** Niveau d'un monstre selon la DISTANCE au village : niv1 au bord de la prairie,
+   *  +1 tous les LEVEL_PER_TILES tuiles vers l'extérieur (il faut s'enfoncer pour le haut niveau). */
+  monsterLevelAt(tx, ty) {
+    const dist = Math.hypot(tx - this.cx, ty - this.cy)
+    const lvl = 1 + Math.floor((dist - PRAIRIE_TILE_R) / LEVEL_PER_TILES)
+    return Phaser.Math.Clamp(lvl, 1, 18)
+  }
+
+  spawnOneMonster(initial = false, near = null, forceElite = null) {
     for (let tries = 0; tries < 80; tries++) {
-      const tx = Phaser.Math.Between(2, MAP_W - 3)
-      const ty = Phaser.Math.Between(2, MAP_H - 3)
+      // `near` = respawn d'un CAMP : on tire un point autour du lieu de mort (sinon partout)
+      const tx = near ? near.tx + Phaser.Math.Between(-near.r, near.r) : Phaser.Math.Between(2, MAP_W - 3)
+      const ty = near ? near.ty + Phaser.Math.Between(-near.r, near.r) : Phaser.Math.Between(2, MAP_H - 3)
+      if (tx < 2 || ty < 2 || tx > MAP_W - 3 || ty > MAP_H - 3) continue
       if (this.nearSpawn(tx, ty, 8)) continue
       if (this.occupied.has(this.key(tx, ty))) continue
       if (this.onWater(tx, ty, 1)) continue
       const biome = this.biomeAt(tx, ty)
       if (biome === 'prairie') continue // prairie = zone sûre, aucun monstre
-      if (!initial && biome === 'cursed') continue // pas de respawn dans la zone verrouillée
-      // respawn : pas dans le champ de vision proche du joueur (pop devant lui = moche)
-      if (!initial && this.dist(tx, ty, this.player.x / TILE, this.player.y / TILE) < 16) continue
+      if (!initial && biome === 'cursed' && !near) continue // pas de respawn aléatoire dans la zone verrouillée
+      if (near && near.biome && biome !== near.biome) continue // le camp se repeuple dans SON biome
+      // pas pile sur le joueur (pop devant lui = moche). Exclusion réduite pour un respawn
+      // de camp -> la zone peut se repeupler dès que le joueur s'écarte un peu.
+      const pExcl = near ? 6 : 16
+      if (!initial && this.dist(tx, ty, this.player.x / TILE, this.player.y / TILE) < pExcl) continue
       // espacement : pas collé à un autre monstre (évite les paquets -> meutes qui poursuivent)
       let tooClose = false
       for (const m of this.monsters.getChildren()) {
@@ -845,9 +942,18 @@ export default class GameScene extends Phaser.Scene {
       }
       if (tooClose) continue
       const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
-      this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, Phaser.Utils.Array.GetRandom(pool)))
+      const typeKey = Phaser.Utils.Array.GetRandom(pool)
+      // élite : forcée (respawn d'élite) si demandé ; sinon tirage seulement au spawn INITIAL
+      // (les respawns normaux ne créent jamais d'élite -> elles restent rares dans le temps)
+      const elite = forceElite !== null ? forceElite : initial && Phaser.Math.Between(1, 100) <= SHINY_CHANCE
+      const level = this.monsterLevelAt(tx, ty) + (elite ? 2 : 0) // + haut quand on s'enfonce
+      const name = elite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}` : null
+      this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite, name }))
       return true
     }
+    // le respawn de camp a échoué (joueur qui campe / zone pleine) -> réapparaît ailleurs
+    // pour garder la population mondiale constante (en gardant le statut élite demandé)
+    if (near) return this.spawnOneMonster(initial, null, forceElite)
     return false
   }
 
@@ -892,12 +998,10 @@ export default class GameScene extends Phaser.Scene {
     // plan partagé (maison + PNJ) : positions étalées autour du marchand central
     this.villagers = [
       {
-        hx: cx - 1, hy: cy - 6, key: 'cottage', tex: 'npc_villager', name: 'Aldric le Garde',
+        hx: cx - 1, hy: cy - 6, key: 'cottage', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge',
         lines: [
-          'Bienvenue, aventurier ! Clique sur le sol pour te déplacer.',
-          'Pour combattre : approche un monstre et clique dessus, ton héros frappe à l\'épée.',
-          'Chaque monstre vaincu donne de l\'XP. Monte de niveau pour devenir plus fort !',
-          'La prairie est un havre de paix : aucun monstre n\'ose y entrer.',
+          'Je suis Aldric, le forgeron. Apporte-moi tes armes et armures.',
+          'Je peux les réparer quand elles s\'usent, et les améliorer contre de l\'or.',
         ],
       },
       {
@@ -1043,7 +1147,7 @@ export default class GameScene extends Phaser.Scene {
   /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
   uiBusy() {
     const ui = this.scene.get('UIScene')
-    return !!(ui && (ui.dialogueOpen || ui.shopOpen))
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen))
   }
 
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
@@ -1051,7 +1155,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.gameOver || this.uiBusy()) return
     const p = this.player
     if (this.merchant && this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE) {
-      this.scene.get('UIScene').openShop()
+      this.interactWith(this.merchant)
       return
     }
     // villageois le plus proche à portée
@@ -1064,14 +1168,14 @@ export default class GameScene extends Phaser.Scene {
         best = npc
       }
     }
-    if (best) this.scene.get('UIScene').openDialogue(best.name, best.lines, best.texture)
+    if (best) this.interactWith(best)
   }
 
   /**
    * Villageois style WoW : IMMOBILE, avec son NOM affiché au-dessus, et CLIQUABLE.
    * Clic dessus (ou touche E si proche) -> ouvre une vraie fenêtre de dialogue (UIScene).
    */
-  addNpc(tx, ty, texture, name, lines) {
+  addNpc(tx, ty, texture, name, lines, role = 'talk') {
     const x = tx * TILE + 8
     const y = ty * TILE + 8
     const sprite = this.add.sprite(x, y, texture, 0).setDepth(y)
@@ -1080,35 +1184,71 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, sprite)
     sprite.anims.play(`${texture}-idle-down`, true)
 
-    // étiquette de nom au-dessus (toujours visible, comme une plaque de PNJ)
+    // étiquette de nom au-dessus (toujours visible) ; orange = PNJ de service (forgeron)
     const label = this.add
-      .text(x, y - 14, name, { fontFamily: 'monospace', fontSize: '7px', color: '#ffe066', stroke: '#000000', strokeThickness: 3 })
+      .text(x, y - 14, name, { fontFamily: 'monospace', fontSize: '7px', color: role === 'forge' ? '#ff9d3c' : '#ffe066', stroke: '#000000', strokeThickness: 3 })
       .setOrigin(0.5, 1)
       .setDepth(60000)
       .setResolution(3)
 
+    // indice d'interaction (caché ; visible quand le héros est proche)
+    const hintTxt = role === 'forge' ? 'Forger (E)' : 'Parler (E)'
+    const hint = this.add
+      .text(x, y - 23, hintTxt, { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } })
+      .setOrigin(0.5, 1)
+      .setDepth(60001)
+      .setResolution(3)
+      .setVisible(false)
+
     this.addBreathing(sprite, 1000 + this.npcs.length * 160) // idle vivant (souffle désynchronisé)
 
-    const npc = { sprite, x, y, texture, name, lines, facing: 'down', label }
+    const npc = { sprite, x, y, texture, name, lines, facing: 'down', label, role, hint }
     this.occupied.add(this.key(tx, ty))
     this.npcs.push(npc)
 
-    // clic sur le PNJ : si proche -> parle ; sinon -> va vers lui
-    sprite.setInteractive({ useHandCursor: true })
-    sprite.on('pointerdown', (pointer, lx, ly, event) => {
-      event?.stopPropagation?.() // n'enclenche pas le clic-déplacement global
-      this.talkOrApproach(npc)
-    })
+    sprite.setInteractive({ useHandCursor: true }) // curseur "main" (clic géré globalement)
     return npc
   }
 
-  /** Oriente les villageois vers le héros quand il est à portée (sinon ils regardent en bas). */
+  /** PNJ/marchand cliqué (sous le curseur monde), sinon null. */
+  npcAt(wx, wy) {
+    const R = 12 // rayon de clic (px)
+    if (this.merchant && this.dist(wx, wy, this.merchant.x, this.merchant.y) <= R) return this.merchant
+    for (const npc of this.npcs || []) {
+      if (this.dist(wx, wy, npc.x, npc.y) <= R) return npc
+    }
+    return null
+  }
+
+  /** Clic sur un interlocuteur : interagit si proche, sinon marche vers lui (et interagit en arrivant). */
+  clickNpc(t) {
+    if (this.dist(this.player.x, this.player.y, t.x, t.y) <= NPC_TALK_RANGE) {
+      this.interactWith(t)
+    } else {
+      this.pendingNpc = t // on interagira automatiquement une fois arrivé
+      this.player.moveTo(t.x, t.y + 10)
+      this.showMoveMarker(t.x, t.y + 10)
+    }
+  }
+
+  /** Ouvre le bon panneau selon l'interlocuteur (marchand / forgeron / villageois). */
+  interactWith(t) {
+    if (this.uiBusy()) return
+    const ui = this.scene.get('UIScene')
+    if (t === this.merchant) ui.openShop()
+    else if (t.role === 'forge') ui.openForge()
+    else ui.openDialogue(t.name, t.lines, t.texture)
+  }
+
+  /** Oriente les villageois vers le héros à portée + affiche l'indice "(E)" de proximité.
+   *  Gère aussi l'interaction AUTO quand on a cliqué un PNJ et qu'on vient d'arriver. */
   updateNpcs() {
     const p = this.player
     for (const npc of this.npcs || []) {
       const s = npc.sprite
+      const near = this.dist(p.x, p.y, s.x, s.y)
       let dir = 'down'
-      if (this.dist(p.x, p.y, s.x, s.y) <= NPC_TALK_RANGE + 20) {
+      if (near <= NPC_TALK_RANGE + 20) {
         const dx = p.x - s.x
         const dy = p.y - s.y
         dir = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down')
@@ -1117,18 +1257,22 @@ export default class GameScene extends Phaser.Scene {
         npc.facing = dir
         s.anims.play(`${npc.texture}-idle-${dir}`, true)
       }
+      npc.hint.setVisible(near <= HINT_RANGE) // indice "(E)" seulement quand on est collé
+    }
+
+    // interaction AUTO : on a cliqué un interlocuteur, on l'a rejoint -> on ouvre le panneau
+    if (this.pendingNpc) {
+      const t = this.pendingNpc
+      if (this.dist(p.x, p.y, t.x, t.y) <= NPC_TALK_RANGE) {
+        this.pendingNpc = null
+        this.interactWith(t)
+      }
     }
   }
 
-  /** Parle au villageois s'il est à portée, sinon marche vers lui. */
-  talkOrApproach(npc) {
-    if (this.gameOver || this.uiBusy()) return
-    if (this.dist(this.player.x, this.player.y, npc.x, npc.y) <= NPC_TALK_RANGE) {
-      this.scene.get('UIScene').openDialogue(npc.name, npc.lines, npc.texture)
-    } else {
-      this.player.moveTo(npc.x, npc.y + 10) // vient lui parler
-      this.showMoveMarker(npc.x, npc.y + 10)
-    }
+  /** Notifie la casse d'un équipement (durabilité 0) via un toast de l'UI. */
+  notifyBreak(item) {
+    this.scene.get('UIScene')?.showToast?.(`${item.name} cassé ! (réparer chez Aldric)`, '#e06666')
   }
 
   /** Décorations du village : lampadaires, barriques, caisses, fleurs (spots libres). */
@@ -1199,7 +1343,7 @@ export default class GameScene extends Phaser.Scene {
   spawnVillagers() {
     this.npcs = []
     for (const v of this.villagers || []) {
-      this.addNpc(v.nx, v.ny, v.tex, v.name, v.lines)
+      this.addNpc(v.nx, v.ny, v.tex, v.name, v.lines, v.role ?? 'talk')
     }
   }
 
@@ -1235,16 +1379,23 @@ export default class GameScene extends Phaser.Scene {
 
     this.showSlash(p.x, p.y, p.facing)
 
+    let hitAny = false
     this.monsters.getChildren().forEach((mon) => {
       if (!mon.active) return
       // touché si le monstre est dans le rayon autour du point devant le perso
       if (Phaser.Math.Distance.Between(cx, cy, mon.x, mon.y) <= RANGE) {
+        hitAny = true
         // recul AVANT les dégâts : takeDamage peut détruire le monstre (body disparaît)
         const a = Math.atan2(mon.y - p.y, mon.x - p.x)
         mon.setVelocity(Math.cos(a) * 150, Math.sin(a) * 150)
         mon.takeDamage(p.attackPower)
       }
     })
+    // l'arme s'use quand le coup porte ; casse à 0 -> notif
+    if (hitAny) {
+      const broke = p.wearSlot('weapon')
+      if (broke) this.notifyBreak(broke)
+    }
   }
 
   /** Monstre actif le plus proche de (x,y) dans `radius`, sinon null. */
@@ -1310,53 +1461,46 @@ export default class GameScene extends Phaser.Scene {
   }
 
   onMonsterKilled(mon) {
-    this.player.gainXp(mon.def.xp)
+    this.player.gainXp(mon.xpReward ?? mon.def.xp)
     this.spawnDrop(mon)
-    // respawn différé pour garder le monde peuplé (population ~constante)
-    this.time.delayedCall(Phaser.Math.Between(6000, 11000), () => {
-      if (!this.gameOver) this.spawnOneMonster()
-    })
+    // respawn de CAMP : le monstre réapparaît dans SON biome, près de là où il est mort
+    // (la zone se repeuple comme dans un MMORPG ; fallback ailleurs si l'endroit est pris).
+    const near = {
+      tx: Math.round(mon.x / TILE),
+      ty: Math.round(mon.y / TILE),
+      biome: this.biomeAt(Math.round(mon.x / TILE), Math.round(mon.y / TILE)),
+      r: 9,
+    }
+    if (mon.elite) {
+      // une ÉLITE tuée ne revient que ~10 min plus tard (rare), et revient en élite
+      this.time.delayedCall(Phaser.Math.Between(540000, 660000), () => {
+        if (!this.gameOver) this.spawnOneMonster(false, near, true)
+      })
+    } else {
+      // monstre normal : repop rapide du camp (6-11 s), jamais en élite
+      this.time.delayedCall(Phaser.Math.Between(6000, 11000), () => {
+        if (!this.gameOver) this.spawnOneMonster(false, near, false)
+      })
+    }
   }
 
   /** Fait apparaître un objet ramassable sur le cadavre, selon la table du monstre. */
   spawnDrop(mon) {
     const loot = mon.def.loot
-    // équipement (chance + rareté propres au type de monstre), tombe dans le sac
-    if (Phaser.Math.Between(1, 100) <= loot.equipChance) {
-      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.randomEquipment(loot.rarity)))
-      return
-    }
-    // sinon : consommable (or / gemme XP / cœur de soin)
-    const roll = Phaser.Math.Between(1, 100)
-    let type
-    let amount
-    if (roll <= 60) {
-      type = 'gold'
-      amount = Phaser.Math.Between(loot.gold[0], loot.gold[1]) // or selon le type de monstre
-    } else if (roll <= 85) {
-      type = 'gem'
-      amount = Math.ceil(mon.def.xp * 0.5) // XP bonus
-    } else {
-      type = 'heart'
-      amount = Phaser.Math.Between(12, 22) // PV soignés
-    }
-    this.drops.add(new Drop(this, mon.x, mon.y, type, amount))
+    const lvlMul = mon.lvlMul ?? 1
+    // BUTIN DÉTERMINISTE (pas de hasard de rareté) : chaque type lâche un équipement de SA
+    // rareté fixe (lézard=commun, etc.). L'élite monte d'un cran de rareté.
+    const tier = mon.elite ? TIER_UP[mon.def.tier] : mon.def.tier
+    this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.equipmentOfTier(tier)))
+    // + de l'or (montant selon le niveau ; élite = ×3)
+    const g = Math.max(1, Math.round(Phaser.Math.Between(loot.gold[0], loot.gold[1]) * lvlMul * (mon.elite ? 3 : 1)))
+    this.drops.add(new Drop(this, mon.x + 6, mon.y + 4, 'gold', g))
   }
 
-  /** Renvoie une COPIE d'un objet d'équipement, rareté tirée selon `weights` {common,rare,epic}. */
-  randomEquipment(weights) {
-    const entries = Object.entries(weights).filter(([, w]) => w > 0)
-    const total = entries.reduce((s, [, w]) => s + w, 0)
-    let roll = Phaser.Math.Between(1, total)
-    let chosen = entries[0][0]
-    for (const [key, w] of entries) {
-      if (roll <= w) {
-        chosen = key
-        break
-      }
-      roll -= w
-    }
-    const pool = Object.values(ITEMS).filter((it) => it.rarity === chosen)
+  /** Renvoie une COPIE d'un objet d'équipement de la rareté `tier` (commun/rare/épique). */
+  equipmentOfTier(tier) {
+    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier)
+    if (pool.length === 0) pool = Object.values(ITEMS) // garde-fou si la rareté n'existe pas
     return cloneItem(Phaser.Utils.Array.GetRandom(pool))
   }
 
@@ -1452,7 +1596,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateNpcs(time) // villageois qui se baladent
 
     // indice "Parler (E)" du marchand quand on est proche (les villageois parlent tout seuls)
-    this.merchantHint.setVisible(this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE)
+    this.merchantHint.setVisible(this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= HINT_RANGE)
 
     const body = new Phaser.Geom.Rectangle(p.x - 6, p.y - 14, 12, 20)
     for (const tree of this.trees) {
