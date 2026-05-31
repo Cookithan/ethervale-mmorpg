@@ -3,6 +3,7 @@ import Player from '../entities/Player.js'
 import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
+import { ITEMS } from '../data/items.js'
 
 const MONSTER_COUNT = 24 // nombre de monstres sur la map
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
@@ -123,6 +124,9 @@ export default class GameScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
     this.input.keyboard.on('keydown-F', () => this.shootForward())
     this.input.on('pointerdown', (p) => {
+      // ignore les clics sur le panneau d'inventaire (géré par UIScene)
+      const ui = this.scene.get('UIScene')
+      if (ui?.pointerOverInventory?.(p.x, p.y)) return
       if (p.rightButtonDown()) {
         this.fireProjectile(p.worldX, p.worldY, null) // clic droit = tir libre vers le curseur
         return
@@ -528,6 +532,12 @@ export default class GameScene extends Phaser.Scene {
 
   /** Fait apparaître un objet ramassable sur le cadavre (proba pondérée). */
   spawnDrop(mon) {
+    // 12% : équipement (rare), tombe dans le sac
+    if (Phaser.Math.Between(1, 100) <= 12) {
+      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.randomEquipment()))
+      return
+    }
+    // sinon : consommable (or / gemme XP / cœur de soin)
     const roll = Phaser.Math.Between(1, 100)
     let type
     let amount
@@ -544,20 +554,37 @@ export default class GameScene extends Phaser.Scene {
     this.drops.add(new Drop(this, mon.x, mon.y, type, amount))
   }
 
+  /** Renvoie une COPIE d'un objet d'équipement aléatoire (objets distincts dans le sac). */
+  randomEquipment() {
+    const base = ITEMS[Phaser.Utils.Array.GetRandom(Object.keys(ITEMS))]
+    return { ...base, stats: { ...base.stats } }
+  }
+
   /** Applique l'effet d'un drop ramassé + texte flottant, puis le retire. */
   collectDrop(drop) {
     if (!drop.collect()) return // déjà ramassé/expiré
     const p = this.player
+    let text
+    let color
     if (drop.type === 'gold') {
       p.gold += drop.amount
+      text = `+${drop.amount} or`
+      color = '#ffe066'
     } else if (drop.type === 'gem') {
       p.gainXp(drop.amount)
+      text = `+${drop.amount} XP`
+      color = '#9beaf5'
     } else if (drop.type === 'heart') {
       const healed = p.heal(drop.amount)
       if (healed <= 0) return // PV déjà au max : pas de texte trompeur
-      drop.amount = healed
+      text = `+${healed} PV`
+      color = '#ff8088'
+    } else if (drop.type === 'equip') {
+      p.addItem(drop.item)
+      text = drop.item.name
+      color = '#9be1ff'
     }
-    this.floatingText(drop.x, drop.y, drop.def.label(drop.amount), drop.def.color)
+    this.floatingText(drop.x, drop.y, text, color)
   }
 
   /** Petit texte qui monte et s'efface (ramassage, soin...). */

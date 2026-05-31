@@ -1,4 +1,5 @@
 import Phaser from 'phaser'
+import { ITEMS } from '../data/items.js'
 
 const SPEED = 65 // vitesse de déplacement (px/s)
 const ATTACK_MS = 320 // durée de l'animation d'attaque (déplacement bloqué)
@@ -24,12 +25,24 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // état combat / progression
     this.level = 1
-    this.maxHp = 100
-    this.hp = 100
-    this.attackPower = 12
     this.xp = 0
     this.xpToNext = 50
     this.gold = 0
+
+    // stats de BASE (augmentent au niveau). Les totaux (maxHp/attackPower/defense)
+    // = base + bonus des objets équipés, recalculés par recomputeStats().
+    this.baseMaxHp = 100
+    this.baseAttack = 12
+    this.baseDefense = 0
+
+    // équipement (3 slots) + sac. Quelques objets de départ pour tester.
+    this.equipped = { weapon: null, armor: null, accessory: null }
+    this.inventory = [ITEMS.sword, ITEMS.leather, ITEMS.amulet]
+    this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
+
+    this.hp = this.baseMaxHp
+    this.recomputeStats() // initialise maxHp / attackPower / defense
+    this.hp = this.maxHp
 
     this.attacking = false
     this.attackUntil = 0
@@ -61,6 +74,52 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return true
   }
 
+  /** Recalcule les stats totales = base + bonus des objets équipés. */
+  recomputeStats() {
+    let atk = 0
+    let def = 0
+    let hp = 0
+    for (const slot of Object.keys(this.equipped)) {
+      const it = this.equipped[slot]
+      if (!it) continue
+      atk += it.stats.attack ?? 0
+      def += it.stats.defense ?? 0
+      hp += it.stats.hp ?? 0
+    }
+    this.attackPower = this.baseAttack + atk
+    this.defense = this.baseDefense + def
+    this.maxHp = this.baseMaxHp + hp
+    if (this.hp > this.maxHp) this.hp = this.maxHp // si on retire un bonus de PV max
+  }
+
+  /** Ajoute un objet au sac. */
+  addItem(item) {
+    this.inventory.push(item)
+    this.invVersion++
+  }
+
+  /** Équipe un objet du sac (renvoie l'ancien du même slot au sac). */
+  equip(item) {
+    const i = this.inventory.indexOf(item)
+    if (i === -1) return
+    this.inventory.splice(i, 1)
+    const prev = this.equipped[item.slot]
+    this.equipped[item.slot] = item
+    if (prev) this.inventory.push(prev)
+    this.recomputeStats()
+    this.invVersion++
+  }
+
+  /** Déséquipe un slot (renvoie l'objet au sac). */
+  unequip(slot) {
+    const item = this.equipped[slot]
+    if (!item) return
+    this.equipped[slot] = null
+    this.inventory.push(item)
+    this.recomputeStats()
+    this.invVersion++
+  }
+
   /** Autorise un tir si le cooldown est passé et arme le prochain. Renvoie true si OK. */
   startShoot(now) {
     if (now < this.nextShootAt) return false
@@ -71,7 +130,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   /** Inflige des dégâts au héros (respecte les i-frames). Renvoie true si touché. */
   takeDamage(amount, now) {
     if (now < this.invulnUntil || this.hp <= 0) return false
-    this.hp = Math.max(0, this.hp - amount)
+    const dmg = Math.max(1, amount - this.defense) // la défense réduit les dégâts (min 1)
+    this.hp = Math.max(0, this.hp - dmg)
     this.invulnUntil = now + HURT_IFRAMES
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(90, () => this.clearTint())
@@ -92,9 +152,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     while (this.xp >= this.xpToNext && this.level < 10) {
       this.xp -= this.xpToNext
       this.level++
-      this.maxHp += 20
+      this.baseMaxHp += 20
+      this.baseAttack += 4
+      this.recomputeStats()
       this.hp = this.maxHp // soin complet au level up
-      this.attackPower += 4
       this.xpToNext = Math.round(this.xpToNext * 1.4)
       this.scene.onLevelUp?.()
     }
