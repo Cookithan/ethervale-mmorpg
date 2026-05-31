@@ -6,6 +6,7 @@ import Drop from '../entities/Drop.js'
 
 const MONSTER_COUNT = 24 // nombre de monstres sur la map
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
+const EDGE_INSET = 16 // marge intérieure caméra/monde (1 tuile) : empêche de voir le fond hors-map au bord
 
 const TILE = 16
 const MAP_W = 80
@@ -53,6 +54,10 @@ export default class GameScene extends Phaser.Scene {
     this.cy = Math.floor(MAP_H / 2)
 
     // --- couches de sol ---
+    // fond herbe plein derrière la tilemap : masque les interstices d'1px entre tuiles
+    // (seam de rendu au zoom ×3) qui laisseraient sinon voir la couleur de fond gris foncé.
+    this.add.rectangle(0, 0, this.worldW, this.worldH, 0xadbc3a).setOrigin(0, 0).setDepth(-11)
+
     const data = []
     for (let y = 0; y < MAP_H; y++) data.push(new Array(MAP_W).fill(GRASS))
     const map = this.make.tilemap({ data, tileWidth: TILE, tileHeight: TILE })
@@ -66,7 +71,7 @@ export default class GameScene extends Phaser.Scene {
     this.paintPaths()
 
     // --- physique / héros ---
-    this.physics.world.setBounds(0, 0, this.worldW, this.worldH)
+    this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
     this.player = new Player(this, this.worldW / 2, this.worldH / 2)
 
     // --- décors ---
@@ -106,7 +111,7 @@ export default class GameScene extends Phaser.Scene {
 
     // --- caméra ---
     const cam = this.cameras.main
-    cam.setBounds(0, 0, this.worldW, this.worldH)
+    cam.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
     // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
     // une vibration en diagonale (positions fractionnaires arrondies différemment).
     cam.startFollow(this.player, true)
@@ -394,16 +399,20 @@ export default class GameScene extends Phaser.Scene {
 
   spawnMonsters() {
     const types = Object.keys(MONSTER_TYPES)
+    const MIN_GAP = 6 // distance mini entre deux monstres (en tuiles)
+    const spots = [] // positions déjà occupées par un monstre
     let placed = 0
     let tries = 0
-    while (placed < MONSTER_COUNT && tries < MONSTER_COUNT * 30) {
+    while (placed < MONSTER_COUNT && tries < MONSTER_COUNT * 60) {
       tries++
       const tx = Phaser.Math.Between(2, MAP_W - 3)
       const ty = Phaser.Math.Between(2, MAP_H - 3)
       if (this.nearSpawn(tx, ty, 8)) continue // pas trop près du joueur
       if (this.occupied.has(this.key(tx, ty))) continue // pas dans un arbre/rocher
+      if (spots.some((s) => this.dist(tx, ty, s.x, s.y) < MIN_GAP)) continue // pas collé à un autre monstre
       const type = Phaser.Utils.Array.GetRandom(types)
       this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, type))
+      spots.push({ x: tx, y: ty })
       placed++
     }
   }
