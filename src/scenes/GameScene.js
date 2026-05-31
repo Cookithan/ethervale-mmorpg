@@ -7,6 +7,8 @@ import { ITEMS, cloneItem, RARITY } from '../data/items.js'
 
 const MONSTER_COUNT = 70 // nombre de monstres sur la map
 const MONSTER_GAP = 7 // distance mini entre deux monstres au spawn (en tuiles, anti-paquets)
+const POND_COUNT = 13 // petits lacs (eau) dans forêt/neige/prairie
+const DRY_COUNT = 9 // lacs asséchés (terre craquelée) dans le désert
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
 const EDGE_INSET = 16 // marge intérieure caméra/monde (1 tuile) : empêche de voir le fond hors-map au bord
 const MERCHANT_RANGE = 44 // distance pour pouvoir parler au marchand (px)
@@ -141,7 +143,8 @@ export default class GameScene extends Phaser.Scene {
     this.pathCells = new Set() // cellules de chemin (pour dégager arbres/rochers)
     this.paintBiomes() // sols des biomes (anneaux) AVANT les chemins
     this.paintPaths()
-    this.buildRivers() // rivières-frontières + ponts (après les chemins)
+    this.buildRivers() // rivières-frontières + ponts + petits lacs (après les chemins)
+    this.spawnDryLakes() // lacs asséchés (terre craquelée) dans le désert
 
     // --- physique / héros ---
     this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
@@ -396,6 +399,7 @@ export default class GameScene extends Phaser.Scene {
     // cellules de bord = entre deux biomes différents (des DEUX côtés -> rivière ~2 large)
     const cursedMoat = new Set() // bord des terres maudites : large + PAS de gué (zone verrouillée)
     const prairieEdge = new Set() // bord de la prairie (zone sûre) : un peu plus large, AVEC gués
+    const forestEdge = new Set() // bord forêt <-> neige/désert : élargi (passage vers les terres hostiles)
     for (let ty = 1; ty < MAP_H - 1; ty++) {
       for (let tx = 1; tx < MAP_W - 1; tx++) {
         const b = this.biomeAt(tx, ty)
@@ -404,6 +408,12 @@ export default class GameScene extends Phaser.Scene {
           this.waterCells.add(this.key(tx, ty))
           if (b === 'cursed' || n.includes('cursed')) cursedMoat.add(this.key(tx, ty))
           else if (b === 'prairie' || n.includes('prairie')) prairieEdge.add(this.key(tx, ty))
+          else if (
+            (b === 'forest' && (n.includes('snow') || n.includes('desert'))) ||
+            ((b === 'snow' || b === 'desert') && n.includes('forest'))
+          ) {
+            forestEdge.add(this.key(tx, ty))
+          }
         }
       }
     }
@@ -424,6 +434,7 @@ export default class GameScene extends Phaser.Scene {
     }
     widen(cursedMoat, 2, cursedMoat) // douve large infranchissable autour des maudites
     widen(prairieEdge, 1) // rivière plus large autour de la prairie (mais gués conservés)
+    widen(forestEdge, 1) // rivière plus large entre la forêt et la neige/le désert (gués conservés)
     // proche du moat maudit ? (pour ne pas y poser de pont troué)
     const nearCursed = (x, y) => {
       for (let dx = -2; dx <= 2; dx++)
@@ -453,12 +464,77 @@ export default class GameScene extends Phaser.Scene {
     for (const [rx, ry] of ruined) {
       if (tileNoise(rx, ry, 5) < 0.82) this.bridgeLayer.putTileAt(0, rx, ry)
     }
-    // rendu : eau générée (4 variantes 0..3, choisies par bruit pour varier les reflets)
+    // petits lacs décoratifs (eau) dans forêt / neige / prairie — pas désert ni maudit
+    this.spawnPonds()
+
+    // rendu : eau générée (les lacs gelés sont sur la couche de glace, pas ici)
     for (const k of this.waterCells) {
+      if (this.iceCells.has(k)) continue // glace = marchable, rendue ailleurs (pas de collision)
       const [x, y] = k.split(',').map(Number)
       this.waterLayer.putTileAt(Math.floor(tileNoise(x, y, 3) * 4), x, y)
     }
-    this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau bloque
+    this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau (hors glace) bloque
+  }
+
+  /**
+   * Petits lacs : eau (forêt/prairie, collision) ou GLACE (neige, marchable).
+   * Les cellules vont dans `this.waterCells` (exclusion déco/monstres) ; la glace
+   * est listée à part (`this.iceCells`) pour un rendu glace sans collision.
+   */
+  spawnPonds() {
+    this.iceCells = new Set()
+    const imap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
+    this.iceLayer = imap.createBlankLayer('ice', imap.addTilesetImage('ice_gen', 'ice_gen', TILE, TILE), 0, 0).setDepth(-8)
+    let placed = 0
+    for (let i = 0; i < POND_COUNT * 25 && placed < POND_COUNT; i++) {
+      const cx = Phaser.Math.Between(6, MAP_W - 6)
+      const cy = Phaser.Math.Between(6, MAP_H - 6)
+      const b = this.biomeAt(cx, cy)
+      if (b !== 'forest' && b !== 'snow' && b !== 'prairie') continue
+      if (this.nearSpawn(cx, cy, 9)) continue
+      const cells = this.smallBlob(cx, cy, 3, 5) // petite flaque de 3-5 cases
+      let ok = cells.length >= 3
+      for (const [x, y] of cells) {
+        if (x < 2 || y < 2 || x >= MAP_W - 2 || y >= MAP_H - 2 || this.nearPath(x, y, 2) || this.waterCells.has(this.key(x, y))) {
+          ok = false
+          break
+        }
+      }
+      if (!ok) continue
+      const ice = b === 'snow'
+      for (const [x, y] of cells) {
+        this.waterCells.add(this.key(x, y))
+        if (ice) {
+          this.iceCells.add(this.key(x, y))
+          this.iceLayer.putTileAt(Math.floor(tileNoise(x, y, 13) * 4), x, y) // glace (marchable)
+        }
+      }
+      placed++
+    }
+  }
+
+  /** Lacs asséchés (terre craquelée, marchable) dans le désert sur une couche dédiée. */
+  spawnDryLakes() {
+    const dmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
+    const dts = dmap.addTilesetImage('dry_lake', 'dry_lake', TILE, TILE)
+    this.dryLayer = dmap.createBlankLayer('dry', dts, 0, 0).setDepth(-9.5)
+    let placed = 0
+    for (let i = 0; i < DRY_COUNT * 25 && placed < DRY_COUNT; i++) {
+      const cx = Phaser.Math.Between(6, MAP_W - 6)
+      const cy = Phaser.Math.Between(6, MAP_H - 6)
+      if (this.biomeAt(cx, cy) !== 'desert') continue
+      const cells = this.smallBlob(cx, cy, 4, 7) // cuvette asséchée un peu plus large
+      let ok = cells.length >= 4
+      for (const [x, y] of cells) {
+        if (x < 2 || y < 2 || x >= MAP_W - 2 || y >= MAP_H - 2 || this.nearPath(x, y, 2) || this.onWater(x, y, 1)) {
+          ok = false
+          break
+        }
+      }
+      if (!ok) continue
+      for (const [x, y] of cells) this.dryLayer.putTileAt(Math.floor(tileNoise(x, y, 11) * 4), x, y)
+      placed++
+    }
   }
 
   /** Sentier de A vers B : avance vers la cible avec un léger zigzag. */
@@ -491,6 +567,33 @@ export default class GameScene extends Phaser.Scene {
       for (let dy = 0; dy < w; dy++)
         if (this.pathCells.has(this.key(tx + dx, ty + dy))) return true
     return false
+  }
+
+  /** true si un chemin se trouve à `m` tuiles ou moins de (tx,ty). */
+  nearPath(tx, ty, m = 2) {
+    for (let dx = -m; dx <= m; dx++)
+      for (let dy = -m; dy <= m; dy++)
+        if (this.pathCells.has(this.key(tx + dx, ty + dy))) return true
+    return false
+  }
+
+  /** Petit blob connecté de `min`..`max` cases autour de (cx,cy). */
+  smallBlob(cx, cy, min, max) {
+    const target = Phaser.Math.Between(min, max)
+    const set = new Set([this.key(cx, cy)])
+    const list = [[cx, cy]]
+    let guard = 0
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+    while (list.length < target && guard++ < 50) {
+      const [bx, by] = Phaser.Utils.Array.GetRandom(list)
+      const d = Phaser.Utils.Array.GetRandom(dirs)
+      const k = this.key(bx + d[0], by + d[1])
+      if (!set.has(k)) {
+        set.add(k)
+        list.push([bx + d[0], by + d[1]])
+      }
+    }
+    return list
   }
 
   /** true si une des cellules du bloc w×w est de l'eau (rivière). */

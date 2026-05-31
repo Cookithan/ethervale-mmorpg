@@ -144,6 +144,52 @@ export default class BootScene extends Phaser.Scene {
       g.generateTexture('bridge_gen', 16, 16)
       g.destroy()
     }
+
+    // 'dry_lake' : 4 variantes 16x16 de terre craquelée (lacs asséchés du désert)
+    if (!this.textures.exists('dry_lake')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      const cracks = [
+        [[8, 1, 1, 14], [3, 7, 10, 1]],
+        [[5, 0, 1, 9], [10, 5, 1, 11], [2, 11, 12, 1]],
+        [[11, 2, 1,13], [4, 4, 8, 1]],
+        [[7, 3, 1, 12], [1, 8, 14, 1], [9, 10, 6, 1]],
+      ]
+      for (let i = 0; i < 4; i++) {
+        const ox = i * 16
+        g.fillStyle(0xcaa86a, 1) // terre sèche
+        g.fillRect(ox, 0, 16, 16)
+        g.fillStyle(0xbb965a, 1) // nuances
+        g.fillRect(ox + 2, 9, 5, 4)
+        g.fillRect(ox + 9, 2, 4, 3)
+        g.fillStyle(0x8f7440, 1) // craquelures
+        for (const [sx, sy, w, h] of cracks[i]) g.fillRect(ox + sx, sy, w, h)
+      }
+      g.generateTexture('dry_lake', 64, 16)
+      g.destroy()
+    }
+
+    // 'ice_gen' : 4 variantes 16x16 de glace (lacs gelés de la neige, marchables)
+    if (!this.textures.exists('ice_gen')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      const cracks = [
+        [[4, 2, 1, 11], [4, 8, 7, 1]],
+        [[10, 3, 1, 10], [2, 6, 9, 1]],
+        [[7, 1, 1, 13]],
+        [[12, 4, 1, 9], [3, 10, 10, 1]],
+      ]
+      for (let i = 0; i < 4; i++) {
+        const ox = i * 16
+        g.fillStyle(0xb7e1ee, 1) // glace bleu clair
+        g.fillRect(ox, 0, 16, 16)
+        g.fillStyle(0x8fc6d8, 1) // craquelures bleutées
+        for (const [sx, sy, w, h] of cracks[i]) g.fillRect(ox + sx, sy, w, h)
+        g.fillStyle(0xeefaff, 1) // reflets blancs (brillance)
+        g.fillRect(ox + 2, 2, 4, 1)
+        g.fillRect(ox + 9, 12, 4, 1)
+      }
+      g.generateTexture('ice_gen', 64, 16)
+      g.destroy()
+    }
   }
 
   /**
