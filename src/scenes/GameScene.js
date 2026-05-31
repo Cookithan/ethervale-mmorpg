@@ -5,7 +5,7 @@ import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY } from '../data/items.js'
 
-const MONSTER_COUNT = 24 // nombre de monstres sur la map
+const MONSTER_COUNT = 84 // nombre de monstres sur la map
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
 const EDGE_INSET = 16 // marge intérieure caméra/monde (1 tuile) : empêche de voir le fond hors-map au bord
 const MERCHANT_RANGE = 44 // distance pour pouvoir parler au marchand (px)
@@ -23,8 +23,8 @@ function makeSeededRandom(seed) {
 }
 
 const TILE = 16
-const MAP_W = 80
-const MAP_H = 60
+const MAP_W = 160
+const MAP_H = 120
 
 // --- sol (TilesetField / field.png, 5 colonnes) ---
 const GRASS = 21 // herbe verte claire = sol de base
@@ -42,6 +42,37 @@ const BLOB = {
     bl: 10, b: 11, br: 12,
     fills: [6, 3, 4, 8, 9],
   },
+  // sable (désert) = même bloc que la terre des chemins
+  cursed: {
+    tl: 45, t: 46, tr: 47,
+    l: 50, c: 51, r: 52,
+    bl: 55, b: 56, br: 57,
+    fills: [51, 48, 49, 53, 54],
+  },
+  snow: {
+    tl: 60, t: 61, tr: 62,
+    l: 65, c: 66, r: 67,
+    bl: 70, b: 71, br: 72,
+    fills: [66, 63, 64, 68, 69],
+  },
+}
+
+// biomes en ANNEAUX concentriques autour du spawn (difficulté croissante vers l'extérieur).
+const BIOME_BLOCKS = { forest: BLOB.darkGrass, desert: BLOB.dirt, snow: BLOB.snow, cursed: BLOB.cursed }
+// monstres par biome : faibles au centre, costauds en s'éloignant
+const MONSTERS_BY_BIOME = {
+  prairie: ['lizard', 'lizard', 'racoon'],
+  forest: ['lizard', 'racoon', 'racoon'],
+  desert: ['racoon', 'mushroom'],
+  snow: ['racoon', 'mushroom', 'mushroom'],
+  cursed: ['mushroom'],
+}
+
+/** Bruit déterministe [0,1) par tuile (varie les sols + bords de biome organiques). */
+function tileNoise(x, y, salt = 0) {
+  let n = ((x + 1) * 374761393 + (y + 1) * 668265263 + salt * 1442695040) >>> 0
+  n = Math.imul(n ^ (n >>> 13), 1274126177) >>> 0
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
 // --- éléments du TilesetNature (nature.png, 24 colonnes) ---
@@ -89,6 +120,7 @@ export default class GameScene extends Phaser.Scene {
     // --- terrain : chemins de terre qui serpentent (pas de gros blobs colorés) ---
     this.painted = new Set() // cellules de sol déjà peintes (évite les superpositions)
     this.pathCells = new Set() // cellules de chemin (pour dégager arbres/rochers)
+    this.paintBiomes() // sols des 4 biomes (coins) AVANT les chemins
     this.paintPaths()
 
     // --- physique / héros ---
@@ -196,11 +228,13 @@ export default class GameScene extends Phaser.Scene {
     return cells
   }
 
-  /** Peint une région avec autotile 3x3 (bords fondus) sur la couche overlay. */
-  paintBlob(cells, set) {
+  /** Peint une région avec autotile 3x3 (bords fondus) sur la couche overlay.
+   *  `force` = écrase une cellule déjà peinte (utilisé pour que les chemins
+   *  passent par-dessus les sols de biome). */
+  paintBlob(cells, set, force = false) {
     const has = (x, y) => cells.has(this.key(x, y))
     for (const k of cells) {
-      if (this.painted.has(k)) continue
+      if (!force && this.painted.has(k)) continue
       const [x, y] = k.split(',').map(Number)
       const n = has(x, y - 1)
       const s = has(x, y + 1)
@@ -266,7 +300,41 @@ export default class GameScene extends Phaser.Scene {
       this.carvePathTo(carve, this.places[0], this.places[i])
     }
 
-    this.paintBlob(cells, BLOB.dirt)
+    this.paintBlob(cells, BLOB.dirt, true) // force : les chemins passent sur les biomes
+  }
+
+  /** Peint les sols des biomes en anneaux concentriques (bords ondulés organiques). */
+  paintBiomes() {
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        const b = this.biomeAt(tx, ty)
+        if (b === 'prairie') continue // prairie = herbe de base, rien à peindre
+        const fills = BIOME_BLOCKS[b].fills
+        const tile = fills[Math.floor(tileNoise(tx, ty, 7) * fills.length)]
+        this.overlay.putTileAt(tile, tx, ty)
+        this.painted.add(this.key(tx, ty))
+      }
+    }
+  }
+
+  /**
+   * Biome d'une tuile selon sa distance (elliptique, suit le ratio de la map) au
+   * centre -> anneaux concentriques. Ondulation d'angle + bruit = bords organiques.
+   */
+  biomeAt(tx, ty) {
+    const nx = (tx - this.cx) / this.cx
+    const ny = (ty - this.cy) / this.cy
+    const ang = Math.atan2(ny, nx)
+    const wob = Math.sin(ang * 3) * 0.05 + Math.sin(ang * 5 + 1.3) * 0.035 + (tileNoise(tx, ty, 1) - 0.5) * 0.05
+    const r = Math.hypot(nx, ny) + wob
+    if (r < 0.24) return 'prairie' // hub central (sûr)
+    if (r < 0.42) return 'forest' // anneau de forêt autour du spawn
+    if (r < 0.84) {
+      // grande zone intermédiaire : NEIGE en haut, DÉSERT en bas (bord ondulé)
+      const split = Math.sin(nx * 4) * 0.07 + (tileNoise(tx, ty, 2) - 0.5) * 0.12
+      return ny < split ? 'snow' : 'desert'
+    }
+    return 'cursed' // bord extérieur (le plus loin = le plus dur)
   }
 
   /** Sentier de A vers B : avance vers la cible avec un léger zigzag. */
@@ -317,19 +385,20 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 3 || ty > MAP_H - 3) return
       if (this.nearSpawn(tx, ty, 6)) return
       if (this.onPath(tx, ty, 2)) return // pas d'arbre sur un chemin
+      const b = this.biomeAt(tx, ty)
+      if (b !== 'prairie' && b !== 'forest') return // arbres verts : prairie + forêt seulement
       if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty)
     }
 
-    // 1) lisière : anneau dense près des bords (probabilité décroissante)
+    // 1) forêt dense : remplit l'anneau de forêt autour de la prairie
     for (let x = 1; x < MAP_W - 2; x += 2) {
       for (let y = 1; y < MAP_H - 2; y += 2) {
-        const edge = Math.min(x, y, MAP_W - 2 - x, MAP_H - 2 - y)
-        if (edge <= 5 && Phaser.Math.Between(0, 100) < 70 - edge * 10) tryTree(x, y)
+        if (this.biomeAt(x, y) === 'forest' && Phaser.Math.Between(0, 100) < 55) tryTree(x, y)
       }
     }
 
-    // 2) bosquets : amas denses d'arbres
-    for (let g = 0; g < 6; g++) {
+    // 2) bosquets : amas denses d'arbres (surtout prairie/forêt)
+    for (let g = 0; g < 16; g++) {
       const gx = Phaser.Math.Between(12, MAP_W - 12)
       const gy = Phaser.Math.Between(12, MAP_H - 12)
       if (this.nearSpawn(gx, gy, 10)) continue
@@ -341,8 +410,8 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // 3) quelques arbres isolés
-    for (let i = 0; i < 25; i++) {
+    // 3) quelques arbres isolés (prairie)
+    for (let i = 0; i < 50; i++) {
       tryTree(Phaser.Math.Between(2, MAP_W - 4), Phaser.Math.Between(2, MAP_H - 4))
     }
   }
@@ -384,7 +453,7 @@ export default class GameScene extends Phaser.Scene {
       this.obstacles.add(rock)
     }
 
-    for (let c = 0; c < 6; c++) {
+    for (let c = 0; c < 24; c++) {
       const cx = Phaser.Math.Between(4, MAP_W - 4)
       const cy = Phaser.Math.Between(4, MAP_H - 4)
       const n = Phaser.Math.Between(2, 5)
@@ -392,7 +461,7 @@ export default class GameScene extends Phaser.Scene {
         place(cx + Phaser.Math.Between(-2, 2), cy + Phaser.Math.Between(-2, 2))
       }
     }
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 34; i++) {
       place(Phaser.Math.Between(2, MAP_W - 3), Phaser.Math.Between(2, MAP_H - 3))
     }
   }
@@ -402,13 +471,15 @@ export default class GameScene extends Phaser.Scene {
     const place = (tx, ty, pool) => {
       if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
       if (this.occupied.has(this.key(tx, ty))) return
+      const b = this.biomeAt(tx, ty)
+      if (b !== 'prairie' && b !== 'forest') return // fleurs/herbes : prairie + forêt
       const px = tx * TILE + 8
       const py = ty * TILE + 8
       this.add.image(px, py, 'nature', Phaser.Utils.Array.GetRandom(pool)).setDepth(py - 4)
     }
 
     // massifs de fleurs serrées (côte à côte)
-    for (let c = 0; c < 6; c++) {
+    for (let c = 0; c < 16; c++) {
       const cx = Phaser.Math.Between(4, MAP_W - 4)
       const cy = Phaser.Math.Between(4, MAP_H - 4)
       for (let i = 0; i < Phaser.Math.Between(3, 5); i++) {
@@ -417,7 +488,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // touffes de buissons / herbes hautes
-    for (let c = 0; c < 12; c++) {
+    for (let c = 0; c < 34; c++) {
       const cx = Phaser.Math.Between(3, MAP_W - 3)
       const cy = Phaser.Math.Between(3, MAP_H - 3)
       for (let i = 0; i < Phaser.Math.Between(3, 6); i++) {
@@ -441,7 +512,8 @@ export default class GameScene extends Phaser.Scene {
       if (this.nearSpawn(tx, ty, 8)) continue // pas trop près du joueur
       if (this.occupied.has(this.key(tx, ty))) continue // pas dans un arbre/rocher
       if (spots.some((s) => this.dist(tx, ty, s.x, s.y) < MIN_GAP)) continue // pas collé à un autre monstre
-      const type = Phaser.Utils.Array.GetRandom(types)
+      const pool = MONSTERS_BY_BIOME[this.biomeAt(tx, ty)] || types
+      const type = Phaser.Utils.Array.GetRandom(pool)
       this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, type))
       spots.push({ x: tx, y: ty })
       placed++
