@@ -151,6 +151,7 @@ export default class GameScene extends Phaser.Scene {
     // personnage choisi (création) ou repris (sauvegarde)
     this.saveData = initData?.save ?? null
     this.character = this.saveData?.character ?? initData?.character ?? DEFAULT_CHARACTER
+    this.preview = !!initData?.preview // mode aperçu = fond vivant de l'écran d'accueil (pas de HUD/combat)
 
     // monde DÉTERMINISTE : pendant toute la génération (terrain, chemins, forêt,
     // rochers, déco, monstres), Math.random est remplacé par un PRNG à graine fixe
@@ -237,48 +238,79 @@ export default class GameScene extends Phaser.Scene {
     // --- caméra ---
     const cam = this.cameras.main
     cam.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
-    // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
-    // une vibration en diagonale (positions fractionnaires arrondies différemment).
-    cam.startFollow(this.player, true)
-    cam.setZoom(3)
-    cam.setRoundPixels(true)
+    if (this.preview) {
+      // aperçu d'accueil : caméra posée sur le village + léger pan cinématique (pas de suivi)
+      cam.setZoom(2.8)
+      cam.centerOn(this.worldW / 2, this.worldH / 2)
+      const bx = cam.scrollX
+      const by = cam.scrollY
+      this.tweens.add({ targets: cam, scrollX: bx + 22, duration: 14000, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      this.tweens.add({ targets: cam, scrollY: by + 14, duration: 11000, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      // de temps en temps, dézoom TRÈS lent (vue large du monde) puis retour au village.
+      // on s'arrête AVANT les bords : zoom mini = celui qui couvre encore tout l'écran de map
+      // (max des deux ratios) + une marge, pour ne jamais laisser apparaître le gris hors-map.
+      const fitZoom = Math.max(this.scale.width / this.worldW, this.scale.height / this.worldH) * 1.08
+      this.tweens.add({
+        targets: cam,
+        zoom: fitZoom,
+        duration: 13000, // dézoom doux
+        hold: 3000, // on reste sur la vue d'ensemble un instant
+        yoyo: true, // puis on re-zoome sur le village
+        repeat: -1,
+        delay: 16000, // gros plan au démarrage
+        repeatDelay: 16000, // gros plan entre deux cycles
+        ease: 'Sine.inOut',
+      })
+      cam.setRoundPixels(false) // pan FLUIDE : sinon l'arrondi pixel fait avancer la caméra par à-coups
+    } else {
+      // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
+      // une vibration en diagonale (positions fractionnaires arrondies différemment).
+      cam.startFollow(this.player, true)
+      cam.setZoom(3)
+      cam.setRoundPixels(true)
+    }
 
-    // --- entrées combat ---
-    this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
-    this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
-    this.input.keyboard.on('keydown-F', () => this.shootForward())
-    this.input.keyboard.on('keydown-E', () => this.tryInteract())
-    this.input.on('pointerdown', (p) => {
-      // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
-      if (this.uiBusy()) return
-      // ignore les clics sur le panneau d'inventaire (géré par UIScene)
-      const ui = this.scene.get('UIScene')
-      if (ui?.pointerOverInventory?.(p.x, p.y)) return
-      if (p.rightButtonDown()) {
-        this.fireProjectile(p.worldX, p.worldY, null) // clic droit = tir libre vers le curseur
-        return
-      }
-      // clic sur un PNJ / le marchand -> aller lui parler (interaction auto en arrivant)
-      const target = this.npcAt(p.worldX, p.worldY)
-      if (target) {
-        this.clickNpc(target)
-        return
-      }
-      this.pendingNpc = null // clic au sol : annule une interaction en attente
-      this.player.moveTo(p.worldX, p.worldY)
-      this.showMoveMarker(p.worldX, p.worldY)
-    })
+    // --- entrées combat (désactivées en mode aperçu) ---
+    if (!this.preview) {
+      this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
+      this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
+      this.input.keyboard.on('keydown-F', () => this.shootForward())
+      this.input.keyboard.on('keydown-E', () => this.tryInteract())
+      this.input.on('pointerdown', (p) => {
+        // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
+        if (this.uiBusy()) return
+        // ignore les clics sur le panneau d'inventaire (géré par UIScene)
+        const ui = this.scene.get('UIScene')
+        if (ui?.pointerOverInventory?.(p.x, p.y)) return
+        if (p.rightButtonDown()) {
+          this.fireProjectile(p.worldX, p.worldY, null) // clic droit = tir libre vers le curseur
+          return
+        }
+        // clic sur un PNJ / le marchand -> aller lui parler (interaction auto en arrivant)
+        const target = this.npcAt(p.worldX, p.worldY)
+        if (target) {
+          this.clickNpc(target)
+          return
+        }
+        this.pendingNpc = null // clic au sol : annule une interaction en attente
+        this.player.moveTo(p.worldX, p.worldY)
+        this.showMoveMarker(p.worldX, p.worldY)
+      })
+    }
 
     this.gameOver = false
     this.pendingNpc = null // interlocuteur cliqué vers lequel on marche (interaction auto en arrivant)
     this.currentBiome = 'prairie' // suivi pour le bandeau de zone
-    // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
-    if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
-    // bandeau de bienvenue (laisse l'UIScene démarrer)
-    this.time.delayedCall(600, () => this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES.prairie))
-
-    // sauvegarde automatique périodique (toutes les 30 s)
-    this.time.addEvent({ delay: 30000, loop: true, callback: () => this.saveGame() })
+    if (!this.preview) {
+      // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
+      if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
+      // bandeau de bienvenue (laisse l'UIScene démarrer)
+      this.time.delayedCall(600, () => this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES.prairie))
+      // sauvegarde automatique périodique (toutes les 30 s)
+      this.time.addEvent({ delay: 30000, loop: true, callback: () => this.saveGame() })
+    } else {
+      this.setupPreview() // village vivant en fond de l'écran d'accueil
+    }
 
     // fin de la génération : on rend l'aléatoire réel au gameplay (IA, loot...)
     Math.random = origRandom
@@ -288,6 +320,96 @@ export default class GameScene extends Phaser.Scene {
   saveGame() {
     if (this.gameOver || !this.player) return
     writeSave(makeSave(this.player, this.character))
+  }
+
+  // ---------- mode aperçu (fond vivant de l'écran d'accueil) ----------
+
+  /** Prépare le village vivant : héros au centre + villageois qui se baladent. */
+  setupPreview() {
+    this.scene.sendToBack() // rester DERRIÈRE le menu (MenuScene) quel que soit l'ordre de boot
+
+    // héros : pas de physique ni d'input, petite balade autour du centre de la place
+    this.player.body.enable = false
+    this.player.anims.play(`${this.player.heroKey}-idle-down`, true)
+    this._heroW = this.makeWander(this.player, this.player.heroKey, this.player.x, this.player.y, 24, 18)
+
+    // villageois : balade autour de leur maison (les sheets villageois ont des anims de marche)
+    for (const npc of this.npcs || []) {
+      this.tweens.killTweensOf(npc.sprite) // stoppe la "respiration" (sinon elle écrase l'anim de marche)
+      npc.sprite.setScale(1)
+      if (npc.sprite.body) npc.sprite.body.enable = false // ne se bloquent pas entre eux (collision gérée à la main)
+      npc._w = this.makeWander(npc.sprite, npc.texture, npc.sprite.x, npc.sprite.y, 30, 18 + Math.random() * 10)
+    }
+    // le marchand reste à son étal (pas d'anim de marche pour sa planche) : juste sa respiration ;
+    // on garde SON corps actif -> les villageois ne lui marchent pas dessus.
+  }
+
+  /** true si la position (pieds) chevauche un obstacle solide (maison, rocher, props, marchand). */
+  previewBlocked(x, y) {
+    return this.physics.overlapRect(x - 5, y, 10, 8, false, true).length > 0
+  }
+
+  /** Choisit une nouvelle cible LIBRE autour du point d'ancrage (sinon reste sur place). */
+  previewRetarget(w, time) {
+    w.pauseUntil = time + 600 + Math.random() * 2200
+    for (let i = 0; i < 10; i++) {
+      const ang = Math.random() * Math.PI * 2
+      const r = w.radius * (0.3 + Math.random() * 0.7)
+      const tx = w.hx + Math.cos(ang) * r
+      const ty = w.hy + Math.sin(ang) * r
+      if (!this.previewBlocked(tx, ty)) {
+        w.tx = tx
+        w.ty = ty
+        return
+      }
+    }
+    w.tx = w.sprite.x // aucune case libre trouvée : on ne bouge pas ce tour-ci
+    w.ty = w.sprite.y
+  }
+
+  makeWander(sprite, texture, hx, hy, radius, speed) {
+    return { sprite, texture, hx, hy, tx: hx, ty: hy, facing: 'down', pauseUntil: Math.random() * 1500, radius, speed }
+  }
+
+  /** Anime le village d'accueil : chaque PNJ erre, le héros reste au milieu. */
+  updatePreview(time, delta) {
+    const dt = delta / 1000
+    if (this._heroW) this.wanderEntity(this._heroW, time, dt)
+    for (const npc of this.npcs || []) {
+      if (!npc._w) continue
+      this.wanderEntity(npc._w, time, dt)
+      if (npc.label) npc.label.setPosition(npc.sprite.x, npc.sprite.y - 14)
+    }
+  }
+
+  /** IA de balade légère : marche vers une cible LIBRE, pause, recommence (sans traverser le décor). */
+  wanderEntity(w, time, dt) {
+    const s = w.sprite
+    s.setDepth(s.y)
+    if (time < w.pauseUntil) {
+      s.anims.play(`${w.texture}-idle-${w.facing}`, true)
+      return
+    }
+    const dx = w.tx - s.x
+    const dy = w.ty - s.y
+    const d = Math.hypot(dx, dy)
+    if (d < 2) {
+      this.previewRetarget(w, time)
+      s.anims.play(`${w.texture}-idle-${w.facing}`, true)
+      return
+    }
+    const step = w.speed * dt
+    const nx = s.x + (dx / d) * step
+    const ny = s.y + (dy / d) * step
+    if (this.previewBlocked(nx, ny)) {
+      this.previewRetarget(w, time) // mur devant (maison/rocher) -> on repart ailleurs
+      s.anims.play(`${w.texture}-idle-${w.facing}`, true)
+      return
+    }
+    s.x = nx
+    s.y = ny
+    w.facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down')
+    s.anims.play(`${w.texture}-walk-${w.facing}`, true)
   }
 
   // ---------- helpers généraux ----------
@@ -1591,7 +1713,11 @@ export default class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: r, alpha: 0, duration: 200, onComplete: () => r.destroy() })
   }
 
-  update(time) {
+  update(time, delta) {
+    if (this.preview) {
+      this.updatePreview(time, delta)
+      return
+    }
     if (this.gameOver) return
     this.player.update(time)
     const p = this.player
