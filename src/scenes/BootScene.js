@@ -30,6 +30,9 @@ export default class BootScene extends Phaser.Scene {
       frameHeight: 16,
     })
 
+    // eau (rivières) : image pour servir de tileset à une couche dédiée
+    this.load.image('water', 'assets/tiles/water.png')
+
     // héros : spritesheet 16x16
     this.load.spritesheet('player', 'assets/sprites/player.png', {
       frameWidth: 16,

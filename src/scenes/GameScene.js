@@ -68,6 +68,10 @@ const MONSTERS_BY_BIOME = {
   cursed: ['mushroom'],
 }
 
+// groupe de décor par biome (les arbres ne doivent pas déborder sur un autre groupe)
+const DECOR_GROUP = { prairie: 'green', forest: 'green', snow: 'snow', desert: 'dead', cursed: 'dead' }
+const BORDER_MARGIN = 3 // distance mini (tuiles) entre un arbre et la frontière d'un autre groupe
+
 /** Bruit déterministe [0,1) par tuile (varie les sols + bords de biome organiques). */
 function tileNoise(x, y, salt = 0) {
   let n = ((x + 1) * 374761393 + (y + 1) * 668265263 + salt * 1442695040) >>> 0
@@ -76,10 +80,16 @@ function tileNoise(x, y, salt = 0) {
 }
 
 // --- éléments du TilesetNature (nature.png, 24 colonnes) ---
-const TREE = { tl: 0, tr: 1, bl: 24, br: 25 } // petit arbre rond 2x2
+const TREE = { tl: 0, tr: 1, bl: 24, br: 25 } // arbre vert (forêt/prairie)
+const TREE_SNOW = { tl: 12, tr: 13, bl: 36, br: 37 } // sapin enneigé (neige)
+const TREE_DEAD = { tl: 4, tr: 5, bl: 28, br: 29 } // arbre mort (maudit / désert sec)
 const ROCKS = [295, 296, 297]
 const FLOWERS = [264, 265, 267] // tournesol, fleur, tulipe
 const BUSHES = [240, 241, 242, 268, 269, 273] // buissons / herbes hautes
+
+// --- eau (TilesetWater / water.png, 28 colonnes) ---
+const RIVERS_ENABLED = false // rivières retirées : le tileset d'eau n'a pas de tuile "eau pleine" propre (que des berges)
+const WATER_TILE = 201
 
 /**
  * GameScene — Phase 1, "vraie map".
@@ -120,8 +130,9 @@ export default class GameScene extends Phaser.Scene {
     // --- terrain : chemins de terre qui serpentent (pas de gros blobs colorés) ---
     this.painted = new Set() // cellules de sol déjà peintes (évite les superpositions)
     this.pathCells = new Set() // cellules de chemin (pour dégager arbres/rochers)
-    this.paintBiomes() // sols des 4 biomes (coins) AVANT les chemins
+    this.paintBiomes() // sols des biomes (anneaux) AVANT les chemins
     this.paintPaths()
+    this.buildRivers() // rivières-frontières + ponts (après les chemins)
 
     // --- physique / héros ---
     this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
@@ -132,14 +143,17 @@ export default class GameScene extends Phaser.Scene {
     this.trees = []
     this.occupied = new Set()
     this.spawnForest()
+    this.spawnBiomeTrees()
     this.spawnRocks()
     this.spawnDecor()
     this.physics.add.collider(this.player, this.obstacles)
+    this.physics.add.collider(this.player, this.waterLayer) // l'eau bloque (sauf ponts)
 
     // --- monstres ---
     this.monsters = this.physics.add.group()
     this.spawnMonsters()
     this.physics.add.collider(this.monsters, this.obstacles)
+    this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
     this.physics.add.collider(this.monsters, this.monsters)
     this.physics.add.overlap(this.player, this.monsters, (pl, mon) => {
       if (mon.tryBite(pl, this.time.now)) this.flashHurt()
@@ -231,7 +245,7 @@ export default class GameScene extends Phaser.Scene {
   /** Peint une région avec autotile 3x3 (bords fondus) sur la couche overlay.
    *  `force` = écrase une cellule déjà peinte (utilisé pour que les chemins
    *  passent par-dessus les sols de biome). */
-  paintBlob(cells, set, force = false) {
+  paintBlob(cells, set, force = false, layer = this.overlay) {
     const has = (x, y) => cells.has(this.key(x, y))
     for (const k of cells) {
       if (!force && this.painted.has(k)) continue
@@ -252,7 +266,7 @@ export default class GameScene extends Phaser.Scene {
       else if (!e) tile = set.r
       else tile = Phaser.Utils.Array.GetRandom(set.fills) // intérieur : fill varié
 
-      this.overlay.putTileAt(tile, x, y)
+      layer.putTileAt(tile, x, y)
       this.painted.add(k)
     }
   }
@@ -317,6 +331,22 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Groupe de décor d'une tuile (green / snow / dead). */
+  decorGroup(tx, ty) {
+    return DECOR_GROUP[this.biomeAt(tx, ty)]
+  }
+
+  /** true si la tuile est au "cœur" de son groupe de déco (loin d'une frontière). */
+  isDecorCore(tx, ty, m = BORDER_MARGIN) {
+    const g = this.decorGroup(tx, ty)
+    return (
+      this.decorGroup(tx - m, ty) === g &&
+      this.decorGroup(tx + m, ty) === g &&
+      this.decorGroup(tx, ty - m) === g &&
+      this.decorGroup(tx, ty + m) === g
+    )
+  }
+
   /**
    * Biome d'une tuile selon sa distance (elliptique, suit le ratio de la map) au
    * centre -> anneaux concentriques. Ondulation d'angle + bruit = bords organiques.
@@ -325,16 +355,57 @@ export default class GameScene extends Phaser.Scene {
     const nx = (tx - this.cx) / this.cx
     const ny = (ty - this.cy) / this.cy
     const ang = Math.atan2(ny, nx)
-    const wob = Math.sin(ang * 3) * 0.05 + Math.sin(ang * 5 + 1.3) * 0.035 + (tileNoise(tx, ty, 1) - 0.5) * 0.05
+    // ondulation LISSE seulement (pas de bruit par tuile, sinon frontières pixelisées
+    // = rivières énormes). Bords organiques mais nets pour des rivières fines.
+    const wob = Math.sin(ang * 3) * 0.06 + Math.sin(ang * 5 + 1.3) * 0.04
     const r = Math.hypot(nx, ny) + wob
     if (r < 0.24) return 'prairie' // hub central (sûr)
     if (r < 0.42) return 'forest' // anneau de forêt autour du spawn
     if (r < 0.84) {
-      // grande zone intermédiaire : NEIGE en haut, DÉSERT en bas (bord ondulé)
-      const split = Math.sin(nx * 4) * 0.07 + (tileNoise(tx, ty, 2) - 0.5) * 0.12
+      // grande zone intermédiaire : NEIGE en haut, DÉSERT en bas (bord ondulé lisse)
+      const split = Math.sin(nx * 4) * 0.08
       return ny < split ? 'snow' : 'desert'
     }
     return 'cursed' // bord extérieur (le plus loin = le plus dur)
+  }
+
+  /**
+   * Rivières le long des frontières de biomes (eau pleine ~2 tuiles) sur une couche
+   * dédiée avec collision. Là où un chemin traverse, le chemin en terre fait le gué.
+   * `this.waterCells` = cellules d'eau (bloque déco/spawn de monstres).
+   */
+  buildRivers() {
+    this.waterCells = new Set()
+    // couche d'eau (vide si désactivé) pour que les colliders existent toujours
+    const wmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
+    this.waterLayer = wmap.createBlankLayer('water', wmap.addTilesetImage('water'), 0, 0).setDepth(-8)
+    if (!RIVERS_ENABLED) return // rivières désactivées : map propre (biomes + déco + chemins)
+
+    // cellules de bord = entre deux biomes différents (des DEUX côtés -> rivière ~2 large)
+    for (let ty = 1; ty < MAP_H - 1; ty++) {
+      for (let tx = 1; tx < MAP_W - 1; tx++) {
+        const b = this.biomeAt(tx, ty)
+        if (
+          this.biomeAt(tx + 1, ty) !== b ||
+          this.biomeAt(tx - 1, ty) !== b ||
+          this.biomeAt(tx, ty + 1) !== b ||
+          this.biomeAt(tx, ty - 1) !== b
+        ) {
+          this.waterCells.add(this.key(tx, ty))
+        }
+      }
+    }
+    // retirer les cellules de chemin (le chemin en terre fait le gué, marchable)
+    for (const k of [...this.waterCells]) {
+      const [x, y] = k.split(',').map(Number)
+      if (this.onPath(x, y, 1)) this.waterCells.delete(k)
+    }
+    // rendu : eau pleine cyan (pas d'autotile)
+    for (const k of this.waterCells) {
+      const [x, y] = k.split(',').map(Number)
+      this.waterLayer.putTileAt(WATER_TILE, x, y)
+    }
+    this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau bloque
   }
 
   /** Sentier de A vers B : avance vers la cible avec un léger zigzag. */
@@ -369,6 +440,14 @@ export default class GameScene extends Phaser.Scene {
     return false
   }
 
+  /** true si une des cellules du bloc w×w est de l'eau (rivière). */
+  onWater(tx, ty, w = 1) {
+    for (let dx = 0; dx < w; dx++)
+      for (let dy = 0; dy < w; dy++)
+        if (this.waterCells.has(this.key(tx + dx, ty + dy))) return true
+    return false
+  }
+
   /** Réserve un bloc de w×h cellules si libre ; renvoie true si placé. */
   reserve(tx, ty, w, h) {
     for (let dx = -1; dx <= w; dx++)
@@ -385,8 +464,10 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 3 || ty > MAP_H - 3) return
       if (this.nearSpawn(tx, ty, 6)) return
       if (this.onPath(tx, ty, 2)) return // pas d'arbre sur un chemin
+      if (this.onWater(tx, ty, 2)) return // pas d'arbre dans/sur une rivière
       const b = this.biomeAt(tx, ty)
       if (b !== 'prairie' && b !== 'forest') return // arbres verts : prairie + forêt seulement
+      if (!this.isDecorCore(tx, ty)) return // pas collé à une frontière (désert/neige)
       if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty)
     }
 
@@ -416,17 +497,36 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  addTree(tx, ty) {
+  /** Arbres propres aux biomes : sapins enneigés (neige), arbres morts (maudit + désert sec). */
+  spawnBiomeTrees() {
+    const place = (tx, ty, frames) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - 3 || ty > MAP_H - 3) return
+      if (this.onPath(tx, ty, 2)) return
+      if (this.onWater(tx, ty, 2)) return
+      if (!this.isDecorCore(tx, ty)) return // pas d'arbre de biome collé à une frontière
+      if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty, frames)
+    }
+    for (let x = 1; x < MAP_W - 2; x += 2) {
+      for (let y = 1; y < MAP_H - 2; y += 2) {
+        const b = this.biomeAt(x, y)
+        if (b === 'snow' && Phaser.Math.Between(0, 100) < 24) place(x, y, TREE_SNOW)
+        else if (b === 'cursed' && Phaser.Math.Between(0, 100) < 32) place(x, y, TREE_DEAD)
+        else if (b === 'desert' && Phaser.Math.Between(0, 100) < 7) place(x, y, TREE_DEAD)
+      }
+    }
+  }
+
+  addTree(tx, ty, frames = TREE) {
     const px = tx * TILE
     const py = ty * TILE
     const baseY = py + 2 * TILE
     const TRUNK_DEPTH = -5 // tronc toujours derrière le perso, jamais devant la tête
 
     const leaves = []
-    this.add.image(px + 8, py + 24, 'nature', TREE.bl).setDepth(TRUNK_DEPTH)
-    this.add.image(px + 24, py + 24, 'nature', TREE.br).setDepth(TRUNK_DEPTH)
-    leaves.push(this.add.image(px + 8, py + 8, 'nature', TREE.tl).setDepth(baseY))
-    leaves.push(this.add.image(px + 24, py + 8, 'nature', TREE.tr).setDepth(baseY))
+    this.add.image(px + 8, py + 24, 'nature', frames.bl).setDepth(TRUNK_DEPTH)
+    this.add.image(px + 24, py + 24, 'nature', frames.br).setDepth(TRUNK_DEPTH)
+    leaves.push(this.add.image(px + 8, py + 8, 'nature', frames.tl).setDepth(baseY))
+    leaves.push(this.add.image(px + 24, py + 8, 'nature', frames.tr).setDepth(baseY))
 
     const trunk = this.add.rectangle(px + TILE, py + TILE + 8, 16, 9)
     this.physics.add.existing(trunk, true)
@@ -444,6 +544,7 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
       if (this.nearSpawn(tx, ty, 4)) return
       if (this.onPath(tx, ty, 1)) return // pas de rocher sur un chemin
+      if (this.onWater(tx, ty, 1)) return // pas de rocher dans une rivière
       if (!this.reserve(tx, ty, 1, 1)) return
       const px = tx * TILE + 8
       const py = ty * TILE + 8
@@ -471,6 +572,7 @@ export default class GameScene extends Phaser.Scene {
     const place = (tx, ty, pool) => {
       if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
       if (this.occupied.has(this.key(tx, ty))) return
+      if (this.onWater(tx, ty, 1)) return // pas de déco dans une rivière
       const b = this.biomeAt(tx, ty)
       if (b !== 'prairie' && b !== 'forest') return // fleurs/herbes : prairie + forêt
       const px = tx * TILE + 8
@@ -511,6 +613,7 @@ export default class GameScene extends Phaser.Scene {
       const ty = Phaser.Math.Between(2, MAP_H - 3)
       if (this.nearSpawn(tx, ty, 8)) continue // pas trop près du joueur
       if (this.occupied.has(this.key(tx, ty))) continue // pas dans un arbre/rocher
+      if (this.onWater(tx, ty, 1)) continue // pas dans une rivière
       if (spots.some((s) => this.dist(tx, ty, s.x, s.y) < MIN_GAP)) continue // pas collé à un autre monstre
       const pool = MONSTERS_BY_BIOME[this.biomeAt(tx, ty)] || types
       const type = Phaser.Utils.Array.GetRandom(pool)
