@@ -46,9 +46,27 @@ export default class BootScene extends Phaser.Scene {
   }
 
   create() {
+    this.createGeneratedTextures()
     this.createPlayerAnimations()
     this.createMonsterAnimations()
     this.scene.start('GameScene')
+  }
+
+  /**
+   * Textures dessinées par code (pas de fichier à charger) :
+   * - 'proj' : boule d'énergie verte (projectile du héros).
+   * generateTexture() la met dans le cache comme une vraie image.
+   */
+  createGeneratedTextures() {
+    if (!this.textures.exists('proj')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x9be15d, 1) // halo vert clair
+      g.fillCircle(5, 5, 5)
+      g.fillStyle(0xffffff, 1) // cœur lumineux
+      g.fillCircle(5, 5, 2)
+      g.generateTexture('proj', 10, 10)
+      g.destroy()
+    }
   }
 
   /**

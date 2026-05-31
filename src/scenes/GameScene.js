@@ -1,8 +1,10 @@
 import Phaser from 'phaser'
 import Player from '../entities/Player.js'
 import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
+import Projectile from '../entities/Projectile.js'
 
 const MONSTER_COUNT = 24 // nombre de monstres sur la map
+const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
 
 const TILE = 16
 const MAP_W = 80
@@ -84,6 +86,19 @@ export default class GameScene extends Phaser.Scene {
       if (mon.tryBite(pl, this.time.now)) this.flashHurt()
     })
 
+    // --- projectiles (attaque à distance) ---
+    this.projectiles = this.physics.add.group({ classType: Projectile, runChildUpdate: true })
+    this.physics.add.overlap(this.projectiles, this.monsters, (proj, mon) => {
+      if (!proj.active || !mon.active) return
+      // recul AVANT les dégâts : takeDamage peut détruire le monstre (body disparaît)
+      const a = Math.atan2(mon.y - proj.y, mon.x - proj.x)
+      mon.setVelocity(Math.cos(a) * 120, Math.sin(a) * 120)
+      proj.kill()
+      mon.takeDamage(proj.damage)
+    })
+    // les projectiles s'arrêtent sur le décor
+    this.physics.add.collider(this.projectiles, this.obstacles, (proj) => proj.kill())
+
     // --- caméra ---
     const cam = this.cameras.main
     cam.setBounds(0, 0, this.worldW, this.worldH)
@@ -94,9 +109,14 @@ export default class GameScene extends Phaser.Scene {
     cam.setRoundPixels(true)
 
     // --- entrées combat ---
+    this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
     this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
+    this.input.keyboard.on('keydown-F', () => this.shootForward())
     this.input.on('pointerdown', (p) => {
-      if (p.rightButtonDown()) return
+      if (p.rightButtonDown()) {
+        this.fireProjectile(p.worldX, p.worldY, null) // clic droit = tir libre vers le curseur
+        return
+      }
       this.player.moveTo(p.worldX, p.worldY)
       this.showMoveMarker(p.worldX, p.worldY)
     })
@@ -418,11 +438,61 @@ export default class GameScene extends Phaser.Scene {
       if (!mon.active) return
       // touché si le monstre est dans le rayon autour du point devant le perso
       if (Phaser.Math.Distance.Between(cx, cy, mon.x, mon.y) <= RANGE) {
-        mon.takeDamage(p.attackPower)
+        // recul AVANT les dégâts : takeDamage peut détruire le monstre (body disparaît)
         const a = Math.atan2(mon.y - p.y, mon.x - p.x)
         mon.setVelocity(Math.cos(a) * 150, Math.sin(a) * 150)
+        mon.takeDamage(p.attackPower)
       }
     })
+  }
+
+  /** Monstre actif le plus proche de (x,y) dans `radius`, sinon null. */
+  nearestMonster(x, y, radius) {
+    let best = null
+    let bestD = radius
+    this.monsters.getChildren().forEach((m) => {
+      if (!m.active) return
+      const d = Phaser.Math.Distance.Between(x, y, m.x, m.y)
+      if (d < bestD) {
+        bestD = d
+        best = m
+      }
+    })
+    return best
+  }
+
+  /**
+   * F : tir dans la direction du héros. Si une créature est proche (HOMING_RANGE),
+   * la boule la prend pour cible et la suit jusqu'au contact.
+   */
+  shootForward() {
+    const p = this.player
+    const target = this.nearestMonster(p.x, p.y, HOMING_RANGE)
+    if (target) {
+      this.fireProjectile(target.x, target.y, target)
+    } else {
+      const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing]
+      this.fireProjectile(p.x + dir[0] * 120, p.y + dir[1] * 120, null)
+    }
+  }
+
+  /**
+   * Lance une boule d'énergie du héros vers (tx,ty). Si `target` est fourni, la
+   * boule suit ce monstre (homing). Oriente le héros vers le tir et respecte le cooldown.
+   */
+  fireProjectile(tx, ty, target) {
+    const p = this.player
+    if (p.attacking || p.hp <= 0) return
+    if (!p.startShoot(this.time.now)) return
+
+    const dx = tx - p.x
+    const dy = ty - p.y
+    if (Math.abs(dx) > Math.abs(dy)) p.facing = dx < 0 ? 'left' : 'right'
+    else p.facing = dy < 0 ? 'up' : 'down'
+
+    const proj = this.projectiles.get(p.x, p.y)
+    if (!proj) return
+    proj.fire(p.x, p.y, tx, ty, p.attackPower, this.time.now, target)
   }
 
   /** Petit éclair blanc en arc pour matérialiser le coup d'épée. */

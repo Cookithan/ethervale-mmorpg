@@ -4,6 +4,7 @@ const SPEED = 65 // vitesse de déplacement (px/s)
 const ATTACK_MS = 320 // durée de l'animation d'attaque (déplacement bloqué)
 const ATTACK_COOLDOWN = 380 // délai mini entre deux attaques
 const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
+const SHOOT_COOLDOWN = 450 // délai mini entre deux tirs à distance (ms)
 
 /**
  * Player — héros contrôlé au clavier (ZQSD/WASD/flèches) ET au clic (click-to-move).
@@ -33,6 +34,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.attackUntil = 0
     this.nextAttackAt = 0
     this.invulnUntil = 0
+    this.nextShootAt = 0 // cooldown du tir à distance
 
     this.moveTarget = null // {x, y} pour le click-to-move
 
@@ -55,6 +57,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.moveTarget = null
     this.setVelocity(0, 0)
     this.anims.play('attack-' + this.facing, true)
+    return true
+  }
+
+  /** Autorise un tir si le cooldown est passé et arme le prochain. Renvoie true si OK. */
+  startShoot(now) {
+    if (now < this.nextShootAt) return false
+    this.nextShootAt = now + SHOOT_COOLDOWN
     return true
   }
 

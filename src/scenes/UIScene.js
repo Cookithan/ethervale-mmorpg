@@ -47,7 +47,7 @@ export default class UIScene extends Phaser.Scene {
 
     // --- aide en bas ---
     this.add
-      .text(PAD, this.scale.height - PAD, 'Clic = aller   ·   Espace = attaquer', {
+      .text(PAD, this.scale.height - PAD, 'Clic = aller  ·  Espace = épée  ·  F = tir  ·  Clic droit = tir visé', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#ffffff',
