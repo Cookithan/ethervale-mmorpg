@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import BootScene from './scenes/BootScene.js'
 import GameScene from './scenes/GameScene.js'
+import UIScene from './scenes/UIScene.js'
 
 const config = {
   type: Phaser.AUTO,
@@ -17,7 +18,7 @@ const config = {
       debug: false, // passera à true en Étape 5 pour visualiser les collisions
     },
   },
-  scene: [BootScene, GameScene],
+  scene: [BootScene, GameScene, UIScene],
 }
 
 // eslint-disable-next-line no-new

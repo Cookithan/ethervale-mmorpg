@@ -1,5 +1,8 @@
 import Phaser from 'phaser'
 import Player from '../entities/Player.js'
+import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
+
+const MONSTER_COUNT = 24 // nombre de monstres sur la map
 
 const TILE = 16
 const MAP_W = 80
@@ -72,6 +75,15 @@ export default class GameScene extends Phaser.Scene {
     this.spawnDecor()
     this.physics.add.collider(this.player, this.obstacles)
 
+    // --- monstres ---
+    this.monsters = this.physics.add.group()
+    this.spawnMonsters()
+    this.physics.add.collider(this.monsters, this.obstacles)
+    this.physics.add.collider(this.monsters, this.monsters)
+    this.physics.add.overlap(this.player, this.monsters, (pl, mon) => {
+      if (mon.tryBite(pl, this.time.now)) this.flashHurt()
+    })
+
     // --- caméra ---
     const cam = this.cameras.main
     cam.setBounds(0, 0, this.worldW, this.worldH)
@@ -81,17 +93,17 @@ export default class GameScene extends Phaser.Scene {
     cam.setZoom(3)
     cam.setRoundPixels(true)
 
-    // --- HUD ---
-    this.add
-      .text(6, 6, 'Bouge : ZQSD / WASD / flèches', {
-        fontFamily: 'monospace',
-        fontSize: '8px',
-        color: '#ffffff',
-        backgroundColor: '#00000066',
-        padding: { x: 4, y: 3 },
-      })
-      .setScrollFactor(0)
-      .setDepth(10000)
+    // --- entrées combat ---
+    this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
+    this.input.on('pointerdown', (p) => {
+      if (p.rightButtonDown()) return
+      this.player.moveTo(p.worldX, p.worldY)
+      this.showMoveMarker(p.worldX, p.worldY)
+    })
+
+    this.gameOver = false
+    // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
+    if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
   }
 
   // ---------- helpers généraux ----------
@@ -353,10 +365,120 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  update() {
-    this.player.update()
+  // ---------- combat ----------
+
+  spawnMonsters() {
+    const types = Object.keys(MONSTER_TYPES)
+    let placed = 0
+    let tries = 0
+    while (placed < MONSTER_COUNT && tries < MONSTER_COUNT * 30) {
+      tries++
+      const tx = Phaser.Math.Between(2, MAP_W - 3)
+      const ty = Phaser.Math.Between(2, MAP_H - 3)
+      if (this.nearSpawn(tx, ty, 8)) continue // pas trop près du joueur
+      if (this.occupied.has(this.key(tx, ty))) continue // pas dans un arbre/rocher
+      const type = Phaser.Utils.Array.GetRandom(types)
+      this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, type))
+      placed++
+    }
+  }
+
+  /** Marqueur visuel à l'endroit cliqué (anneau qui se rétracte puis disparaît). */
+  showMoveMarker(x, y) {
+    if (this.moveMarker) this.moveMarker.destroy()
+    const ring = this.add.circle(x, y, 6, 0xffffff, 0)
+    ring.setStrokeStyle(2, 0xffe066, 0.9)
+    ring.setDepth(y) // suit le tri Y comme le reste
+    this.moveMarker = ring
+    this.tweens.add({
+      targets: ring,
+      scale: { from: 1.4, to: 0.5 },
+      alpha: { from: 1, to: 0 },
+      duration: 500,
+      onComplete: () => {
+        ring.destroy()
+        if (this.moveMarker === ring) this.moveMarker = null
+      },
+    })
+  }
+
+  /** Coup d'épée : arc devant le héros, dégâts aux monstres dans la zone. */
+  doAttack() {
+    const p = this.player
+    if (!p.startAttack(this.time.now)) return
+
+    const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing]
+    const cx = p.x + dir[0] * 14 // centre de la zone, devant le perso
+    const cy = p.y + dir[1] * 14
+    const RANGE = 20 // rayon de la zone de frappe (généreux)
+
+    this.showSlash(p.x, p.y, p.facing)
+
+    this.monsters.getChildren().forEach((mon) => {
+      if (!mon.active) return
+      // touché si le monstre est dans le rayon autour du point devant le perso
+      if (Phaser.Math.Distance.Between(cx, cy, mon.x, mon.y) <= RANGE) {
+        mon.takeDamage(p.attackPower)
+        const a = Math.atan2(mon.y - p.y, mon.x - p.x)
+        mon.setVelocity(Math.cos(a) * 150, Math.sin(a) * 150)
+      }
+    })
+  }
+
+  /** Petit éclair blanc en arc pour matérialiser le coup d'épée. */
+  showSlash(x, y, facing) {
+    const ang = { down: 90, up: -90, left: 180, right: 0 }[facing]
+    const g = this.add.graphics().setDepth(y + 50)
+    g.lineStyle(2, 0xffffff, 0.9)
+    const base = Phaser.Math.DegToRad(ang)
+    g.beginPath()
+    g.arc(x, y, 16, base - 0.7, base + 0.7)
+    g.strokePath()
+    this.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() })
+  }
+
+  onMonsterKilled(mon) {
+    this.player.gainXp(mon.def.xp)
+  }
+
+  onLevelUp() {
+    const p = this.player
+    const t = this.add
+      .text(p.x, p.y - 18, 'NIVEAU ' + p.level + ' !', {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: '#ffe066',
+        stroke: '#000000',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(20000)
+    this.tweens.add({ targets: t, y: t.y - 16, alpha: 0, duration: 900, onComplete: () => t.destroy() })
+  }
+
+  /** Retour visuel quand le héros encaisse : léger flash rouge sur les bords + shake doux. */
+  flashHurt() {
+    this.cameras.main.shake(90, 0.004)
+    const r = this.add
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0xff0000, 0.18)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(25000)
+    this.tweens.add({ targets: r, alpha: 0, duration: 200, onComplete: () => r.destroy() })
+  }
+
+  update(time) {
+    if (this.gameOver) return
+    this.player.update(time)
     const p = this.player
     p.setDepth(p.y)
+
+    this.monsters.getChildren().forEach((mon) => {
+      mon.update(time, p)
+      mon.setDepth(mon.y)
+    })
+
+    if (p.hp <= 0) this.handleDeath()
 
     const body = new Phaser.Geom.Rectangle(p.x - 6, p.y - 14, 12, 20)
     for (const tree of this.trees) {
@@ -366,5 +488,14 @@ export default class GameScene extends Phaser.Scene {
         leaf.alpha = Phaser.Math.Linear(leaf.alpha, target, 0.2)
       }
     }
+  }
+
+  handleDeath() {
+    this.gameOver = true
+    this.player.setVelocity(0, 0)
+    this.player.setTint(0x555555)
+    this.physics.pause()
+    // l'UIScene (non zoomée) affiche l'écran de Game Over
+    this.events.emit('gameover', this.player.level)
   }
 }

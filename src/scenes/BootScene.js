@@ -35,10 +35,19 @@ export default class BootScene extends Phaser.Scene {
       frameWidth: 16,
       frameHeight: 16,
     })
+
+    // monstres : spritesheets 16x16 (4x4)
+    for (const m of ['mon_mushroom', 'mon_lizard', 'mon_racoon']) {
+      this.load.spritesheet(m, `assets/sprites/${m}.png`, {
+        frameWidth: 16,
+        frameHeight: 16,
+      })
+    }
   }
 
   create() {
     this.createPlayerAnimations()
+    this.createMonsterAnimations()
     this.scene.start('GameScene')
   }
 
@@ -69,5 +78,34 @@ export default class BootScene extends Phaser.Scene {
     add('idle-up', [1], 1, 0)
     add('idle-left', [2], 1, 0)
     add('idle-right', [3], 1, 0)
+
+    // attaque : lignes 4-6 (frames 16-27), même logique par colonne=direction
+    add('attack-down', [16, 20, 24], 14, 0)
+    add('attack-up', [17, 21, 25], 14, 0)
+    add('attack-left', [18, 22, 26], 14, 0)
+    add('attack-right', [19, 23, 27], 14, 0)
+  }
+
+  /**
+   * Anim des monstres : spritesheet 4x4 organisé PAR COLONNE = direction
+   * (col0=Bas, col1=Haut, col2=Gauche, col3=Droite), chaque ligne = une frame.
+   * Comme le héros : marche directionnelle avec frames espacées de 4.
+   */
+  createMonsterAnimations() {
+    const dirs = { down: 0, up: 1, left: 2, right: 3 }
+    for (const m of ['mushroom', 'lizard', 'racoon']) {
+      for (const [dir, col] of Object.entries(dirs)) {
+        const key = `mon-${m}-${dir}`
+        if (this.anims.exists(key)) continue
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers('mon_' + m, {
+            frames: [col, col + 4, col + 8, col + 12],
+          }),
+          frameRate: 6,
+          repeat: -1,
+        })
+      }
+    }
   }
 }
