@@ -2694,8 +2694,8 @@ export default class GameScene extends Phaser.Scene {
     if (this.activeBoss === mon) this.activeBoss = null
 
     // butin GARANTI : 2 équipements épiques + gros tas d'or + un gros soin
-    this.drops.add(new Drop(this, mon.x - 12, mon.y, 'equip', 0, this.equipmentOfTier('epic')))
-    this.drops.add(new Drop(this, mon.x + 12, mon.y, 'equip', 0, this.equipmentOfTier('epic')))
+    this.drops.add(new Drop(this, mon.x - 12, mon.y, 'equip', 0, this.equipmentOfTier('legendary')))
+    this.drops.add(new Drop(this, mon.x + 12, mon.y, 'equip', 0, this.equipmentOfTier('legendary')))
     const gold = Phaser.Math.Between(120, 240) + mon.level * 20
     this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', gold))
     this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))

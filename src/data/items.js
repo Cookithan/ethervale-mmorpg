@@ -4,11 +4,14 @@
  * rareté, prix d'achat, et bonus de stats appliqués quand il est équipé.
  */
 
-// raretés (couleur texte + teinte de bordure), façon WoW
+// 4 paliers de rareté (brief §5) : Commun(gris) · Magique(bleu) · Rare(violet) · Légendaire(or).
+// ⚠️ Les CLÉS internes sont conservées pour ne rien casser dans le code existant :
+//   'rare' = palier MAGIQUE (bleu) · 'epic' = palier RARE (violet) · 'legendary' = nouveau (or, BOSS only).
 export const RARITY = {
-  common: { label: 'Commun', color: '#dcdcdc', tint: 0x9aa4b0, weight: 70 },
-  rare: { label: 'Rare', color: '#4aa3ff', tint: 0x3a7fd0, weight: 25 },
-  epic: { label: 'Épique', color: '#c77dff', tint: 0xa335ee, weight: 5 },
+  common: { label: 'Commun', color: '#dcdcdc', tint: 0x9aa4b0, weight: 60 },
+  rare: { label: 'Magique', color: '#4aa3ff', tint: 0x3a7fd0, weight: 25 },
+  epic: { label: 'Rare', color: '#c77dff', tint: 0xa335ee, weight: 12 },
+  legendary: { label: 'Légendaire', color: '#ffb02e', tint: 0xffae22, weight: 3 },
 }
 
 // `dur` = durabilité max (armes/armures s'usent au combat ; à 0 l'objet casse et se
@@ -47,13 +50,20 @@ export const ITEMS = {
   ring: { id: 'ring', name: 'Anneau de force', slot: 'accessory', icon: 'eq_ring', rarity: 'rare', price: 80, stats: { attack: 5 } },
   signet: { id: 'signet', name: 'Sceau du champion', slot: 'accessory', icon: 'eq_ring', rarity: 'epic', price: 210, stats: { attack: 9, defense: 3 } },
 
+  // LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand ni en butin normal, cf. SHOP_STOCK / equipmentOfTier) :
+  legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
+  legend_hammer: { id: 'legend_hammer', name: 'Marteau des Titans', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'legendary', price: 600, stats: { attack: 34 }, dur: 220, fx: 'fx-circslash' },
+  legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
+  legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
+  legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_armor', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
+
   // consommables (type 'consumable') -> usage = soin immédiat (clic dans le sac)
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'drop_heart', rarity: 'common', price: 25, heal: 45 },
   potion_big: { id: 'potion_big', name: 'Grande potion', type: 'consumable', icon: 'drop_heart', rarity: 'rare', price: 70, heal: 120 },
 }
 
-// stock du marchand = tout le catalogue
-export const SHOP_STOCK = Object.values(ITEMS)
+// stock du marchand = tout le catalogue SAUF les légendaires (exclusifs aux boss, brief §8)
+export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary')
 
 // libellés FR des slots (ordre d'affichage de l'équipement)
 export const SLOTS = ['weapon', 'armor', 'accessory']
