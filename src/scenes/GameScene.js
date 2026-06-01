@@ -102,11 +102,11 @@ const MONSTERS_BY_BIOME = {
 // NEIGE/hiver, au SUD un grand blob de DÉSERT. Les frontières sont déformées par un BRUIT 2D fort
 // (+ domain-warping) -> contours organiques (golfes, presqu'îles, îlots), surtout pas des bandes.
 const FOREST_MIN_R = 46 // ceinture de FORÊT garantie autour du village (rayon en tuiles) : la neige/le désert ne peuvent JAMAIS entrer dedans -> tampon prairie<->extrêmes
-const FOREST_LAT = 38 // au-delà de la ceinture : neige si latitude < -38 (Nord), désert si > 38 (Sud)
+const FOREST_LAT = 20 // au-delà de la ceinture : neige si latitude < -20 (Nord), désert si > 20 (Sud). Bande tempérée étroite -> plus de neige/désert et moins de forêt
 const VILLAGE_OFF_X = 16 // décalage (tuiles) du village par rapport au centre de l'île -> casse la symétrie
 const VILLAGE_OFF_Y = -12 // (village au Nord-Est du centre géométrique du continent)
-const CLIMATE_WARP = 30 // amplitude (tuiles) du bruit basse fréquence qui distord les frontières climatiques
-const CLIMATE_WARP2 = 14 // amplitude du bruit HAUTE fréquence -> doigts de neige / langues de désert qui s'imbriquent
+const CLIMATE_WARP = 32 // amplitude (tuiles) du bruit basse fréquence qui distord les frontières climatiques
+const CLIMATE_WARP2 = 20 // amplitude du bruit HAUTE fréquence -> doigts de neige / langues de désert qui s'imbriquent (fort mélange aux frontières)
 const LEVEL_REACH = 66 // distance (tuiles) au village où le niveau atteint le max (5) ; près du village = niv1
 const MONSTER_MAX_LEVEL = 5
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
@@ -282,7 +282,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.preview) {
       // aperçu d'accueil : caméra posée sur le village + léger pan cinématique (pas de suivi)
       cam.setZoom(2.8)
-      cam.centerOn(this.worldW / 2, this.worldH / 2)
+      cam.centerOn(this.cx * TILE, this.cy * TILE) // sur le VILLAGE (décalé du centre de l'île), là où ça vit
       const bx = cam.scrollX
       const by = cam.scrollY
       this.tweens.add({ targets: cam, scrollX: bx + 22, duration: 14000, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
@@ -628,7 +628,7 @@ export default class GameScene extends Phaser.Scene {
    *  bandes pleine largeur. Le bruit 2D distord le tout (contours organiques). */
   climateLat(tx, ty) {
     const nx = (tx - this.icx) / (MAP_W * 0.5) // -1 (Ouest) .. 0 (centre) .. 1 (Est)
-    const centerBias = 1 - 0.55 * nx * nx // ~1 au centre, ~0.45 aux bords E/O
+    const centerBias = 1 - 0.20 * nx * nx // léger biais central : neige/désert atteignent aussi les côtes E/O (moins de forêt)
     // bruit basse fréquence (forme générale des blobs) + bruit haute fréquence (CLIMATE_WARP2) qui
     // crée des DOIGTS de neige descendant dans la forêt et des LANGUES de désert remontant -> les
     // frontières s'imbriquent au lieu de faire des bandes droites. (Le tampon forêt reste protégé.)
