@@ -45,7 +45,6 @@ const MAP_W = 240
 const MAP_H = 200
 const ISLAND_RX = 92 // demi-largeur du continent (tuiles) -> marge océan gauche/droite = cx - RX
 const ISLAND_RY = 80 // demi-hauteur du continent (tuiles) -> marge océan haut/bas = cy - RY
-const COAST_NOISE = 0.16 // ondulation de la côte (fraction du rayon -> presqu'îles/golfes)
 
 // --- sol (TilesetField / field.png, 5 colonnes) ---
 const GRASS = 21 // herbe verte claire = sol de base
@@ -642,13 +641,27 @@ export default class GameScene extends Phaser.Scene {
     return 'forest'
   }
 
-  /** Vrai si la tuile est dans l'OCÉAN : tout ce qui est HORS de l'ellipse du continent
-   *  (centrée, demi-axes ISLAND_RX/RY), avec une côte ondulée par le bruit. -> île entourée
-   *  d'eau de TOUS les côtés (gauche/droite/haut/bas). */
+  /** Vrai si la tuile est dans l'OCÉAN : tout ce qui est HORS du continent. La forme de base est
+   *  une ellipse (demi-axes ISLAND_RX/RY) mais le RAYON DE CÔTE VARIE SELON L'ANGLE -> contour de
+   *  continent irrégulier (caps, golfes, presqu'îles) au lieu d'un disque parfait. On superpose :
+   *  une grande ondulation (forme générale asymétrique), des moyennes/fines (côte découpée), un
+   *  biais cos(angle) (un côté plus large que l'autre) et le bruit 2D local (casse la régularité
+   *  radiale -> aucune portion de côte ne ressemble à la voisine). Golfe borné pour ne JAMAIS
+   *  mordre la ceinture de forêt (intrusion max ~0.30 du rayon, soit > FOREST_MIN_R). */
   isOcean(tx, ty) {
-    const ex = (tx - this.cx) / ISLAND_RX
-    const ey = (ty - this.cy) / ISLAND_RY
-    return ex * ex + ey * ey > 1 + this.noise2D(tx, ty) * COAST_NOISE
+    const dx = tx - this.cx
+    const dy = ty - this.cy
+    const r = Math.hypot(dx / ISLAND_RX, dy / ISLAND_RY) // rayon dans l'ellipse normalisée (1 = côte de base)
+    const a = Math.atan2(dy, dx) // angle réel du point depuis le centre
+    let coast =
+      0.13 * Math.sin(a * 2 + 0.7) + // 2 grands lobes -> forme générale asymétrique
+      0.09 * Math.sin(a * 3 - 1.3) + // 3 lobes moyens
+      0.06 * Math.sin(a * 5 + 2.1) + // découpe
+      0.04 * Math.sin(a * 8 + 0.4) + // dentelure fine
+      0.07 * Math.cos(a) + // asymétrie Est/Ouest (un côté plus large)
+      this.noise2D(tx, ty) * 0.10 // bruit local -> golfes/caps qui ne suivent pas l'angle
+    coast = Phaser.Math.Clamp(coast, -0.30, 0.55) // -0.30 = golfe le plus profond (reste hors forêt)
+    return r > 1 + coast
   }
 
   /** Pose l'eau de l'OCÉAN (tuiles 'water_gen') sur le pourtour, avec collision. À appeler
