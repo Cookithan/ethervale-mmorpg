@@ -21,6 +21,9 @@ export const ITEMS = {
   sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'common', price: 40, stats: { attack: 8 }, dur: 50, fx: 'fx-slash' },
   katana: { id: 'katana', name: 'Katana', slot: 'weapon', classes: ['warrior'], icon: 'wpn_katana', rarity: 'rare', price: 90, stats: { attack: 14 }, dur: 70, fx: 'fx-slash' },
   rapier: { id: 'rapier', name: 'Rapière du duelliste', slot: 'weapon', classes: ['warrior'], icon: 'wpn_rapier', rarity: 'epic', price: 260, stats: { attack: 22 }, dur: 110, fx: 'fx-slash' },
+  // Guerrier — armes à LANCER (`ranged: true` -> l'attaque PROJETTE l'arme vers l'ennemi visible) :
+  throwknife: { id: 'throwknife', name: 'Couteaux de lancer', slot: 'weapon', classes: ['warrior'], icon: 'fx_kunai', ranged: true, proj: { tex: 'fx_kunai' }, rarity: 'common', price: 30, stats: { attack: 5 }, dur: 45 },
+  shuriken: { id: 'shuriken', name: 'Shuriken', slot: 'weapon', classes: ['warrior'], icon: 'fx_shuriken', ranged: true, proj: { tex: 'fx_shuriken', anim: 'fx-shuriken' }, rarity: 'rare', price: 80, stats: { attack: 9 }, dur: 60 },
   // Tank (masses / lames lourdes) -> slash circulaire lourd :
   club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'wpn_club', rarity: 'common', price: 35, stats: { attack: 6 }, dur: 60, fx: 'fx-circslash' },
   warhammer: { id: 'warhammer', name: 'Marteau de guerre', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'rare', price: 100, stats: { attack: 12 }, dur: 90, fx: 'fx-circslash' },

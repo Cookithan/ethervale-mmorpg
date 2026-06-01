@@ -74,6 +74,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const starterId = STARTER_WEAPON[this.className] ?? 'sword'
     this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: cloneItem(ITEMS.leather), accessory: null }
     this.inventory = [cloneItem(ITEMS.amulet)]
+    // (les armes à LANCER ne sont pas de départ : trop fortes -> uniquement achetables au marché)
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
 
     this.hp = this.baseMaxHp

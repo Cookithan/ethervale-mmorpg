@@ -32,11 +32,18 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
     this.dieAt = now + LIFESPAN
     this.target = target
     this.enableBody(true, x, y, true, true)
-    if (projFx && this.scene.anims.exists(projFx.anim)) {
+    const a = Math.atan2(ty - y, tx - x)
+    if (projFx) {
       this.setTexture(projFx.tex)
-      this.play(projFx.anim)
+      if (projFx.anim && this.scene.anims.exists(projFx.anim)) {
+        this.play(projFx.anim) // boule/shuriken animé (qui tourne)
+        this.setRotation(0)
+      } else {
+        this.anims.stop()
+        this.setRotation(a) // sprite STATIQUE (couteau/flèche) -> pointe dans la direction de tir
+      }
       this.setTint(projFx.tint ? tint : 0xffffff) // teinté par la couleur de magie, ou couleur d'origine
-      this.setScale(0.95)
+      this.setScale(projFx.scale ?? 0.95)
       this.body.setCircle(6, 2, 2)
     } else {
       this.anims.stop()
@@ -44,9 +51,9 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
       this.setTint(tint)
       this.setScale(1)
       this.body.setCircle(4)
+      this.setRotation(a)
     }
     this.setDepth(y + 40)
-    const a = Math.atan2(ty - y, tx - x)
     this.setVelocity(Math.cos(a) * SPEED, Math.sin(a) * SPEED)
   }
 

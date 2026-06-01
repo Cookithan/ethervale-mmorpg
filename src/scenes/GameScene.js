@@ -345,7 +345,7 @@ export default class GameScene extends Phaser.Scene {
     // --- entrées combat (désactivées en mode aperçu) ---
     if (!this.preview) {
       this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
-      this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
+      this.input.keyboard.on('keydown-SPACE', () => this.basicAttack())
       this.input.keyboard.on('keydown-F', () => this.shootForward())
       this.input.keyboard.on('keydown-ONE', () => this.castSpell()) // LE sort de la classe (touche 1)
       this.input.keyboard.on('keydown-R', () => this.castSpell()) // alias pratique (R)
@@ -2235,8 +2235,37 @@ export default class GameScene extends Phaser.Scene {
   basicAttack() {
     const p = this.player
     if (!p) return
-    if (p.abilities.melee) this.doAttack()
+    const w = p.equipped?.weapon
+    if (w?.ranged) this.throwWeapon(w) // arme à LANCER (couteau/shuriken)
+    else if (p.abilities.melee) this.doAttack()
     else if (p.abilities.ranged) this.shootForward()
+  }
+
+  /** Attaque d'une ARME À LANCER : projette le sprite de l'arme vers l'ennemi visible le plus proche
+   *  (ou tout droit devant), aux dégâts d'attaque du héros. */
+  throwWeapon(weapon) {
+    if (this.uiBusy()) return
+    const p = this.player
+    if (p.attacking || p.hp <= 0) return
+    if (!p.startShoot(this.time.now)) return
+    const target = this.nearestMonster(p.x, p.y, 220, true)
+    let tx
+    let ty
+    if (target) {
+      tx = target.x
+      ty = target.y
+    } else {
+      const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
+      tx = p.x + dir[0] * 120
+      ty = p.y + dir[1] * 120
+    }
+    const dx = tx - p.x
+    const dy = ty - p.y
+    if (Math.abs(dx) > Math.abs(dy)) p.facing = dx < 0 ? 'left' : 'right'
+    else p.facing = dy < 0 ? 'up' : 'down'
+    const proj = this.projectiles.get(p.x, p.y)
+    if (!proj) return
+    proj.fire(p.x, p.y, tx, ty, p.attackPower, this.time.now, target, 0xffffff, weapon.proj)
   }
 
   doAttack() {
@@ -2694,8 +2723,8 @@ export default class GameScene extends Phaser.Scene {
 
   /** Renvoie une COPIE d'un objet d'équipement de la rareté `tier` (commun/rare/épique). */
   equipmentOfTier(tier) {
-    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier)
-    if (pool.length === 0) pool = Object.values(ITEMS) // garde-fou si la rareté n'existe pas
+    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && !it.ranged) // armes à lancer = marché only
+    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => !it.ranged) // garde-fou
     return cloneItem(Phaser.Utils.Array.GetRandom(pool))
   }
 

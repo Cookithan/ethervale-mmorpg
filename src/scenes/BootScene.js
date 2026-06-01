@@ -92,6 +92,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_slash', 'assets/fx/slash.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (tranche lames)
     this.load.spritesheet('fx_energyball', 'assets/fx/energyball.png', { frameWidth: 16, frameHeight: 16 }) // 4 frames (projectile, teintable)
     this.load.spritesheet('fx_fireball', 'assets/fx/fireball.png', { frameWidth: 16, frameHeight: 16 }) // 4 frames (projectile feu)
+    this.load.spritesheet('fx_shuriken', 'assets/fx/shuriken.png', { frameWidth: 16, frameHeight: 16 }) // 2 frames (shuriken qui tourne)
+    this.load.image('fx_kunai', 'assets/fx/kunai.png') // dague de lancer (statique, pointe dans la direction)
   }
 
   create() {
@@ -139,6 +141,9 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('fx-fireball')) {
       this.anims.create({ key: 'fx-fireball', frames: this.anims.generateFrameNumbers('fx_fireball', { start: 0, end: 3 }), frameRate: 14, repeat: -1 })
+    }
+    if (!this.anims.exists('fx-shuriken')) {
+      this.anims.create({ key: 'fx-shuriken', frames: this.anims.generateFrameNumbers('fx_shuriken', { start: 0, end: 1 }), frameRate: 20, repeat: -1 })
     }
   }
 
