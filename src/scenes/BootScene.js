@@ -149,16 +149,46 @@ export default class BootScene extends Phaser.Scene {
       g.destroy()
     }
 
-    // 'bridge_gen' : tuile de pont en planches de bois (16x16) posée au-dessus de l'eau.
+    // 'bridge_gen' : tileset 64x16 = 4 variantes 16x16. PONT = PLANCHES de bois USÉES séparées par
+    // de l'EAU -> bandes alternées : planche (3px, bois) / eau (2px, rivière) / planche / eau ...
+    // Tout opaque + détails >=2px -> on lit bien "planche+eau+planche" sans scintiller au dézoom.
     if (!this.textures.exists('bridge_gen')) {
       const g = this.make.graphics({ x: 0, y: 0, add: false })
-      g.fillStyle(0xd49a58, 1) // bois clair (proche du chemin)
-      g.fillRect(0, 0, 16, 16)
-      g.fillStyle(0xab6f38, 1) // joints entre planches
-      for (let y = 0; y < 16; y += 5) g.fillRect(0, y, 16, 1)
-      g.fillStyle(0xeec394, 1) // reflets clairs en haut de chaque planche
-      for (let y = 1; y < 16; y += 5) g.fillRect(0, y, 16, 1)
-      g.generateTexture('bridge_gen', 16, 16)
+      const woods = [0xc0894d, 0xad7740, 0xcf975a] // teintes de bois usé
+      const knots = [[3, 1], [12, 5], [7, 10], [10, 1]] // un noeud par variante (sur une planche)
+      // motif vertical, période 9 px : 2 PLANCHES (3px + joint 1px + 3px) puis une bande d'EAU (2px)
+      // -> on voit surtout du bois, et un peu d'eau entre chaque PAIRE de planches (~22% d'eau).
+      for (let i = 0; i < 4; i++) {
+        const ox = i * 16
+        const shift = (i * 4) % 9 // décale le motif d'une variante à l'autre (0,4,8,3 -> 4 motifs distincts)
+        for (let y = 0; y < 16; y++) {
+          const m = (y + shift) % 9
+          if (m === 7 || m === 8) {
+            g.fillStyle(m === 7 ? 0x2f6ea8 : 0x3f8ed0, 1) // EAU (2px)
+            g.fillRect(ox, y, 16, 1)
+          } else if (m === 3) {
+            g.fillStyle(0x7c5128, 1) // joint sombre entre les 2 planches
+            g.fillRect(ox, y, 16, 1)
+          } else {
+            const plank = m < 3 ? 0 : 1 // planche du haut / du bas de la paire
+            g.fillStyle(woods[(plank + i) % 3], 1)
+            g.fillRect(ox, y, 16, 1)
+            if (m === 0 || m === 4) {
+              g.fillStyle(0xe2b176, 1) // arête supérieure éclairée de chaque planche
+              g.fillRect(ox, y, 16, 1)
+            } else if (m === 6) {
+              g.fillStyle(0x7c5128, 1) // ombre sous la planche basse
+              g.fillRect(ox, y, 16, 1)
+            }
+          }
+        }
+        // reflet sur la bande d'eau + noeud usé sur une planche
+        g.fillStyle(0x79b7ea, 1)
+        for (let y = 0; y < 16; y++) if ((y + shift) % 9 === 8) g.fillRect(ox + 2 + ((y + i) % 6), y, 4, 1)
+        g.fillStyle(0x70491f, 1)
+        g.fillRect(ox + knots[i][0], knots[i][1], 2, 2) // noeud (tache sombre)
+      }
+      g.generateTexture('bridge_gen', 64, 16)
       g.destroy()
     }
 

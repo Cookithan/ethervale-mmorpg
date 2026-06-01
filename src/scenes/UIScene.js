@@ -801,6 +801,15 @@ export default class UIScene extends Phaser.Scene {
         rg.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.6, cell + 0.6)
       }
     }
+    // ponts (bois) là où les chemins/routes franchissent les rivières
+    if (g.bridgeCells && g.bridgeCells.size) {
+      const bgfx = reg(this.add.graphics().setDepth(301.4))
+      bgfx.fillStyle(0x8a5a2b, 1)
+      for (const k of g.bridgeCells) {
+        const [tx, ty] = k.split(',').map(Number)
+        bgfx.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.8, cell + 0.8)
+      }
+    }
     // sentiers (chemins de terre) : petits points bruns reliant village et repaires
     if (g.pathCells && g.pathCells.size) {
       const pg = reg(this.add.graphics().setDepth(301.5))

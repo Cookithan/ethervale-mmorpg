@@ -738,6 +738,8 @@ export default class GameScene extends Phaser.Scene {
    */
   buildRivers() {
     this.waterCells = new Set()
+    this.bridgeCells = new Set() // cellules de pont (marchables ; eau rendue dessous, visible)
+    this.riverPaths = [] // tracé (centerline) de chaque rivière -> sert à poser les ponts régulièrement
     const wmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
     const wts = wmap.addTilesetImage('water_gen', 'water_gen', TILE, TILE) // eau générée par code
     this.waterLayer = wmap.createBlankLayer('water', wts, 0, 0).setDepth(-8)
@@ -750,29 +752,71 @@ export default class GameScene extends Phaser.Scene {
 
     if (RIVERS_ENABLED) {
       // 2 grandes rivières : naissent DANS LA NEIGE (Nord = "montagnes") et descendent en serpentant
-      // vers la mer au Sud, larges (~3 tuiles) -> elles coupent le passage (goulots, futurs ponts).
+      // vers la mer au Sud, larges (~3 tuiles) -> elles coupent le passage (goulots, ponts).
       const sources = this.findRiverSources()
       const baseAngs = [Math.PI * 0.58, Math.PI * 0.42] // descente Sud, l'une un peu O, l'autre un peu E
       sources.forEach((s, i) => this.carveRiver(s.tx, s.ty, baseAngs[i % 2]))
+      this.buildBridges() // plusieurs ponts PERPENDICULAIRES espacés le long de chaque rivière
     }
-    // GUÉS : une cellule d'eau traversée par un chemin devient un PONT marchable (sinon route coupée)
-    const fords = []
-    for (const k of [...this.waterCells]) {
-      const [x, y] = k.split(',').map(Number)
-      if (this.onPath(x, y, 1)) {
-        this.waterCells.delete(k)
-        fords.push([x, y])
-      }
-    }
-    for (const [fx, fy] of fords) this.bridgeLayer.putTileAt(0, fx, fy)
 
-    // rendu : eau générée (la glace est rendue sur sa couche, marchable, sans collision)
+    // rendu : eau générée (rendue AUSSI sous les ponts -> on la voit à travers les planches).
+    // La glace est rendue sur sa couche (marchable, sans collision).
     for (const k of this.waterCells) {
       if (this.iceCells.has(k)) continue
       const [x, y] = k.split(',').map(Number)
       this.waterLayer.putTileAt(Math.floor(tileNoise(x, y, 3) * 4), x, y)
     }
-    this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau (hors glace) bloque
+    this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau bloque...
+    for (const k of this.bridgeCells) {
+      const [x, y] = k.split(',').map(Number)
+      const t = this.waterLayer.getTileAt(x, y)
+      if (t) t.setCollision(false) // ...sauf sous un PONT (on marche dessus, l'eau reste visible)
+    }
+  }
+
+  /** Pose plusieurs PONTS le long de chaque rivière, espacés, chacun PERPENDICULAIRE à l'écoulement
+   *  (vraie travée de berge à berge, pas une ligne diagonale). */
+  buildBridges() {
+    const SPACING = 26 // ~34 tuiles entre deux ponts sur une même rivière
+    for (const path of this.riverPaths) {
+      for (let i = SPACING; i < path.length - 6; i += SPACING) {
+        const p = path[i]
+        const prev = path[Math.max(0, i - 3)]
+        const flow = Math.atan2(p.y - prev.y, p.x - prev.x)
+        this.bridgeSpan(p.x, p.y, flow)
+      }
+    }
+  }
+
+  /** Une travée de pont (largeur 2 le long de l'écoulement) qui traverse toute la largeur de la
+   *  rivière à (cx,cy), perpendiculairement au courant `flowAng`, + 1 tuile d'accostage sur chaque
+   *  berge. Les cellules deviennent marchables (collision retirée dans buildRivers). */
+  bridgeSpan(cx, cy, flowAng) {
+    const px = -Math.sin(flowAng) // direction perpendiculaire (en travers de la rivière)
+    const py = Math.cos(flowAng)
+    const fx = Math.cos(flowAng) // direction du courant (pour la largeur du pont)
+    const fy = Math.sin(flowAng)
+    const place = (x, y) => {
+      const tx = Math.round(x)
+      const ty = Math.round(y)
+      if (tx < 1 || ty < 1 || tx >= MAP_W - 1 || ty >= MAP_H - 1) return
+      const k = this.key(tx, ty)
+      if (this.iceCells.has(k)) return
+      this.bridgeCells.add(k)
+      this.bridgeLayer.putTileAt(Math.floor(tileNoise(tx, ty, 9) * 4), tx, ty) // variante de planches
+    }
+    for (const along of [0, 1]) {
+      // depuis le centre vers chaque berge, jusqu'à sortir de l'eau (+ 1 tuile d'accostage)
+      for (const dir of [1, -1]) {
+        for (let d = 0; d < 10; d++) {
+          const x = cx + px * d * dir + fx * along
+          const y = cy + py * d * dir + fy * along
+          const water = this.waterCells.has(this.key(Math.round(x), Math.round(y)))
+          place(x, y)
+          if (d > 0 && !water) break // sorti de la rivière : on s'arrête après la cellule d'accostage
+        }
+      }
+    }
   }
 
   /** Cherche 2 sources de rivière dans la NEIGE (le plus au Nord possible), une à gauche et une à
@@ -799,11 +843,13 @@ export default class GameScene extends Phaser.Scene {
     let x = sx
     let y = sy
     let ang = baseAng
+    const center = [] // tracé (centerline) -> sert à poser les ponts
     for (let guard = 0; guard < 1200; guard++) {
       const rx = Math.round(x)
       const ry = Math.round(y)
       if (rx < 2 || ry < 2 || rx > MAP_W - 3 || ry > MAP_H - 3) break
       if (this.isOcean(rx, ry)) break // arrivée à la mer
+      center.push({ x: rx, y: ry })
       for (let dx = -1; dx <= 1; dx++) {
         for (let dy = -1; dy <= 1; dy++) {
           const tx = rx + dx
@@ -818,6 +864,7 @@ export default class GameScene extends Phaser.Scene {
       x += Math.cos(ang) * 1.3
       y += Math.sin(ang) * 1.3
     }
+    if (center.length > 8) this.riverPaths.push(center)
   }
 
   /**
