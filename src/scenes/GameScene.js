@@ -41,10 +41,11 @@ function makeSeededRandom(seed) {
 const TILE = 16
 // grille TOTALE agrandie : le continent est une ÎLE elliptique CENTRÉE, entourée d'OCÉAN de
 // tous les côtés (marges nettes à gauche/droite ET haut/bas). Cf. isOcean/buildOcean.
-const MAP_W = 240
-const MAP_H = 200
-const ISLAND_RX = 92 // demi-largeur du continent (tuiles) -> marge océan gauche/droite = cx - RX
-const ISLAND_RY = 80 // demi-hauteur du continent (tuiles) -> marge océan haut/bas = cy - RY
+const MAP_W = 280 // grille avec marge d'OCÉAN autour du continent (vue d'ensemble au dézoom, sans île perdue)
+const MAP_H = 220
+const ISLAND_RX = 96 // demi-largeur du continent (tuiles) -> marge océan gauche/droite = icx - RX
+const ISLAND_RY = 82 // demi-hauteur du continent (tuiles) -> marge océan haut/bas = icy - RY
+const OCEAN_BG = 0x3f8ed0 // couleur de fond (océan) : marges hors-map au dézoom + raccord avec l'eau générée
 
 // --- sol (TilesetField / field.png, 5 colonnes) ---
 const GRASS = 21 // herbe verte claire = sol de base
@@ -97,16 +98,13 @@ const MONSTERS_BY_BIOME = {
   cursed: ['skull', 'spirit', 'flam'],
 }
 
-// MONDE type CONTINENT (pas en anneaux ni en bandes) : village au centre dans une clairière de
-// PRAIRIE, entourée de FORÊT dans toutes les directions (zone tempérée). Au NORD un grand blob de
-// NEIGE/hiver, au SUD un grand blob de DÉSERT. Les frontières sont déformées par un BRUIT 2D fort
-// (+ domain-warping) -> contours organiques (golfes, presqu'îles, îlots), surtout pas des bandes.
-const FOREST_MIN_R = 46 // ceinture de FORÊT garantie autour du village (rayon en tuiles) : la neige/le désert ne peuvent JAMAIS entrer dedans -> tampon prairie<->extrêmes
-const FOREST_LAT = 20 // au-delà de la ceinture : neige si latitude < -20 (Nord), désert si > 20 (Sud). Bande tempérée étroite -> plus de neige/désert et moins de forêt
-const VILLAGE_OFF_X = 16 // décalage (tuiles) du village par rapport au centre de l'île -> casse la symétrie
-const VILLAGE_OFF_Y = -12 // (village au Nord-Est du centre géométrique du continent)
-const CLIMATE_WARP = 32 // amplitude (tuiles) du bruit basse fréquence qui distord les frontières climatiques
-const CLIMATE_WARP2 = 20 // amplitude du bruit HAUTE fréquence -> doigts de neige / langues de désert qui s'imbriquent (fort mélange aux frontières)
+// MONDE type CONTINENT en ZONES (façon WoW) : le continent est un PATCHWORK de zones de biome
+// (forêt/neige/désert) défini par Voronoi sur des graines (cf. this.zoneSeeds dans create), avec des
+// frontières déformées par le bruit -> régions qui s'emboîtent, PAS d'anneaux ni de bandes. Le
+// village est dans une petite clairière au sein d'une zone de forêt.
+const ZONE_WARP = 16 // déformation (tuiles) des frontières de zones (Voronoi) -> bords organiques, pas droits
+const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île -> casse la symétrie (décalé à l'EST)
+const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 66 // distance (tuiles) au village où le niveau atteint le max (5) ; près du village = niv1
 const MONSTER_MAX_LEVEL = 5
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
@@ -195,6 +193,9 @@ export default class GameScene extends Phaser.Scene {
 
     this.worldW = MAP_W * TILE
     this.worldH = MAP_H * TILE
+    this.mapW = MAP_W // exposés pour l'UI (carte du monde / minimap)
+    this.mapH = MAP_H
+    this.tile = TILE
     // centre de l'ÎLE + du climat = centre géométrique de la grille (océan équilibré tout autour)
     this.icx = Math.floor(MAP_W / 2)
     this.icy = Math.floor(MAP_H / 2)
@@ -202,6 +203,15 @@ export default class GameScene extends Phaser.Scene {
     // l'île -> le village n'est plus au centre géométrique du continent (casse la symétrie circulaire).
     this.cx = this.icx + VILLAGE_OFF_X
     this.cy = this.icy + VILLAGE_OFF_Y
+    // ZONES de biome façon WoW (Voronoi) : graines [biome, x, y] qui s'emboîtent en régions. Le
+    // village est dans une zone de FORÊT ; neige tend vers le Nord, désert vers le Sud, mais décalées
+    // (staggered) -> patchwork organique, PAS des bandes ni un anneau radial.
+    const { icx, icy, cx, cy } = this
+    this.zoneSeeds = [
+      ['forest', cx, cy], ['forest', icx - 32, icy + 6], ['forest', icx + 62, icy - 8], ['forest', icx + 4, icy + 8],
+      ['snow', icx - 52, icy - 50], ['snow', icx + 2, icy - 64], ['snow', icx + 54, icy - 48], ['snow', icx - 78, icy - 30], ['snow', icx + 34, icy - 62],
+      ['desert', icx - 58, icy + 52], ['desert', icx + 6, icy + 68], ['desert', icx + 60, icy + 50], ['desert', icx + 74, icy + 32], ['desert', icx - 24, icy + 56],
+    ]
 
     // --- couches de sol ---
     // fond herbe plein derrière la tilemap : masque les interstices d'1px entre tuiles
@@ -226,8 +236,8 @@ export default class GameScene extends Phaser.Scene {
 
     // --- physique / héros ---
     this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
-    const spawnX = this.saveData ? this.saveData.x : this.worldW / 2
-    const spawnY = this.saveData ? this.saveData.y : this.worldH / 2
+    const spawnX = this.saveData ? this.saveData.x : this.cx * TILE // au VILLAGE (décalé du centre)
+    const spawnY = this.saveData ? this.saveData.y : this.cy * TILE
     this.player = new Player(this, spawnX, spawnY, { character: this.character, save: this.saveData })
     // le pseudo au-dessus du héros est dessiné par UIScene (scène non-zoomée) pour rester net/stable
 
@@ -280,30 +290,43 @@ export default class GameScene extends Phaser.Scene {
     const cam = this.cameras.main
     cam.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
     if (this.preview) {
-      // aperçu d'accueil : caméra posée sur le village + léger pan cinématique (pas de suivi)
-      cam.setZoom(2.8)
-      cam.centerOn(this.cx * TILE, this.cy * TILE) // sur le VILLAGE (décalé du centre de l'île), là où ça vit
-      const bx = cam.scrollX
-      const by = cam.scrollY
-      this.tweens.add({ targets: cam, scrollX: bx + 22, duration: 14000, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-      this.tweens.add({ targets: cam, scrollY: by + 14, duration: 11000, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-      // de temps en temps, dézoom TRÈS lent (vue large du monde) puis retour au village.
-      // on s'arrête AVANT les bords : zoom mini = celui qui couvre encore tout l'écran de map
-      // (max des deux ratios) + une marge, pour ne jamais laisser apparaître le gris hors-map.
-      const fitZoom = Math.max(this.scale.width / this.worldW, this.scale.height / this.worldH) * 1.08
+      // aperçu d'accueil : animation cinématique DOUCE entre un gros plan sur le village et une vue
+      // d'ensemble de l'île. zoom ET centre sont interpolés ENSEMBLE (un seul tween sur t) -> pas de
+      // pan gauche/droite parasite. Le dézoom cadre l'ÎLE (pas toute la grille d'océan) -> on ne
+      // s'éloigne pas trop.
+      cam.setBackgroundColor(OCEAN_BG) // marges hors-map = océan (pas de gris)
+      cam.setRoundPixels(false) // mouvement fluide (sinon arrondi pixel = à-coups)
+      cam.useBounds = false // pas de clamp : la caméra reste PILE sur le village même dézoomée
+      const vX = this.cx * TILE // centre FIXE = le village
+      const vY = this.cy * TILE
+      const closeZoom = 2.8
+      // zoom dézoomé qui cadre toute l'île (basé sur la taille de l'île, pas la grille -> pas trop loin)
+      const wideZoom = Math.min(
+        this.scale.width / (2 * ISLAND_RX * TILE * 1.2),
+        this.scale.height / (2 * ISLAND_RY * TILE * 1.2),
+      )
+      cam.setZoom(closeZoom)
+      cam.centerOn(vX, vY)
+      // on n'anime QUE le zoom ; on RECENTRE sur le village à chaque frame (sinon le zoom fait dériver
+      // le centre) -> caméra parfaitement immobile sur le village, juste un zoom in/out doux.
+      const cine = { z: closeZoom }
       this.tweens.add({
-        targets: cam,
-        zoom: fitZoom,
-        duration: 13000, // dézoom doux
-        hold: 3000, // on reste sur la vue d'ensemble un instant
-        yoyo: true, // puis on re-zoome sur le village
+        targets: cine,
+        z: wideZoom,
+        duration: 9000,
+        hold: 3500,
+        yoyo: true,
         repeat: -1,
-        delay: 16000, // gros plan au démarrage
-        repeatDelay: 16000, // gros plan entre deux cycles
+        delay: 5000,
+        repeatDelay: 6000,
         ease: 'Sine.inOut',
+        onUpdate: () => {
+          cam.setZoom(cine.z)
+          cam.centerOn(vX, vY)
+        },
       })
-      cam.setRoundPixels(false) // pan FLUIDE : sinon l'arrondi pixel fait avancer la caméra par à-coups
     } else {
+      cam.useBounds = true // (l'instance peut avoir été utilisée en preview où on l'a mis à false)
       // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
       // une vibration en diagonale (positions fractionnaires arrondies différemment).
       cam.startFollow(this.player, true)
@@ -622,58 +645,89 @@ export default class GameScene extends Phaser.Scene {
     return n / 4
   }
 
-  /** "Température" du climat : froid (<0) au Nord -> neige, chaud (>0) au Sud -> désert.
-   *  Le froid/chaud sont CONCENTRÉS vers le centre horizontal (biais en x) pour que les
-   *  coins Est/Ouest restent tempérés (forêt) -> neige/désert deviennent des BLOBS, pas des
-   *  bandes pleine largeur. Le bruit 2D distord le tout (contours organiques). */
-  climateLat(tx, ty) {
-    const nx = (tx - this.icx) / (MAP_W * 0.5) // -1 (Ouest) .. 0 (centre) .. 1 (Est)
-    const centerBias = 1 - 0.20 * nx * nx // léger biais central : neige/désert atteignent aussi les côtes E/O (moins de forêt)
-    // bruit basse fréquence (forme générale des blobs) + bruit haute fréquence (CLIMATE_WARP2) qui
-    // crée des DOIGTS de neige descendant dans la forêt et des LANGUES de désert remontant -> les
-    // frontières s'imbriquent au lieu de faire des bandes droites. (Le tampon forêt reste protégé.)
-    return (ty - this.icy) * centerBias
-      + this.noise2D(tx, ty) * CLIMATE_WARP
-      + this.noise2D(tx * 2.3 + 50, ty * 2.3 + 50) * CLIMATE_WARP2
+  /** 2e champ de bruit INDÉPENDANT (fréquences/phases différentes de noise2D). Sert à déformer les
+   *  frontières de zones dans biomeAt (Voronoi) -> bords organiques qui s'emboîtent, pas droits. */
+  noiseB(tx, ty) {
+    const wx = tx + Math.sin(ty * 0.037 + 4) * 9
+    const wy = ty + Math.sin(tx * 0.041 + 1.5) * 9
+    return (Math.sin(wx * 0.052 + 0.3) + Math.sin(wy * 0.063 + 2.7) + Math.sin((wx - wy) * 0.045 + 1.1)) / 3
   }
 
-  /** Biome type CONTINENT : clairière de prairie au centre (village), FORÊT tempérée tout
-   *  autour (toutes directions + E/O), gros blob de NEIGE au Nord et de DÉSERT au Sud.
-   *  Contours organiques grâce au bruit 2D (anti-bandes). */
+  /** Biome type CONTINENT en ZONES (façon WoW) : le village est dans une petite clairière au sein
+   *  d'une zone de FORÊT, et le reste du continent est un PATCHWORK de zones (forêt/neige/désert)
+   *  défini par VORONOI sur des graines (this.zoneSeeds), avec distances DÉFORMÉES par le bruit ->
+   *  frontières organiques qui s'emboîtent (pas de bandes, pas d'anneau radial). Les graines de
+   *  neige tendent vers le Nord, celles de désert vers le Sud, mais décalées (patchwork). */
   biomeAt(tx, ty) {
-    const d = Math.hypot(tx - this.cx, ty - this.cy)
-    // clairière du village : prairie au centre (bord légèrement irrégulier), toujours sûre
-    if (d < PRAIRIE_TILE_R + this.noise2D(tx, ty) * 3) return 'prairie'
-    // ceinture de forêt GARANTIE autour du village (bord ondulé) : tampon infranchissable par
-    // la neige/le désert -> ils gardent toujours leurs distances avec la prairie
-    if (d < FOREST_MIN_R + this.noise2D(tx, ty) * 5) return 'forest'
-    // au-delà du tampon : climat. Nord = neige, Sud = désert, reste (E/O, tempéré) = forêt
-    const L = this.climateLat(tx, ty)
-    if (L < -FOREST_LAT) return 'snow'
-    if (L > FOREST_LAT) return 'desert'
-    return 'forest'
+    // petit bourg dégagé autour du village (clairière irrégulière ~11 tuiles) -> le village est DANS
+    // la forêt, ce n'est PAS un grand ovale concentrique
+    const dv = Math.hypot(tx - this.cx, ty - this.cy)
+    const clearR = 11 * (1 + 0.25 * Math.sin(Math.atan2(ty - this.cy, tx - this.cx) * 2 + 1)) + this.noise2D(tx, ty) * 2
+    if (dv < clearR) return 'prairie'
+    // zone (graine) la plus proche en distance DÉFORMÉE -> Voronoi à frontières organiques
+    const wx = tx + this.noise2D(tx, ty) * ZONE_WARP
+    const wy = ty + this.noiseB(tx, ty) * ZONE_WARP
+    let best = 'forest'
+    let bd = Infinity
+    for (const z of this.zoneSeeds) {
+      const dd = (wx - z[1]) * (wx - z[1]) + (wy - z[2]) * (wy - z[2])
+      if (dd < bd) {
+        bd = dd
+        best = z[0]
+      }
+    }
+    return best
   }
 
-  /** Vrai si la tuile est dans l'OCÉAN : tout ce qui est HORS du continent. La forme de base est
-   *  une ellipse (demi-axes ISLAND_RX/RY) mais le RAYON DE CÔTE VARIE SELON L'ANGLE -> contour de
-   *  continent irrégulier (caps, golfes, presqu'îles) au lieu d'un disque parfait. On superpose :
-   *  une grande ondulation (forme générale asymétrique), des moyennes/fines (côte découpée), un
-   *  biais cos(angle) (un côté plus large que l'autre) et le bruit 2D local (casse la régularité
-   *  radiale -> aucune portion de côte ne ressemble à la voisine). Golfe borné pour ne JAMAIS
-   *  mordre la ceinture de forêt (intrusion max ~0.30 du rayon, soit > FOREST_MIN_R). */
+  /** Petites ÎLES détachées au large (archipel). Générées par DIRECTION : pour chaque angle on
+   *  place l'île JUSTE au-delà de la côte locale (rayon ellipse + un petit bras de mer) -> elle est
+   *  toujours séparée du continent par de l'eau. On vise surtout les diagonales (coins = plus
+   *  d'océan). Biome selon la latitude (Nord => neige, Sud => désert). [deg, rayon, marge]. */
+  islands() {
+    const { icx, icy } = this
+    const DIRS = [
+      [-52, 2, 0.16], [-128, 2, 0.16], // NE / NO (diagonales : place pour de vraies îles)
+      [52, 2, 0.16], [128, 2, 0.16], // SE / SO
+      [-88, 2, 0.12], [90, 2, 0.12], // N (neige) / S (désert)
+      [-20, 1, 0.13], [-160, 1, 0.13], // petites NE-est / NO-ouest
+      [30, 1, 0.10], [156, 1, 0.13], // petites SE-est / SO-ouest
+      [-100, 1, 0.10], [70, 1, 0.18], // toutes petites supplémentaires
+    ]
+    return DIRS.map(([deg, r, margin]) => {
+      const a = (deg * Math.PI) / 180
+      // rayon de côte local dans cette direction (même formule que isOcean, sans le bruit)
+      const coast = 0.14 * Math.sin(a * 2 + 0.6) + 0.11 * Math.sin(a * 3 + 2.2) + 0.07 * Math.sin(a * 5 - 1.0)
+      const f = 1 + Math.max(coast, 0) + margin + r * 0.02 // au-delà de la côte + bras de mer
+      const ix = Math.round(icx + f * ISLAND_RX * Math.cos(a))
+      const iy = Math.round(icy + f * ISLAND_RY * Math.sin(a))
+      return [ix, iy, r]
+    })
+  }
+
+  isIsland(tx, ty) {
+    for (const [ix, iy, r] of this.islands())
+      if (Math.hypot(tx - ix, ty - iy) <= r + this.noise2D(tx, ty)) return true
+    return false
+  }
+
+  /** Vrai si la tuile est dans l'OCÉAN : tout ce qui est HORS du continent (et pas une petite île).
+   *  Forme de base = ellipse (demi-axes ISLAND_RX/RY) mais RAYON DE CÔTE VARIABLE SELON L'ANGLE ->
+   *  contour de continent irrégulier (caps, golfes, presqu'îles) au lieu d'un disque parfait :
+   *  quelques lobes (forme générale) + le bruit 2D local (casse la régularité radiale -> aucune
+   *  portion de côte ne ressemble à la voisine). Golfe borné pour ne JAMAIS mordre la ceinture de
+   *  forêt (intrusion max ~0.30 du rayon -> reste loin du village). */
   isOcean(tx, ty) {
+    if (this.isIsland(tx, ty)) return false // île détachée = terre
     const dx = tx - this.icx
     const dy = ty - this.icy
     const r = Math.hypot(dx / ISLAND_RX, dy / ISLAND_RY) // rayon dans l'ellipse normalisée (1 = côte de base)
     const a = Math.atan2(dy, dx) // angle réel du point depuis le centre
     let coast =
-      0.13 * Math.sin(a * 2 + 0.7) + // 2 grands lobes -> forme générale asymétrique
-      0.09 * Math.sin(a * 3 - 1.3) + // 3 lobes moyens
-      0.06 * Math.sin(a * 5 + 2.1) + // découpe
-      0.04 * Math.sin(a * 8 + 0.4) + // dentelure fine
-      0.07 * Math.cos(a) + // asymétrie Est/Ouest (un côté plus large)
-      this.noise2D(tx, ty) * 0.10 // bruit local -> golfes/caps qui ne suivent pas l'angle
-    coast = Phaser.Math.Clamp(coast, -0.30, 0.55) // -0.30 = golfe le plus profond (reste hors forêt)
+      0.14 * Math.sin(a * 2 + 0.6) + // 2 grands lobes -> forme générale
+      0.11 * Math.sin(a * 3 + 2.2) + // 3 lobes moyens
+      0.07 * Math.sin(a * 5 - 1.0) + // découpe
+      0.16 * this.noise2D(tx, ty) // bruit local -> golfes/caps organiques (anti-rond)
+    coast = Phaser.Math.Clamp(coast, -0.30, 0.5) // -0.30 = golfe le plus profond (reste hors forêt)
     return r > 1 + coast
   }
 
@@ -1501,8 +1555,8 @@ export default class GameScene extends Phaser.Scene {
 
   /** Place le marchand près du spawn (PNJ statique avec collision) + son indice "E". */
   spawnMerchant() {
-    const mx = this.worldW / 2 + 3 * TILE
-    const my = this.worldH / 2
+    const mx = this.cx * TILE + 3 * TILE // au centre du VILLAGE (décalé), 3 cases à droite du spawn
+    const my = this.cy * TILE
     this.merchant = this.add.sprite(mx, my, 'npc_merchant', 0).setDepth(my)
     this.physics.add.existing(this.merchant, true)
     this.merchant.body.setSize(12, 12).setOffset(2, 4)
@@ -1534,7 +1588,7 @@ export default class GameScene extends Phaser.Scene {
   /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
   uiBusy() {
     const ui = this.scene.get('UIScene')
-    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.pauseOpen))
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.pauseOpen || ui.mapOpen))
   }
 
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */

@@ -34,6 +34,8 @@ export default class UIScene extends Phaser.Scene {
     this.forgeObjects = []
     this.pauseOpen = false
     this.pauseObjects = []
+    this.mapOpen = false
+    this.mapObjects = []
     this.shopTab = 'buy'
     this.toast = null
     this.zoneBanner = null
@@ -75,8 +77,14 @@ export default class UIScene extends Phaser.Scene {
       else if (this.forgeOpen) this.closeForge()
       else if (this.charOpen) this.closeChar()
       else if (this.shopOpen) this.closeShop()
+      else if (this.mapOpen) this.closeMap()
       else if (this.pauseOpen) this.closePause()
       else this.openPause() // rien d'ouvert -> menu pause
+    })
+    // M : carte du monde plein écran (toggle)
+    this.input.keyboard.on('keydown-M', () => {
+      if (this.mapOpen) this.closeMap()
+      else if (!this.dialogueOpen && !this.forgeOpen && !this.charOpen && !this.shopOpen && !this.pauseOpen) this.openMap()
     })
     // E / Espace : avance le dialogue (et le ferme à la dernière phrase)
     this.input.keyboard.on('keydown-E', () => {
@@ -110,7 +118,7 @@ export default class UIScene extends Phaser.Scene {
     if (ab.melee) parts.push('Espace = épée')
     if (ab.ranged) parts.push('F = sort')
     if (ab.heal) parts.push('R = soin')
-    parts.push('C = perso', 'Échap = menu')
+    parts.push('C = perso', 'M = carte', 'Échap = menu')
     reg(
       this.add
         .text(cw / 2, 8, parts.join(' · '), {
@@ -729,6 +737,88 @@ export default class UIScene extends Phaser.Scene {
     this.scene.stop('GameScene')
     this.scene.start('MenuScene')
     this.scene.stop() // arrête l'UIScene
+  }
+
+  // ---------- carte du monde (touche M) ----------
+
+  openMap() {
+    if (this.game_.gameOver) return
+    this.mapOpen = true
+    this.scene.pause('GameScene')
+    this.buildWorldMap()
+  }
+
+  closeMap() {
+    this.mapOpen = false
+    this.mapObjects.forEach((o) => o.destroy())
+    this.mapObjects = []
+    this.scene.resume('GameScene')
+  }
+
+  /** Dessine tout le continent (océan + biomes) échantillonné depuis GameScene, façon carte papier,
+   *  avec les marqueurs village + joueur. Vue d'ensemble plein écran (jeu en pause). */
+  buildWorldMap() {
+    this.mapObjects.forEach((o) => o.destroy())
+    this.mapObjects = []
+    const reg = (o) => {
+      this.mapObjects.push(o)
+      return o
+    }
+    const g = this.game_
+    const cw = this.scale.width
+    const ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x05070c, 0.92).setOrigin(0, 0).setDepth(300).setInteractive())
+
+    const mw = g.mapW
+    const mh = g.mapH
+    // zone d'affichage : on garde le ratio de la map, marge autour + place pour le titre
+    const availW = cw * 0.86
+    const availH = ch * 0.78
+    const cell = Math.min(availW / mw, availH / mh)
+    const mapPxW = cell * mw
+    const mapPxH = cell * mh
+    const ox = (cw - mapPxW) / 2
+    const oy = (ch - mapPxH) / 2 + 10
+
+    const COLOR = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72 }
+    const gfx = reg(this.add.graphics().setDepth(301))
+    // cadre + fond océan
+    gfx.fillStyle(COLOR.ocean, 1).fillRect(ox, oy, mapPxW, mapPxH)
+    const S = 2 // pas d'échantillonnage (perf : ~12k cases)
+    for (let ty = 0; ty < mh; ty += S) {
+      for (let tx = 0; tx < mw; tx += S) {
+        if (g.isOcean(tx, ty)) continue // déjà peint en océan
+        gfx.fillStyle(COLOR[g.biomeAt(tx, ty)] ?? COLOR.forest, 1)
+        gfx.fillRect(ox + tx * cell, oy + ty * cell, cell * S + 0.6, cell * S + 0.6)
+      }
+    }
+    reg(this.add.rectangle(ox + mapPxW / 2, oy + mapPxH / 2, mapPxW, mapPxH).setStrokeStyle(2, GOLD).setDepth(302))
+
+    // marqueur VILLAGE
+    const vx = ox + g.cx * cell
+    const vy = oy + g.cy * cell
+    reg(this.add.star(vx, vy, 5, 3, 6, 0xffe066).setDepth(303).setStrokeStyle(1, 0x5a4a10))
+    reg(this.add.text(vx, vy - 10, 'Village', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
+
+    // marqueur JOUEUR
+    const p = g.player
+    if (p) {
+      const dotX = ox + (p.x / g.tile) * cell
+      const dotY = oy + (p.y / g.tile) * cell
+      reg(this.add.circle(dotX, dotY, 4, 0x53e0ff).setDepth(304).setStrokeStyle(1.5, 0x06243a))
+    }
+
+    // titre + aide + légende
+    reg(this.add.text(cw / 2, oy - 24, 'Carte du monde', { fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(303))
+    reg(this.add.text(cw / 2, oy + mapPxH + 20, 'M / Échap : fermer', { fontFamily: 'monospace', fontSize: '12px', color: '#bcd' }).setOrigin(0.5).setDepth(303))
+    const legend = [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Océan', COLOR.ocean]]
+    let lx = cw / 2 - (legend.length * 78) / 2
+    const ly = oy + mapPxH + 40
+    for (const [name, col] of legend) {
+      reg(this.add.rectangle(lx, ly, 12, 12, col, 1).setOrigin(0, 0.5).setStrokeStyle(1, 0x000000).setDepth(303))
+      reg(this.add.text(lx + 16, ly, name, { fontFamily: 'monospace', fontSize: '11px', color: '#dfe6f0' }).setOrigin(0, 0.5).setDepth(303))
+      lx += 78
+    }
   }
 
   // ---------- dialogue (villageois) ----------
