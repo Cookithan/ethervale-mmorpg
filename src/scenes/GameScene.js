@@ -2289,12 +2289,15 @@ export default class GameScene extends Phaser.Scene {
     mon.takeDamage(Math.round(amount))
   }
 
-  /** Monstre actif le plus proche de (x,y) dans `radius`, sinon null. */
-  nearestMonster(x, y, radius) {
+  /** Monstre actif le plus proche de (x,y) dans `radius`, sinon null. Si `visibleOnly`, on ignore les
+   *  monstres HORS de la vue caméra -> on ne peut pas cibler/toucher un mob qu'on ne voit pas. */
+  nearestMonster(x, y, radius, visibleOnly = false) {
     let best = null
     let bestD = radius
+    const view = visibleOnly ? this.cameras.main.worldView : null
     this.monsters.getChildren().forEach((m) => {
       if (!m.active) return
+      if (view && !Phaser.Geom.Rectangle.Contains(view, m.x, m.y)) return // hors écran -> ignoré
       const d = Phaser.Math.Distance.Between(x, y, m.x, m.y)
       if (d < bestD) {
         bestD = d
@@ -2311,7 +2314,7 @@ export default class GameScene extends Phaser.Scene {
   shootForward() {
     if (this.uiBusy()) return
     const p = this.player
-    const target = this.nearestMonster(p.x, p.y, HOMING_RANGE)
+    const target = this.nearestMonster(p.x, p.y, HOMING_RANGE, true)
     if (target) {
       this.fireProjectile(target.x, target.y, target)
     } else {
@@ -2435,9 +2438,9 @@ export default class GameScene extends Phaser.Scene {
   spellMeteor() {
     const p = this.player
     if (p.casting) return false // déjà en incantation
-    if (!this.nearestMonster(p.x, p.y, 300)) {
+    if (!this.nearestMonster(p.x, p.y, 300, true)) {
       this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a')
-      return false // pas d'ennemi visible -> on n'incante pas (ni mana ni cooldown perdus)
+      return false // pas d'ennemi VISIBLE à l'écran -> on n'incante pas (ni mana ni cooldown perdus)
     }
     const CAST = 1300
     const start = this.time.now
@@ -2499,7 +2502,7 @@ export default class GameScene extends Phaser.Scene {
   /** Impact du Météore (fin d'incantation) : AoE sur l'ennemi le plus proche (ou devant si aucun). */
   meteorImpact() {
     const p = this.player
-    const target = this.nearestMonster(p.x, p.y, 280)
+    const target = this.nearestMonster(p.x, p.y, 280, true)
     let tx = p.x
     let ty = p.y
     if (target) {
