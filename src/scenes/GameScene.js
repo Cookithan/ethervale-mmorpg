@@ -100,8 +100,8 @@ const MONSTERS_BY_BIOME = {
 const ZONE_WARP = 16 // déformation (tuiles) des frontières de zones (Voronoi) -> bords organiques, pas droits
 const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île -> casse la symétrie (décalé à l'EST)
 const VILLAGE_OFF_Y = -2
-const LEVEL_REACH = 66 // distance (tuiles) au village où le niveau atteint le max (5) ; près du village = niv1
-const MONSTER_MAX_LEVEL = 5
+const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
+const MONSTER_MAX_LEVEL = 18 // zones lointaines = niveau élevé -> très coriaces (faut farmer/s'équiper)
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
 const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
@@ -2709,17 +2709,30 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  /** Fait apparaître un objet ramassable sur le cadavre, selon la table du monstre. */
+  /** Fait apparaître le butin sur le cadavre. Drops SERRÉS (brief §9c) : OR à chaque kill, mais
+   *  l'ÉQUIPEMENT ne tombe qu'à faible probabilité, avec une rareté pondérée (les bons objets se
+   *  méritent). L'élite : drop garanti + 1 cran de rareté. (Légendaire = boss uniquement.) */
   spawnDrop(mon) {
     const loot = mon.def.loot
     const lvlMul = mon.lvlMul ?? 1
-    // BUTIN DÉTERMINISTE (pas de hasard de rareté) : chaque type lâche un équipement de SA
-    // rareté fixe (lézard=commun, etc.). L'élite monte d'un cran de rareté.
-    const tier = mon.elite ? TIER_UP[mon.def.tier] : mon.def.tier
-    this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.equipmentOfTier(tier)))
-    // + de l'or (montant selon le niveau ; élite = ×3)
+    // OR (toujours)
     const g = Math.max(1, Math.round(Phaser.Math.Between(loot.gold[0], loot.gold[1]) * lvlMul * (mon.elite ? 3 : 1)))
     this.drops.add(new Drop(this, mon.x + 6, mon.y + 4, 'gold', g))
+    // ÉQUIPEMENT : ~18 % sur un mob normal, garanti sur une élite
+    if (mon.elite || Math.random() < 0.18) {
+      let tier = this.rollDropRarity()
+      if (mon.elite) tier = TIER_UP[tier] ?? tier
+      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.equipmentOfTier(tier)))
+    }
+  }
+
+  /** Tire une rareté de drop pondérée : Commun 60 % / Magique 25 % / Rare 12 % (clés internes
+   *  common/rare/epic). Le Légendaire ne tombe JAMAIS ici (exclusif aux boss). */
+  rollDropRarity() {
+    const r = Math.random() * 97
+    if (r < 60) return 'common'
+    if (r < 85) return 'rare' // = Magique
+    return 'epic' // = Rare
   }
 
   /** Renvoie une COPIE d'un objet d'équipement de la rareté `tier` (commun/rare/épique). */

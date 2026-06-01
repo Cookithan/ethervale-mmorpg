@@ -62,7 +62,8 @@ const LEASH_RANGE = 200 // distance parcourue depuis l'endroit où elle t'a rep�
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
-const LEVEL_STAT_STEP = 1 / 3 // +1/3 des stats de base par niveau -> niveau 4 = ×2 d'un niveau 1
+const LEVEL_STAT_STEP = 0.5 // +50 % des PV/XP de base par niveau -> zones lointaines TRÈS coriaces (brief)
+const LEVEL_DMG_STEP = 0.28 // dégâts montent plus DOUCEMENT que les PV (dur mais pas one-shot injuste)
 const BOSS_HP_MUL = 8 // PV d'un boss = type × niveau × 8 (gros sac à PV)
 const BOSS_DMG_MUL = 1.5 // dégâts du boss (kitable car plus lent que le joueur -> on encaisse rarement)
 const BOSS_XP_MUL = 8 // XP massive
@@ -90,14 +91,15 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.eliteName = opts.name ?? null
 
     // stats mises à l'échelle selon le NIVEAU (+12 %/niv) et le statut ÉLITE/BOSS
-    const lvlMul = 1 + (level - 1) * LEVEL_STAT_STEP // niveau 4 = ×2 d'un niveau 1
+    const lvlMul = 1 + (level - 1) * LEVEL_STAT_STEP // PV/XP : forte montée par niveau
+    const dmgLvlMul = 1 + (level - 1) * LEVEL_DMG_STEP // dégâts : montée plus douce
     this.lvlMul = lvlMul
     const hpMul = boss ? BOSS_HP_MUL : elite ? 2.2 : 1
     const dmgMul = boss ? BOSS_DMG_MUL : elite ? 1.6 : 1
     const xpMul = boss ? BOSS_XP_MUL : elite ? 3 : 1
     this.maxHp = Math.round(def.hp * lvlMul * hpMul)
     this.hp = this.maxHp
-    this.damage = Math.round(def.damage * lvlMul * dmgMul)
+    this.damage = Math.round(def.damage * dmgLvlMul * dmgMul)
     this.xpReward = Math.round(def.xp * lvlMul * xpMul)
     this.displayName = opts.name ?? def.name // nom affiché (boss/élite nommés, sinon type)
     this.aggroRange = boss ? def.aggro + 70 : def.aggro // le boss repère de plus loin

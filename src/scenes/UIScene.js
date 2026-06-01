@@ -1121,12 +1121,13 @@ export default class UIScene extends Phaser.Scene {
       this.sortCdVeil.setSize(this.sortBtnSize, this.sortBtnSize * ratio)
       this.sortCostText?.setColor(p.mana >= p.spell.cost ? '#7fb3ff' : '#ff6b6b')
     }
-    this.lvlText.setText(p.level >= 10 ? 'Niveau 10 (MAX)' : `Niveau ${p.level}`)
+    const maxLvl = p.maxLevel ?? 20
+    this.lvlText.setText(p.level >= maxLvl ? `Niveau ${maxLvl} (MAX)` : `Niveau ${p.level}`)
     this.goldText.setText(`Or : ${p.gold}`)
 
-    const xpRatio = p.level >= 10 ? 1 : Phaser.Math.Clamp(p.xp / p.xpToNext, 0, 1)
+    const xpRatio = p.level >= maxLvl ? 1 : Phaser.Math.Clamp(p.xp / p.xpToNext, 0, 1)
     this.xpBar.setSize(this.xpBarFullW * xpRatio, this.xpBarH)
-    this.xpText.setText(p.level >= 10 ? 'XP MAX' : `XP ${p.xp} / ${p.xpToNext}`)
+    this.xpText.setText(p.level >= maxLvl ? 'XP MAX' : `XP ${p.xp} / ${p.xpToNext}`)
 
     if (p.invVersion !== this.builtInvVersion) {
       this.builtInvVersion = p.invVersion

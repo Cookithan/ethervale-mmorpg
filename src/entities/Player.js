@@ -38,8 +38,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // état combat / progression
     this.level = 1
+    this.maxLevel = 20 // cap de niveau (montée rapide au début, lente vers le haut)
     this.xp = 0
-    this.xpToNext = 50
+    this.xpToNext = 80 // XP pour le niveau 2 (courbe exponentielle, cf. gainXp)
     this.gold = 0
 
     // stats de BASE selon la CLASSE (augmentent au niveau). Les totaux (maxHp/attackPower/
@@ -267,19 +268,20 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
   /** Ajoute de l'XP, gère le(s) passage(s) de niveau (cap 10). */
   gainXp(amount) {
-    if (this.level >= 10) return
+    if (this.level >= this.maxLevel) return
     this.xp += amount
-    while (this.xp >= this.xpToNext && this.level < 10) {
+    while (this.xp >= this.xpToNext && this.level < this.maxLevel) {
       this.xp -= this.xpToNext
       this.level++
       this.baseMaxHp += 20
       this.baseAttack += 4
       this.recomputeStats()
       this.hp = this.maxHp // soin complet au level up
-      this.xpToNext = Math.round(this.xpToNext * 1.4)
+      // courbe EXPONENTIELLE : chaque niveau coûte ~1,6× le précédent (niv2≈80 … niv20≈très cher)
+      this.xpToNext = Math.round(80 * Math.pow(1.6, this.level - 1))
       this.scene.onLevelUp?.()
     }
-    if (this.level >= 10) this.xp = 0
+    if (this.level >= this.maxLevel) this.xp = 0
   }
 
   update(time) {
