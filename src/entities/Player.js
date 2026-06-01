@@ -2,11 +2,13 @@ import Phaser from 'phaser'
 import { ITEMS, effectiveStats, cloneItem } from '../data/items.js'
 import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
 
-const SPEED = 65 // vitesse de déplacement (px/s)
+const SPEED = 65 // vitesse de déplacement de base (px/s) — modulée par la classe (speedMul)
 const ATTACK_MS = 320 // durée de l'animation d'attaque (déplacement bloqué)
 const ATTACK_COOLDOWN = 380 // délai mini entre deux attaques
 const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
 const SHOOT_COOLDOWN = 450 // délai mini entre deux tirs à distance (ms)
+const HEAL_COOLDOWN = 6000 // délai mini entre deux soins (ms) — classe Soigneur
+const HEAL_FRACTION = 0.35 // PV rendus par soin = 35 % des PV max
 
 /**
  * Player — héros contrôlé au clavier (ZQSD/WASD/flèches) ET au clic (click-to-move).
@@ -15,7 +17,12 @@ const SHOOT_COOLDOWN = 450 // délai mini entre deux tirs à distance (ms)
 export default class Player extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y, opts = {}) {
     const character = opts.character ?? DEFAULT_CHARACTER
-    const heroKey = character.hero ?? 'hero_green'
+    const classKey = character.classKey ?? 'warrior'
+    // repli si l'apparence sauvegardée n'existe plus (ancienne save) -> 1re apparence de la classe
+    let heroKey = character.hero
+    if (!heroKey || !scene.textures.exists(heroKey)) {
+      heroKey = (CLASSES[classKey] ?? CLASSES.warrior).heroes[0].key
+    }
     super(scene, x, y, heroKey, 0)
     scene.add.existing(this)
     scene.physics.add.existing(this)
@@ -42,6 +49,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.baseMaxHp = cls.hp
     this.baseAttack = cls.attack
     this.baseDefense = cls.defense
+
+    // capacités EXCLUSIVES de la classe (verrouillées à la création) + vitesse
+    this.abilities = cls.abilities ?? { melee: true, ranged: false, heal: false }
+    this.speed = SPEED * (cls.speedMul ?? 1)
+    this.nextHealAt = 0 // cooldown du sort de soin (Soigneur)
 
     // équipement (3 slots) + sac. Quelques objets de départ pour tester.
     this.equipped = { weapon: null, armor: null, accessory: null }
@@ -186,6 +198,17 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return true
   }
 
+  /**
+   * Sort de soin (classe Soigneur). Soigne 35 % des PV max si le cooldown est passé
+   * et que ce n'est pas déjà au max. Renvoie les PV rendus (0 si en cooldown / déjà plein).
+   */
+  castHeal(now) {
+    if (!this.abilities.heal) return 0
+    if (now < this.nextHealAt || this.hp <= 0 || this.hp >= this.maxHp) return 0
+    this.nextHealAt = now + HEAL_COOLDOWN
+    return this.heal(Math.round(this.maxHp * HEAL_FRACTION))
+  }
+
   /** Inflige des dégâts au héros (respecte les i-frames). Renvoie true si touché. */
   takeDamage(amount, now) {
     if (now < this.invulnUntil || this.hp <= 0) return false
@@ -260,7 +283,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    this.setVelocity(vx * SPEED, vy * SPEED)
+    this.setVelocity(vx * this.speed, vy * this.speed)
 
     if (vx < 0) this.facing = 'left'
     else if (vx > 0) this.facing = 'right'

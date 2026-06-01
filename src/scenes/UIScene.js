@@ -57,6 +57,17 @@ export default class UIScene extends Phaser.Scene {
 
     this.buildHud()
 
+    // pseudo du héros : dessiné ICI (scène non-zoomée) puis projeté depuis la caméra de GameScene
+    // chaque frame -> reste net et stable (pas de scintillement comme en espace-monde zoomé ×3).
+    this.playerNameplate = this.add
+      .text(0, 0, this.game_.character?.name ?? 'Héros', {
+        fontFamily: 'monospace', fontSize: '13px', color: '#7cfc9a',
+        stroke: '#000000', strokeThickness: 4,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(150)
+      .setVisible(false)
+
     // entrées UI
     this.input.keyboard.on('keydown-C', () => this.toggleChar())
     this.input.keyboard.on('keydown-ESC', () => {
@@ -93,10 +104,16 @@ export default class UIScene extends Phaser.Scene {
     const cw = this.scale.width
     const ch = this.scale.height
 
-    // aide (haut-centre)
+    // aide (haut-centre) — adaptée aux capacités de la classe
+    const ab = this.game_.player?.abilities ?? { melee: true, ranged: false, heal: false }
+    const parts = ['Clic = aller']
+    if (ab.melee) parts.push('Espace = épée')
+    if (ab.ranged) parts.push('F = sort')
+    if (ab.heal) parts.push('R = soin')
+    parts.push('C = perso', 'Échap = menu')
     reg(
       this.add
-        .text(cw / 2, 8, 'Clic = aller · Espace = épée · F = tir · C = perso · Échap = menu', {
+        .text(cw / 2, 8, parts.join(' · '), {
           fontFamily: 'monospace',
           fontSize: '11px',
           color: '#ffffff',
@@ -327,7 +344,7 @@ export default class UIScene extends Phaser.Scene {
     const y0 = ch / 2 - H / 2
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.97).setStrokeStyle(2, GOLD))
     const ch_ = this.game_.character ?? {}
-    const clsName = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank' }[p.className] ?? ''
+    const clsName = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank', healer: 'Soigneur' }[p.className] ?? ''
     reg(this.add.text(cw / 2, y0 + 12, ch_.name ?? 'Personnage', { fontFamily: 'monospace', fontSize: '16px', color: '#ffe066' }).setOrigin(0.5, 0))
     reg(this.add.text(cw / 2, y0 + 32, `${clsName}  ·  Niveau ${p.level}`, { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5, 0))
 
@@ -920,6 +937,22 @@ export default class UIScene extends Phaser.Scene {
     }
 
     this.updateBossBar(this.game_?.activeBoss) // barre de boss en haut (combat de boss)
+    this.updatePlayerNameplate(p) // pseudo au-dessus du héros (projeté depuis la caméra)
+  }
+
+  /** Place le pseudo au-dessus du héros en projetant sa position monde -> écran (caméra GameScene). */
+  updatePlayerNameplate(p) {
+    const np = this.playerNameplate
+    if (!np) return
+    // caché si mort ou si un panneau plein écran est ouvert (boutique/fiche/forge/dialogue/pause)
+    if (p.hp <= 0 || this.game_.gameOver || this.game_.uiBusy?.()) {
+      np.setVisible(false)
+      return
+    }
+    const cam = this.game_.cameras.main
+    const sx = Math.round((p.x - cam.worldView.x) * cam.zoom)
+    const sy = Math.round((p.y - 11 - cam.worldView.y) * cam.zoom) // un peu au-dessus de la tête
+    np.setPosition(sx, sy).setVisible(true)
   }
 
   showGameOver(level) {

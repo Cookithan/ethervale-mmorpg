@@ -1,74 +1,192 @@
 import Phaser from 'phaser'
-import { HEROES, CLASS_LIST } from '../data/classes.js'
+import { CLASSES, CLASS_LIST } from '../data/classes.js'
 
 const GOLD = 0xc8a24a
 const DIM = 0x49617f
 
-/** Création du personnage : apparence + nom + classe. */
+/**
+ * Création du personnage en 2 étapes :
+ *   1. choisir la CLASSE (capacités + stats)
+ *   2. choisir une APPARENCE parmi les 3 propres à la classe + saisir le nom
+ * puis « Commencer » lance la partie.
+ */
 export default class CharacterScene extends Phaser.Scene {
   constructor() {
     super('CharacterScene')
   }
 
   create() {
-    const cw = this.scale.width
-    const ch = this.scale.height
-    this.add.rectangle(0, 0, cw, ch, 0x0e1118).setOrigin(0, 0)
-    this.add.text(cw / 2, 26, 'Crée ton héros', { fontFamily: 'monospace', fontSize: '26px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
+    this.cw = this.scale.width
+    this.ch = this.scale.height
+    this.add.rectangle(0, 0, this.cw, this.ch, 0x0e1118).setOrigin(0, 0)
 
+    this.classKey = null
     this.heroIndex = 0
-    this.classKey = 'warrior'
     this.heroName = ''
+    this.step = null // conteneur de l'étape courante (détruit/reconstruit à chaque étape)
 
-    // --- apparence ---
-    this.add.text(cw / 2, 78, 'Apparence', { fontFamily: 'monospace', fontSize: '14px', color: '#9fb6cc' }).setOrigin(0.5)
+    this.input.keyboard.on('keydown', (e) => this.onKey(e))
+    this.showClassStep()
+  }
+
+  /** Vide l'étape courante avant d'en construire une autre. */
+  clearStep() {
+    if (this.caretTween) {
+      this.caretTween.stop()
+      this.caretTween = null
+    }
+    if (this.step) this.step.destroy(true)
+    this.step = this.add.container(0, 0)
+  }
+
+  /** Met à jour le champ pseudo : texte/placeholder, position du curseur, compteur. */
+  updateNameField() {
+    if (!this.nameText) return
+    const max = 12
+    const has = this.heroName.length > 0
+    this.nameText.setText(this.heroName)
+    this.namePlaceholder.setVisible(!has)
+    this.counter.setText(`${this.heroName.length}/${max}`)
+    this.counter.setColor(this.heroName.length >= max ? '#ff9d6b' : '#6b7d92')
+    // curseur juste après le texte saisi (au tout début si vide)
+    this.caret.x = this.nameText.x + (has ? this.nameText.width + 2 : 0)
+    // dès qu'un pseudo valide est saisi, on remet l'indication normale + on réactive le bouton
+    if (this.nameValid() && this.nameHint) {
+      this.nameHint.setText('Ce nom s’affichera au-dessus de ton personnage (toi et les autres joueurs).').setColor('#6b8caa')
+    }
+    this.refreshStartButton()
+  }
+
+  // ---------------- Étape 1 : la classe ----------------
+  showClassStep() {
+    this.clearStep()
+    const cw = this.cw
+    const ch = this.ch
+    const S = this.step
+    S.add(this.add.text(cw / 2, 30, '1. Choisis ta classe', { fontFamily: 'monospace', fontSize: '24px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5))
+    S.add(this.add.text(cw / 2, 60, 'Tes capacités dépendent de la classe et sont définitives.', { fontFamily: 'monospace', fontSize: '11px', color: '#9fb6cc' }).setOrigin(0.5))
+
+    const n = CLASS_LIST.length
+    const cardW = 150
+    const cgap = Math.min(170, (cw - 24) / n)
+    const cy = ch / 2
+    CLASS_LIST.forEach((c, i) => {
+      const x = cw / 2 + (i - (n - 1) / 2) * cgap
+      const box = this.add.rectangle(x, cy, cardW, 150, 0x1a2030, 1).setStrokeStyle(2, DIM).setInteractive({ useHandCursor: true })
+      // aperçu : 1re apparence de la classe (idle face)
+      const spr = this.add.sprite(x, cy - 44, c.heroes[0].key, 0).setScale(3)
+      spr.anims.play(`${c.heroes[0].key}-idle-down`)
+      const name = this.add.text(x, cy - 6, c.name, { fontFamily: 'monospace', fontSize: '15px', color: '#ffe066' }).setOrigin(0.5)
+      const desc = this.add.text(x, cy + 16, c.desc, { fontFamily: 'monospace', fontSize: '9px', color: '#cfe8ff', align: 'center', wordWrap: { width: cardW - 14 } }).setOrigin(0.5)
+      const kit = this.add.text(x, cy + 40, c.kit, { fontFamily: 'monospace', fontSize: '9px', color: '#9affc0', align: 'center', wordWrap: { width: cardW - 14 } }).setOrigin(0.5)
+      const stat = this.add.text(x, cy + 60, `PV ${c.hp} · ATQ ${c.attack} · DEF ${c.defense}`, { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5)
+      box.on('pointerover', () => box.setStrokeStyle(2, GOLD))
+      box.on('pointerout', () => box.setStrokeStyle(2, DIM))
+      box.on('pointerdown', () => {
+        this.classKey = c.key
+        this.heroIndex = 0
+        this.showHeroStep()
+      })
+      S.add([box, spr, name, desc, kit, stat])
+    })
+
+    this.button(S, cw / 2, ch - 40, 150, 'Retour', () => this.scene.start('MenuScene'))
+  }
+
+  // ---------------- Étape 2 : l'apparence ----------------
+  showHeroStep() {
+    this.clearStep()
+    const cw = this.cw
+    const ch = this.ch
+    const S = this.step
+    const cls = CLASSES[this.classKey]
+
+    S.add(this.add.text(cw / 2, 30, '2. Choisis ton apparence', { fontFamily: 'monospace', fontSize: '24px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5))
+    S.add(this.add.text(cw / 2, 60, `Classe : ${cls.name}  ·  ${cls.kit}`, { fontFamily: 'monospace', fontSize: '12px', color: '#9affc0' }).setOrigin(0.5))
+
+    // 3 apparences de la classe (idle animé), cliquables
     this.heroCells = []
-    const gap = 60
-    const startX = cw / 2 - ((HEROES.length - 1) * gap) / 2
-    HEROES.forEach((h, i) => {
+    const heroes = cls.heroes
+    const gap = 150
+    const startX = cw / 2 - ((heroes.length - 1) * gap) / 2
+    const hy = ch / 2 - 30
+    heroes.forEach((h, i) => {
       const x = startX + i * gap
-      const y = 122
-      const box = this.add.rectangle(x, y, 48, 48, 0x1a2030, 1).setStrokeStyle(2, DIM).setInteractive({ useHandCursor: true })
-      const spr = this.add.sprite(x, y + 2, h.key, 0).setScale(2.4)
+      const box = this.add.rectangle(x, hy, 96, 96, 0x1a2030, 1).setStrokeStyle(3, DIM).setInteractive({ useHandCursor: true })
+      const spr = this.add.sprite(x, hy + 2, h.key, 0).setScale(4.5)
       spr.anims.play(`${h.key}-idle-down`)
+      const name = this.add.text(x, hy + 60, h.name, { fontFamily: 'monospace', fontSize: '12px', color: '#ffffff' }).setOrigin(0.5)
       box.on('pointerdown', () => {
         this.heroIndex = i
-        this.refresh()
+        this.refreshHeroes()
       })
+      S.add([box, spr, name])
       this.heroCells.push(box)
     })
 
-    // --- nom (saisie clavier) ---
-    this.add.text(cw / 2, 168, 'Nom (tape au clavier)', { fontFamily: 'monospace', fontSize: '14px', color: '#9fb6cc' }).setOrigin(0.5)
-    this.add.rectangle(cw / 2, 196, 220, 30, 0x1a2030, 1).setStrokeStyle(2, GOLD)
-    this.nameText = this.add.text(cw / 2, 196, this.heroName || '_', { fontFamily: 'monospace', fontSize: '16px', color: '#ffffff' }).setOrigin(0.5)
-    this.input.keyboard.on('keydown', (e) => this.onKey(e))
+    // --- champ pseudo (saisie clavier) ---
+    const ny = ch / 2 + 72
+    const fieldW = 300
+    const fieldH = 36
+    const padL = 14
+    S.add(this.add.text(cw / 2, ny - 26, 'Ton pseudo (obligatoire)', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5))
+    // cadre du champ
+    this.nameBox = this.add.rectangle(cw / 2, ny + 4, fieldW, fieldH, 0x10151f, 1).setStrokeStyle(2, GOLD)
+    S.add(this.nameBox)
+    const left = cw / 2 - fieldW / 2 + padL
+    // texte saisi (aligné à gauche)
+    this.nameText = this.add.text(left, ny + 4, '', { fontFamily: 'monospace', fontSize: '17px', color: '#ffffff' }).setOrigin(0, 0.5)
+    S.add(this.nameText)
+    // texte indicatif quand vide
+    this.namePlaceholder = this.add.text(left, ny + 4, 'Tape ton nom…', { fontFamily: 'monospace', fontSize: '15px', color: '#566375' }).setOrigin(0, 0.5)
+    S.add(this.namePlaceholder)
+    // curseur clignotant
+    this.caret = this.add.rectangle(left, ny + 4, 2, 20, 0xffe066).setOrigin(0, 0.5)
+    S.add(this.caret)
+    this.caretTween = this.tweens.add({ targets: this.caret, alpha: 0, duration: 480, yoyo: true, repeat: -1 })
+    // compteur de caractères
+    this.counter = this.add.text(cw / 2 + fieldW / 2 - 8, ny + 4, '', { fontFamily: 'monospace', fontSize: '10px', color: '#6b7d92' }).setOrigin(1, 0.5)
+    S.add(this.counter)
+    this.nameHint = this.add.text(cw / 2, ny + 30, 'Ce nom s’affichera au-dessus de ton personnage (toi et les autres joueurs).', { fontFamily: 'monospace', fontSize: '9px', color: '#6b8caa' }).setOrigin(0.5)
+    S.add(this.nameHint)
 
-    // --- classe ---
-    this.add.text(cw / 2, 238, 'Classe', { fontFamily: 'monospace', fontSize: '14px', color: '#9fb6cc' }).setOrigin(0.5)
-    this.classCells = []
-    CLASS_LIST.forEach((c, i) => {
-      const x = cw / 2 + (i - 1) * 156
-      const y = 300
-      const box = this.add.rectangle(x, y, 144, 78, 0x1a2030, 1).setStrokeStyle(2, DIM).setInteractive({ useHandCursor: true })
-      this.add.text(x, y - 24, c.name, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe066' }).setOrigin(0.5)
-      this.add.text(x, y - 2, c.desc, { fontFamily: 'monospace', fontSize: '9px', color: '#cfe8ff', align: 'center', wordWrap: { width: 134 } }).setOrigin(0.5)
-      this.add.text(x, y + 24, `PV ${c.hp} · ATQ ${c.attack} · DEF ${c.defense}`, { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5)
-      box.on('pointerdown', () => {
-        this.classKey = c.key
-        this.refresh()
-      })
-      this.classCells.push({ box, key: c.key })
-    })
+    this.button(S, cw / 2 - 90, ch - 40, 150, 'Retour', () => this.showClassStep())
+    this.startBtn = this.button(S, cw / 2 + 90, ch - 40, 150, 'Commencer', () => this.start())
 
-    // --- boutons ---
-    this.button(cw / 2 - 90, ch - 44, 150, 'Retour', () => this.scene.start('MenuScene'))
-    this.button(cw / 2 + 90, ch - 44, 150, 'Commencer', () => this.start())
+    this.refreshHeroes()
+    this.updateNameField()
+  }
 
-    this.refresh()
+  /** Le pseudo est-il valide ? (au moins 1 caractère non-espace) */
+  nameValid() {
+    return this.heroName.trim().length >= 1
+  }
+
+  /** Active/grise le bouton Commencer selon la présence d'un pseudo. */
+  refreshStartButton() {
+    if (!this.startBtn) return
+    const ok = this.nameValid()
+    this.startBtn.bg.setStrokeStyle(2, ok ? GOLD : 0x3a4659)
+    this.startBtn.bg.setFillStyle(ok ? 0x1a2233 : 0x141a24, 1)
+    this.startBtn.txt.setColor(ok ? '#ffffff' : '#5d6b7d')
+    this.startBtn.enabled = ok
+  }
+
+  /** Refuse le départ sans pseudo : secoue le champ + message rouge. */
+  warnName() {
+    if (this.nameHint) this.nameHint.setText('⚠ Choisis un pseudo pour entrer dans le jeu').setColor('#ff6b6b')
+    if (this.nameBox) {
+      const x0 = this.nameBox.x
+      this.tweens.add({ targets: this.nameBox, x: x0 - 6, duration: 50, yoyo: true, repeat: 3, onComplete: () => this.nameBox.setX(x0) })
+    }
+  }
+
+  refreshHeroes() {
+    this.heroCells.forEach((b, i) => b.setStrokeStyle(3, i === this.heroIndex ? GOLD : DIM))
   }
 
   onKey(e) {
+    if (this.classKey == null) return // saisie du nom seulement à l'étape 2
     if (e.key === 'Backspace') this.heroName = this.heroName.slice(0, -1)
     else if (e.key === 'Enter') {
       this.start()
@@ -76,36 +194,41 @@ export default class CharacterScene extends Phaser.Scene {
     } else if (e.key.length === 1 && this.heroName.length < 12 && /[\p{L}0-9 '-]/u.test(e.key)) {
       this.heroName += e.key
     }
-    this.nameText.setText(this.heroName || '_')
-  }
-
-  refresh() {
-    this.heroCells.forEach((b, i) => b.setStrokeStyle(2, i === this.heroIndex ? GOLD : DIM))
-    this.classCells.forEach((c) => c.box.setStrokeStyle(2, c.key === this.classKey ? GOLD : DIM))
+    this.updateNameField()
   }
 
   start() {
+    if (this.classKey == null) return
+    if (!this.nameValid()) {
+      this.warnName() // pseudo obligatoire
+      return
+    }
     const character = {
-      hero: HEROES[this.heroIndex].key,
-      name: (this.heroName || 'Héros').trim() || 'Héros',
+      hero: CLASSES[this.classKey].heroes[this.heroIndex].key,
+      name: this.heroName.trim(),
       classKey: this.classKey,
     }
     this.scene.start('GameScene', { character })
   }
 
-  button(x, y, w, label, cb) {
+  button(container, x, y, w, label, cb) {
     const h = 38
     const bg = this.add.rectangle(x, y, w, h, 0x1a2233, 1).setStrokeStyle(2, GOLD)
     const txt = this.add.text(x, y, label, { fontFamily: 'monospace', fontSize: '15px', color: '#ffffff' }).setOrigin(0.5)
     const zone = this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true })
+    const btn = { bg, txt, zone, enabled: true }
     zone.on('pointerover', () => {
+      if (btn.enabled === false) return // pas de survol si grisé
       bg.setFillStyle(0x26344b, 1)
       txt.setColor('#ffe066')
     })
     zone.on('pointerout', () => {
+      if (btn.enabled === false) return
       bg.setFillStyle(0x1a2233, 1)
       txt.setColor('#ffffff')
     })
     zone.on('pointerdown', cb)
+    container.add([bg, txt, zone])
+    return btn
   }
 }

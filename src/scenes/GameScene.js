@@ -200,6 +200,7 @@ export default class GameScene extends Phaser.Scene {
     const spawnX = this.saveData ? this.saveData.x : this.worldW / 2
     const spawnY = this.saveData ? this.saveData.y : this.worldH / 2
     this.player = new Player(this, spawnX, spawnY, { character: this.character, save: this.saveData })
+    // le pseudo au-dessus du héros est dessiné par UIScene (scène non-zoomée) pour rester net/stable
 
     // --- décors ---
     this.obstacles = this.physics.add.staticGroup()
@@ -286,6 +287,7 @@ export default class GameScene extends Phaser.Scene {
       this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
       this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
       this.input.keyboard.on('keydown-F', () => this.shootForward())
+      this.input.keyboard.on('keydown-R', () => this.castHeal())
       this.input.keyboard.on('keydown-E', () => this.tryInteract())
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
@@ -1563,6 +1565,7 @@ export default class GameScene extends Phaser.Scene {
   doAttack() {
     if (this.uiBusy()) return
     const p = this.player
+    if (!p.abilities.melee) return // classe sans corps à corps (Mage/Soigneur)
     if (!p.startAttack(this.time.now)) return
 
     const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing]
@@ -1623,11 +1626,34 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /**
+   * R : sort de soin (classe Soigneur uniquement). Soigne le héros si le cooldown
+   * est passé, avec une aura verte + texte flottant. (Alliés/réanimation : plus tard.)
+   */
+  castHeal() {
+    if (this.uiBusy()) return
+    const p = this.player
+    if (!p.abilities.heal) return // réservé au Soigneur
+    const healed = p.castHeal(this.time.now)
+    if (healed <= 0) return // en cooldown ou déjà au max
+    this.showHealEffect(p.x, p.y)
+    this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A')
+  }
+
+  /** Aura de soin verte qui s'élargit et s'estompe autour de (x,y). */
+  showHealEffect(x, y) {
+    const ring = this.add.circle(x, y + 2, 6, 0x7cfc9a, 0).setStrokeStyle(2, 0x7cfc9a, 0.9).setDepth(y + 60)
+    this.tweens.add({ targets: ring, radius: 22, alpha: 0, duration: 520, ease: 'Quad.easeOut', onComplete: () => ring.destroy() })
+    const glow = this.add.circle(x, y + 2, 16, 0x7cfc9a, 0.25).setDepth(y + 59)
+    this.tweens.add({ targets: glow, alpha: 0, scale: 1.4, duration: 520, onComplete: () => glow.destroy() })
+  }
+
+  /**
    * Lance une boule d'énergie du héros vers (tx,ty). Si `target` est fourni, la
    * boule suit ce monstre (homing). Oriente le héros vers le tir et respecte le cooldown.
    */
   fireProjectile(tx, ty, target) {
     const p = this.player
+    if (!p.abilities.ranged) return // classe sans sort à distance (Guerrier/Tank)
     if (p.attacking || p.hp <= 0) return
     if (!p.startShoot(this.time.now)) return
 
