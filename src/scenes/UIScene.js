@@ -223,6 +223,29 @@ export default class UIScene extends Phaser.Scene {
       this.game_.castSpell?.()
     })
 
+    // --- MINIMAP (haut-droite) : image schématique de la map ('mmtex'), fenêtre ZOOMÉE qui suit le joueur ---
+    const mmSize = 150
+    const mmMargin = 12
+    const mmX = cw - mmSize - mmMargin
+    const mmY = mmMargin
+    this.mmGeom = { x: mmX, y: mmY, size: mmSize, tiles: 46 } // 46 tuiles visibles = zoom local
+    reg(this.add.rectangle(mmX, mmY, mmSize, mmSize, 0x0a1018, 1).setOrigin(0, 0)) // fond sombre (zones hors-map)
+    // masque = la fenêtre carrée fixe (partagé par l'image ET les points de mobs)
+    const mmMaskG = reg(this.make.graphics({ add: false }))
+    mmMaskG.fillStyle(0xffffff).fillRect(mmX, mmY, mmSize, mmSize)
+    const mmMask = mmMaskG.createGeometryMask()
+    this.minimapImg = this.textures.exists('mmtex') ? reg(this.add.image(mmX, mmY, 'mmtex').setOrigin(0, 0).setMask(mmMask)) : null
+    this.minimapMobs = reg(this.add.graphics().setMask(mmMask)) // points des mobs (redessinés chaque frame)
+    reg(this.add.rectangle(mmX, mmY, mmSize, mmSize, 0x000000, 0).setOrigin(0, 0).setStrokeStyle(2, GOLD)) // cadre
+    this.minimapDot = reg(this.add.circle(mmX + mmSize / 2, mmY + mmSize / 2, 3.5, 0x53e0ff).setStrokeStyle(1.5, 0x06243a))
+    // boussole N / S / E / O
+    const compass = (tx, ty, label, ox, oy) => reg(this.add.text(tx, ty, label, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#ffe8c2', stroke: '#000', strokeThickness: 3 }).setOrigin(ox, oy))
+    compass(mmX + mmSize / 2, mmY + 1, 'N', 0.5, 0)
+    compass(mmX + mmSize / 2, mmY + mmSize - 1, 'S', 0.5, 1)
+    compass(mmX + mmSize - 2, mmY + mmSize / 2, 'E', 1, 0.5)
+    compass(mmX + 2, mmY + mmSize / 2, 'O', 0, 0.5)
+    reg(this.add.text(mmX + mmSize / 2, mmY + mmSize + 3, 'M = carte du monde', { fontFamily: 'monospace', fontSize: '9px', color: '#cfe8ff', stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 0))
+
     // --- barre de BOSS (haut-centre, cachée hors combat de boss, style MMO) ---
     const bw = Math.min(440, cw * 0.62)
     const bcx = cw / 2
@@ -1137,6 +1160,39 @@ export default class UIScene extends Phaser.Scene {
 
     this.updateBossBar(this.game_?.activeBoss) // barre de boss en haut (combat de boss)
     this.updatePlayerNameplate(p) // pseudo au-dessus du héros (projeté depuis la caméra)
+    this.updateMinimap(p) // fenêtre zoomée de la minimap qui suit le joueur
+  }
+
+  /** Met à jour la minimap : on fait GLISSER l'image (sous le masque carré) pour garder le joueur centré. */
+  updateMinimap(p) {
+    if (!this.minimapImg || !this.mmGeom) return
+    const tile = this.game_.tile ?? 16
+    const scale = this.mmGeom.size / this.mmGeom.tiles // px d'écran par tuile (zoom)
+    const cx = this.mmGeom.x + this.mmGeom.size / 2
+    const cy = this.mmGeom.y + this.mmGeom.size / 2
+    this.minimapImg.setScale(scale)
+    this.minimapImg.setPosition(cx - (p.x / tile) * scale, cy - (p.y / tile) * scale) // centre sur le joueur
+    this.minimapDot.setPosition(cx, cy) // joueur toujours au centre
+    // points des MOBS (rouge ; boss = orange plus gros), redessinés chaque frame
+    const mobs = this.minimapMobs
+    const g = this.game_
+    if (mobs && g?.monsters) {
+      mobs.clear()
+      const half = this.mmGeom.size / 2
+      g.monsters.getChildren().forEach((m) => {
+        if (!m.active) return
+        const sx = cx + ((m.x - p.x) / tile) * scale
+        const sy = cy + ((m.y - p.y) / tile) * scale
+        if (Math.abs(sx - cx) > half || Math.abs(sy - cy) > half) return // hors fenêtre
+        if (m.isBoss) {
+          mobs.fillStyle(0xff7a1f, 1)
+          mobs.fillCircle(sx, sy, 3)
+        } else {
+          mobs.fillStyle(0xff4444, 1)
+          mobs.fillCircle(sx, sy, 1.8)
+        }
+      })
+    }
   }
 
   /** Place le pseudo au-dessus du héros en projetant sa position monde -> écran (caméra GameScene). */

@@ -262,10 +262,13 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.obstacles)
     this.physics.add.collider(this.player, this.waterLayer) // l'eau bloque (sauf ponts)
 
-    // --- monstres ---
+    // --- monstres --- (PAS en mode aperçu d'accueil : on garde le décor mais sans mobs -> moins lourd)
     this.monsters = this.physics.add.group()
-    this.spawnMonsters()
-    this.spawnBosses() // boss de biome (repaires fixes au fond de chaque zone)
+    this.bosses = []
+    if (!this.preview) {
+      this.spawnMonsters()
+      this.spawnBosses() // boss de biome (repaires fixes au fond de chaque zone)
+    }
     this.physics.add.collider(this.monsters, this.obstacles)
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
     this.physics.add.collider(this.monsters, this.monsters)
@@ -340,6 +343,7 @@ export default class GameScene extends Phaser.Scene {
       cam.startFollow(this.player, true)
       cam.setZoom(3)
       cam.setRoundPixels(true)
+      this.setupMinimap() // 2e caméra dézoomée (haut-droite) qui suit le joueur
     }
 
     // --- entrées combat (désactivées en mode aperçu) ---
@@ -395,6 +399,35 @@ export default class GameScene extends Phaser.Scene {
   saveGame() {
     if (this.gameOver || !this.player) return
     writeSave(makeSave(this.player, this.character))
+  }
+
+  // ---------- minimap (brief §7) ----------
+
+  /** Pré-génère une IMAGE schématique de TOUTE la map (1 px/tuile : couleurs de biome + eau + chemins),
+   *  comme la carte du monde (M) mais en texture. UIScene en affiche une fenêtre ZOOMÉE qui suit le joueur. */
+  setupMinimap() {
+    if (this.textures.exists('mmtex')) this.textures.remove('mmtex')
+    const g = this.make.graphics({ x: 0, y: 0, add: false })
+    const COL = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72, cursed: 0x7c4a63 }
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        g.fillStyle(this.isOcean(tx, ty) ? COL.ocean : COL[this.biomeAt(tx, ty)] ?? COL.forest, 1)
+        g.fillRect(tx, ty, 1, 1)
+      }
+    }
+    for (const k of this.waterCells) {
+      const [x, y] = k.split(',').map(Number)
+      if (this.isOcean(x, y)) continue // garde la couleur d'océan ; on ne repeint que les rivières
+      g.fillStyle(0x3f7fc0, 1)
+      g.fillRect(x, y, 1, 1)
+    }
+    for (const k of this.pathCells) {
+      const [x, y] = k.split(',').map(Number)
+      g.fillStyle(0xb5915c, 1)
+      g.fillRect(x, y, 1, 1)
+    }
+    g.generateTexture('mmtex', MAP_W, MAP_H)
+    g.destroy()
   }
 
   // ---------- mode aperçu (fond vivant de l'écran d'accueil) ----------

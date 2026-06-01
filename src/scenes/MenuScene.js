@@ -50,13 +50,14 @@ export default class MenuScene extends Phaser.Scene {
     }
     buttons.push({ label: 'Quitter', cb: () => this.quit() })
 
-    const startY = ch * 0.72
-    const panelH = buttons.length * 52 + 16
-    this.add.rectangle(cw / 2, startY + (buttons.length - 1) * 26, 340, panelH, DARK, 0.6).setStrokeStyle(2, BORDER).setDepth(10)
+    const startY = ch * 0.66
+    const step = 66
+    const panelH = buttons.length * step + 22
+    this.add.rectangle(cw / 2, startY + ((buttons.length - 1) * step) / 2, 410, panelH, DARK, 0.6).setStrokeStyle(2, BORDER).setDepth(10)
     let y = startY
     for (const b of buttons) {
-      this.button(cw / 2, y, 300, b.label, b.cb)
-      y += 52
+      this.button(cw / 2, y, 370, b.label, b.cb)
+      y += step
     }
 
     this.add
@@ -87,9 +88,9 @@ export default class MenuScene extends Phaser.Scene {
 
   /** Bouton chaud avec survol + clic. */
   button(x, y, w, label, cb) {
-    const h = 42
+    const h = 54
     const bg = this.add.rectangle(x, y, w, h, BTN, 1).setStrokeStyle(2, BORDER).setDepth(11)
-    const txt = this.add.text(x, y, label, { fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold', color: '#ffe0b0' }).setOrigin(0.5).setDepth(12)
+    const txt = this.add.text(x, y, label, { fontFamily: 'monospace', fontSize: '20px', fontStyle: 'bold', color: '#ffe0b0' }).setOrigin(0.5).setDepth(12)
     const zone = this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }).setDepth(12)
     zone.on('pointerover', () => {
       bg.setFillStyle(BTN_HOVER, 1)
