@@ -164,7 +164,7 @@ const BUILDINGS = {
 
 // --- eau (TilesetWater / water.png, 28 colonnes) ---
 const RIVERS_ENABLED = true // grandes rivières serpentant de l'intérieur jusqu'à la mer (+ ponts aux gués)
-const PATHS_ENABLED = true // sentiers de terre ORGANIQUES reliant le village aux repaires de boss
+const PATHS_ENABLED = false // (chemins ajoutés ENSUITE, un par un, après rivières + ponts)
 
 /**
  * GameScene — Phase 1, "vraie map".
@@ -749,10 +749,11 @@ export default class GameScene extends Phaser.Scene {
     this.spawnPonds() // petits lacs (forêt/prairie) + lacs gelés marchables (neige) -> crée iceCells
 
     if (RIVERS_ENABLED) {
-      // 1-2 rivières qui partent de l'intérieur et coulent vers la côte la plus proche (méandres)
-      for (const [sx, sy] of [[this.icx - 18, this.icy - 24], [this.icx + 30, this.icy + 28]]) {
-        this.carveRiver(sx, sy)
-      }
+      // 2 grandes rivières : naissent DANS LA NEIGE (Nord = "montagnes") et descendent en serpentant
+      // vers la mer au Sud, larges (~3 tuiles) -> elles coupent le passage (goulots, futurs ponts).
+      const sources = this.findRiverSources()
+      const baseAngs = [Math.PI * 0.58, Math.PI * 0.42] // descente Sud, l'une un peu O, l'autre un peu E
+      sources.forEach((s, i) => this.carveRiver(s.tx, s.ty, baseAngs[i % 2]))
     }
     // GUÉS : une cellule d'eau traversée par un chemin devient un PONT marchable (sinon route coupée)
     const fords = []
@@ -774,19 +775,37 @@ export default class GameScene extends Phaser.Scene {
     this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau (hors glace) bloque
   }
 
-  /** Creuse UNE rivière sinueuse de (sx,sy) [intérieur] jusqu'à l'OCÉAN, ~2 tuiles de large. Tend
-   *  doucement vers l'extérieur de l'île (la côte) + méandres ; ne traverse pas la clairière du village. */
-  carveRiver(sx, sy) {
+  /** Cherche 2 sources de rivière dans la NEIGE (le plus au Nord possible), une à gauche et une à
+   *  droite du centre, pour que les rivières "descendent des montagnes". */
+  findRiverSources() {
+    const pick = (targetX) => {
+      for (let ty = 6; ty < this.icy; ty++) {
+        for (let off = 0; off <= 24; off++) {
+          for (const tx of [targetX - off, targetX + off]) {
+            if (tx > 4 && tx < MAP_W - 5 && !this.isOcean(tx, ty) && !this.isIsland(tx, ty) && this.biomeAt(tx, ty) === 'snow') {
+              return { tx, ty }
+            }
+          }
+        }
+      }
+      return null
+    }
+    return [pick(this.icx - 24), pick(this.icx + 24)].filter(Boolean)
+  }
+
+  /** Creuse UNE rivière LARGE (~3 tuiles) et sinueuse de (sx,sy) jusqu'à l'OCÉAN, en gardant un cap
+   *  général `baseAng` (vers le Sud) + méandres. Ne traverse pas la clairière du village. */
+  carveRiver(sx, sy, baseAng) {
     let x = sx
     let y = sy
-    let ang = Math.atan2(y - this.icy, x - this.icx) // direction de départ : vers l'extérieur
-    for (let guard = 0; guard < 800; guard++) {
+    let ang = baseAng
+    for (let guard = 0; guard < 1200; guard++) {
       const rx = Math.round(x)
       const ry = Math.round(y)
       if (rx < 2 || ry < 2 || rx > MAP_W - 3 || ry > MAP_H - 3) break
       if (this.isOcean(rx, ry)) break // arrivée à la mer
-      for (let dx = 0; dx <= 1; dx++) {
-        for (let dy = 0; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
           const tx = rx + dx
           const ty = ry + dy
           if (tx > 1 && ty > 1 && tx < MAP_W - 1 && ty < MAP_H - 1 && this.biomeAt(tx, ty) !== 'prairie' && !this.isOcean(tx, ty)) {
@@ -794,9 +813,8 @@ export default class GameScene extends Phaser.Scene {
           }
         }
       }
-      const out = Math.atan2(y - this.icy, x - this.icx)
-      ang = Phaser.Math.Angle.RotateTo(ang, out, 0.07) // tend vers la côte
-      ang += Phaser.Math.FloatBetween(-0.55, 0.55) // méandres
+      ang = Phaser.Math.Angle.RotateTo(ang, baseAng, 0.04) // garde le cap général (descente vers le Sud)
+      ang += Phaser.Math.FloatBetween(-0.5, 0.5) // méandres
       x += Math.cos(ang) * 1.3
       y += Math.sin(ang) * 1.3
     }
