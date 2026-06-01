@@ -836,6 +836,11 @@ export default class UIScene extends Phaser.Scene {
       reg(this.add.text(bx, by - 9, `☠ ${bossNames[biome] ?? 'Boss'}`, { fontFamily: 'monospace', fontSize: '10px', color: '#ff8a8a', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
     }
 
+    // PNJ dispersés (petits points clairs)
+    for (const npc of g.wildNpcs ?? []) {
+      reg(this.add.circle(ox + npc.tx * cell, oy + npc.ty * cell, 2.5, 0xffe9a8).setDepth(303).setStrokeStyle(1, 0x6a5212))
+    }
+
     // marqueur JOUEUR
     const p = g.player
     if (p) {

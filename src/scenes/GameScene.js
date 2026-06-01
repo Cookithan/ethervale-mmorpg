@@ -7,15 +7,10 @@ import { ITEMS, cloneItem, RARITY } from '../data/items.js'
 import { DEFAULT_CHARACTER } from '../data/classes.js'
 import { makeSave, writeSave } from '../data/save.js'
 
-const MONSTER_COUNT = 70 // nombre de monstres sur la map
-const MONSTER_GAP = 7 // distance mini entre deux monstres ISOLÉS au spawn (en tuiles, anti-paquets)
-// Répartition "mix" type WoW : chaque biome reçoit un budget de mobs proportionnel à sa surface
-// jouable (aucune zone vide/surchargée). Une partie part en CAMPS (nids de 2-4 du même type,
-// espacés entre eux -> zones de marche vides), le reste en monstres ISOLÉS errants.
-const CAMP_SHARE = 0.6 // part du budget d'un biome placée en camps (le reste = isolés)
-const CAMP_RADIUS = 2 // rayon (tuiles) d'un camp autour de son centre (nid serré)
-const CAMP_GAP = 2 // distance mini entre deux mobs D'UN MÊME camp (assez serré pour faire "nid")
-const CAMP_SPACING = 12 // distance mini entre deux CENTRES de camps (-> couloirs vides entre nids)
+const MONSTER_COUNT = 110 // nombre de monstres sur la map (répartis ISOLÉS, couverture uniforme)
+const MONSTER_GAP = 6 // distance mini entre deux monstres au spawn (en tuiles) -> répartition régulière
+// Budget de mobs par biome proportionnel à sa surface jouable (aucune zone vide/surchargée),
+// puis placés en ISOLÉS bien espacés (pas de camps -> pas de zones vides, élites jamais en nid).
 const POND_COUNT = 13 // petits lacs (eau) dans forêt/neige/prairie
 const DRY_COUNT = 9 // lacs asséchés (terre craquelée) dans le désert
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
@@ -216,6 +211,8 @@ export default class GameScene extends Phaser.Scene {
     this.computeBossLairs()
     // points d'intérêt reliés par les sentiers organiques : village + repaires de boss
     this.pois = [{ tx: this.cx, ty: this.cy }, ...Object.values(this.bossLairs)]
+    // 15 PNJ dispersés sur la map (calculés tôt -> les petits chemins s'y greffent)
+    this.computeWildNpcs()
 
     // --- couches de sol ---
     // fond herbe plein derrière la tilemap : masque les interstices d'1px entre tuiles
@@ -575,6 +572,22 @@ export default class GameScene extends Phaser.Scene {
     if (snow) this.routePath(carve, village, { x: snow.tx, y: snow.ty })
     const forest = this.bossLairs?.forest
     if (forest) this.routePath(carve, village, { x: forest.tx, y: forest.ty }) // étape 5 : forêt (Est)
+    // PETITS CHEMINS : chaque PNJ dispersé est relié par un sentier qui se GREFFE sur la route
+    // principale la plus proche (-> les sentiers rejoignent le réseau et se croisent près des routes).
+    const roadCells = [...this.pathCells] // routes principales seulement (avant d'ajouter les sentiers PNJ)
+    for (const npc of this.wildNpcs ?? []) {
+      let best = null
+      let bd = Infinity
+      for (const k of roadCells) {
+        const [px, py] = k.split(',').map(Number)
+        const d = this.dist(px, py, npc.tx, npc.ty)
+        if (d < bd) {
+          bd = d
+          best = { x: px, y: py }
+        }
+      }
+      if (best) this.routePath(carve, best, { x: npc.tx, y: npc.ty })
+    }
     // retire le rendu du chemin DANS la clairière du village (il a ses propres allées) ; le chemin
     // qui traverse le DÉSERT est repeint en argile rouge (sinon invisible sur le sable = terre)
     const desertPath = new Set()
@@ -1436,33 +1449,11 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Peuple UN biome avec `budget` monstres : ~CAMP_SHARE en camps (nids de 2-4 du même type,
-   *  espacés de CAMP_SPACING -> couloirs vides entre eux), le reste en isolés bien dispersés. */
+  /** Peuple UN biome avec `budget` monstres ISOLÉS, bien espacés (couverture uniforme de la zone,
+   *  pas de regroupement en camps -> pas de zones vides, et les élites restent seules). */
   populateBiome(biome, budget) {
     if (budget <= 0) return
-    const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
-    const camps = [] // centres de camps déjà posés (pour les espacer entre eux)
-    let placed = 0
-    // --- CAMPS ---
-    const campTarget = Math.round(budget * CAMP_SHARE)
-    for (let guard = 0; placed < campTarget && guard < 80; guard++) {
-      const center = this.findTileInBiome(biome, { gap: MONSTER_GAP, awayFrom: camps, awayDist: CAMP_SPACING })
-      if (!center) break
-      camps.push(center)
-      const campType = Phaser.Utils.Array.GetRandom(pool) // un nid = un seul type (lecture "intentionnelle")
-      const size = Phaser.Math.Between(2, 4)
-      for (let k = 0, made = 0; k < size * 5 && made < size && placed < budget; k++) {
-        const tx = center.tx + Phaser.Math.Between(-CAMP_RADIUS, CAMP_RADIUS)
-        const ty = center.ty + Phaser.Math.Between(-CAMP_RADIUS, CAMP_RADIUS)
-        if (!this.spawnableTile(tx, ty) || this.biomeAt(tx, ty) !== biome) continue
-        if (this.monsterTooClose(tx, ty, CAMP_GAP)) continue
-        this.placeMonsterAt(tx, ty, biome, { type: campType })
-        made++
-        placed++
-      }
-    }
-    // --- ISOLÉS (le reste) ---
-    for (let guard = 0; placed < budget && guard < budget * 12; guard++) {
+    for (let placed = 0, guard = 0; placed < budget && guard < budget * 16; guard++) {
       const t = this.findTileInBiome(biome, { gap: MONSTER_GAP })
       if (!t) break
       this.placeMonsterAt(t.tx, t.ty, biome, {})
@@ -1616,6 +1607,32 @@ export default class GameScene extends Phaser.Scene {
       }
     }
     return null
+  }
+
+  /** Place 15 PNJ dispersés sur tout le continent (hors village/eau, espacés, dans tous les biomes).
+   *  Positions calculées tôt (avant les chemins) pour que de petits sentiers s'y greffent. */
+  computeWildNpcs() {
+    const names = ['Edda', 'Rurik', 'Sylvane', 'Bram', 'Oona', 'Tibert', 'Maelis', 'Joran', 'Cwen', 'Hadric', 'Niamh', 'Osric', 'Veya', 'Doran', 'Liesel']
+    const texes = ['npc_villager', 'npc_woman', 'npc_boy']
+    const pool = [
+      ['Bonjour, voyageur. La route est sûre tant qu\'on y reste.'],
+      ['Plus tu t\'éloignes du village, plus les bêtes sont coriaces.'],
+      ['On raconte qu\'un monstre colossal rôde au fond de cette contrée...'],
+      ['Le marchand du village rachète tout ce que tu ramasses.'],
+      ['Suis les chemins : ils mènent quelque part, l\'eau non.'],
+      ['Repose-toi un instant, l\'aventurier. Puis repars plus fort.'],
+    ]
+    this.wildNpcs = []
+    for (let guard = 0; this.wildNpcs.length < 15 && guard < 6000; guard++) {
+      const tx = Phaser.Math.Between(8, MAP_W - 9)
+      const ty = Phaser.Math.Between(8, MAP_H - 9)
+      if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
+      if (this.biomeAt(tx, ty) === 'prairie') continue // pas dans le village
+      if (this.dist(tx, ty, this.cx, this.cy) < 24) continue // pas collé au village
+      if (this.wildNpcs.some((n) => this.dist(tx, ty, n.tx, n.ty) < 20)) continue // espacés
+      const i = this.wildNpcs.length
+      this.wildNpcs.push({ tx, ty, tex: texes[i % texes.length], name: names[i], lines: pool[i % pool.length] })
+    }
   }
 
   spawnBosses() {
@@ -2047,6 +2064,10 @@ export default class GameScene extends Phaser.Scene {
     this.npcs = []
     for (const v of this.villagers || []) {
       this.addNpc(v.nx, v.ny, v.tex, v.name, v.lines, v.role ?? 'talk')
+    }
+    // PNJ dispersés sur la map (au bout des petits chemins) : cliquables / "Parler (E)" comme les autres
+    for (const npc of this.wildNpcs || []) {
+      this.addNpc(npc.tx, npc.ty, npc.tex, npc.name, npc.lines, 'talk')
     }
   }
 
