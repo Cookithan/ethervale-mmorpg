@@ -39,9 +39,10 @@ export const CLASSES = {
     kit: 'Boule (F) · Météore incanté (1)',
     // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
     heroes: [
-      { key: 'hero_spirit', name: 'Mage des cieux', magic: 0xeaf2ff }, // blanc (Spirit, spectre céleste)
-      { key: 'hero_mage_black', name: 'Mage de l’ombre', magic: 0x9b4dff }, // violet (au MILIEU)
-      { key: 'hero_flam', name: 'Mage de flamme', magic: 0xff3b30 }, // rouge (Flam, élémentaire de feu)
+      // spellFx = effet d'impact du Météore (anim, texture, taille de frame, teinté ou non par `magic`)
+      { key: 'hero_spirit', name: 'Mage des cieux', magic: 0xeaf2ff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true } }, // blanc
+      { key: 'hero_mage_black', name: 'Mage de l’ombre', magic: 0x9b4dff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true } }, // violet (au MILIEU)
+      { key: 'hero_flam', name: 'Mage de flamme', magic: 0xff3b30, spellFx: { anim: 'fx-explosion', tex: 'fx_explosion', frame: 40, tint: false } }, // rouge, explosion de feu
     ],
   },
   tank: {

@@ -2480,16 +2480,38 @@ export default class GameScene extends Phaser.Scene {
       ty = p.y + dir[1] * 80
     }
     const R = 46
-    const col = p.magicColor // couleur de la magie de l'apparence (violet / blanc / orange...)
-    const tele = this.add.circle(tx, ty, R, col, 0.18).setStrokeStyle(2, col, 0.8).setDepth(ty)
-    this.time.delayedCall(280, () => {
-      tele.destroy()
-      const boom = this.add.circle(tx, ty, R, col, 0.6).setDepth(ty + 1)
-      this.tweens.add({ targets: boom, alpha: 0, scale: 1.35, duration: 320, onComplete: () => boom.destroy() })
+    const col = p.magicColor // couleur de la magie de l'apparence (violet / blanc / rouge...)
+    const dealAoe = () => {
       const dmg = p.attackPower * 3.0 // gros dégâts AoE (récompense de l'incantation)
       this.monsters.getChildren().forEach((m) => {
         if (m.active && Phaser.Math.Distance.Between(tx, ty, m.x, m.y) <= R) this.hitMonster(m, dmg, tx, ty, 0)
       })
+    }
+    // zone télégraphiée (brève) + une boule qui TOMBE du ciel sur la zone -> vrai "météore"
+    const tele = this.add.circle(tx, ty, R, col, 0.16).setStrokeStyle(2, col, 0.7).setDepth(ty)
+    const orb = this.add.image(tx, ty - 96, 'proj').setTint(col).setScale(2.4).setDepth(ty + 5)
+    this.tweens.add({
+      targets: orb,
+      y: ty,
+      duration: 320,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        orb.destroy()
+        tele.destroy()
+        // belle anim d'impact propre à l'apparence (feu / spectre teinté) ; sinon cercle de repli
+        const fx = p.spellFx
+        if (fx && this.anims.exists(fx.anim)) {
+          const boom = this.add.sprite(tx, ty, fx.tex).setDepth(ty + 6).setScale((R * 2) / fx.frame)
+          if (fx.tint) boom.setTint(col)
+          boom.play(fx.anim)
+          boom.once('animationcomplete', () => boom.destroy())
+        } else {
+          const boom = this.add.circle(tx, ty, R, col, 0.6).setDepth(ty + 1)
+          this.tweens.add({ targets: boom, alpha: 0, scale: 1.35, duration: 320, onComplete: () => boom.destroy() })
+        }
+        this.cameras.main.shake(120, 0.004) // petit choc d'impact
+        dealAoe()
+      },
     })
   }
 

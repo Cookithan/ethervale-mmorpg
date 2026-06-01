@@ -56,8 +56,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.meleeKnock = cls.meleeKnock ?? 0 // recul de l'attaque de base : SEUL le Tank repousse (les autres = 0)
     this.shootCdMul = cls.shootCdMul ?? 1 // cadence du tir à distance (Mage = plus lent, tape plus fort)
     this.rangedDmgMul = cls.rangedDmgMul ?? 1 // multiplicateur de dégâts du tir à distance
-    // couleur de magie PROPRE à l'apparence (projectile + Météore) -> chaque mage a sa magie
-    this.magicColor = (cls.heroes ?? []).find((h) => h.key === heroKey)?.magic ?? 0xffffff
+    // magie PROPRE à l'apparence : couleur (projectile + Météore) + clé d'anim FX d'impact (optionnel)
+    const heroDef = (cls.heroes ?? []).find((h) => h.key === heroKey)
+    this.magicColor = heroDef?.magic ?? 0xffffff
+    this.spellFx = heroDef?.spellFx ?? null // ex: 'fx-explosion' -> anim jouée à l'impact du Météore
     this.casting = false // en incantation (Météore du Mage) -> déplacement bloqué
     this.castInterrupted = false // mis à true si on prend un coup pendant l'incantation -> sort annulé
     // MANA + LE sort de la classe (1 seul : coût mana + cooldown). Régén lente gérée dans update().

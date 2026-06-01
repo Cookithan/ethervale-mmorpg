@@ -77,6 +77,10 @@ export default class BootScene extends Phaser.Scene {
     for (const key of ['weapon_sword', 'weapon_katana', 'weapon_axe', 'weapon_bigsword', 'eq_armor', 'eq_amulet', 'eq_ring']) {
       this.load.image(key, `assets/items/${key}.png`)
     }
+
+    // FX animés (effets de sorts, dossier FX du pack)
+    this.load.spritesheet('fx_explosion', 'assets/fx/explosion.png', { frameWidth: 40, frameHeight: 40 }) // 9 frames (feu)
+    this.load.spritesheet('fx_spirit', 'assets/fx/spirit.png', { frameWidth: 32, frameHeight: 32 }) // 5 frames (blanc, teintable)
   }
 
   create() {
@@ -85,7 +89,28 @@ export default class BootScene extends Phaser.Scene {
     this.createMonsterAnimations()
     this.createNpcAnimations()
     this.createItemAnimations()
+    this.createFxAnimations()
     this.scene.start('MenuScene') // écran d'accueil (puis création de perso -> jeu)
+  }
+
+  /** Animations des effets de sorts (FX du pack). */
+  createFxAnimations() {
+    if (!this.anims.exists('fx-explosion')) {
+      this.anims.create({
+        key: 'fx-explosion',
+        frames: this.anims.generateFrameNumbers('fx_explosion', { start: 0, end: 8 }),
+        frameRate: 20,
+        repeat: 0,
+      })
+    }
+    if (!this.anims.exists('fx-spirit')) {
+      this.anims.create({
+        key: 'fx-spirit',
+        frames: this.anims.generateFrameNumbers('fx_spirit', { start: 0, end: 4 }),
+        frameRate: 16,
+        repeat: 0,
+      })
+    }
   }
 
   /** Animations des objets (pièce qui tourne). */
