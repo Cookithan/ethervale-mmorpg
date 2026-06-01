@@ -90,6 +90,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_aura', 'assets/fx/aura.png', { frameWidth: 25, frameHeight: 24 }) // 5 frames (soin, teinté vert)
     this.load.spritesheet('fx_circslash', 'assets/fx/circslash.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (Charge + masses)
     this.load.spritesheet('fx_slash', 'assets/fx/slash.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (tranche lames)
+    this.load.spritesheet('fx_energyball', 'assets/fx/energyball.png', { frameWidth: 16, frameHeight: 16 }) // 4 frames (projectile, teintable)
+    this.load.spritesheet('fx_fireball', 'assets/fx/fireball.png', { frameWidth: 16, frameHeight: 16 }) // 4 frames (projectile feu)
   }
 
   create() {
@@ -131,6 +133,12 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('fx-slash')) {
       this.anims.create({ key: 'fx-slash', frames: this.anims.generateFrameNumbers('fx_slash', { start: 0, end: 3 }), frameRate: 26, repeat: 0 })
+    }
+    if (!this.anims.exists('fx-energyball')) {
+      this.anims.create({ key: 'fx-energyball', frames: this.anims.generateFrameNumbers('fx_energyball', { start: 0, end: 3 }), frameRate: 14, repeat: -1 })
+    }
+    if (!this.anims.exists('fx-fireball')) {
+      this.anims.create({ key: 'fx-fireball', frames: this.anims.generateFrameNumbers('fx_fireball', { start: 0, end: 3 }), frameRate: 14, repeat: -1 })
     }
   }
 

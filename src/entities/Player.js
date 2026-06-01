@@ -60,6 +60,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     const heroDef = (cls.heroes ?? []).find((h) => h.key === heroKey)
     this.magicColor = heroDef?.magic ?? 0xffffff
     this.spellFx = heroDef?.spellFx ?? null // ex: 'fx-explosion' -> anim jouée à l'impact du Météore
+    this.projFx = heroDef?.proj ?? null // sprite/anim du projectile de base (ex: fx-fireball / fx-energyball teinté)
     this.casting = false // en incantation (Météore du Mage) -> déplacement bloqué
     this.castInterrupted = false // mis à true si on prend un coup pendant l'incantation -> sort annulé
     // MANA + LE sort de la classe (1 seul : coût mana + cooldown). Régén lente gérée dans update().

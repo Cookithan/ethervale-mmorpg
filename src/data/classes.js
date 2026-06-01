@@ -40,9 +40,9 @@ export const CLASSES = {
     // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
     heroes: [
       // spellFx = effet d'impact du Météore (anim, texture, taille de frame, teinté ou non par `magic`)
-      { key: 'hero_spirit', name: 'Mage des cieux', magic: 0xeaf2ff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true } }, // blanc
-      { key: 'hero_mage_black', name: 'Mage de l’ombre', magic: 0x9b4dff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true } }, // violet (au MILIEU)
-      { key: 'hero_flam', name: 'Mage de flamme', magic: 0xff3b30, spellFx: { anim: 'fx-explosion', tex: 'fx_explosion', frame: 40, tint: false } }, // rouge, explosion de feu
+      { key: 'hero_spirit', name: 'Mage des cieux', magic: 0xeaf2ff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true }, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // blanc
+      { key: 'hero_mage_black', name: 'Mage de l’ombre', magic: 0x9b4dff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true }, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // violet (au MILIEU)
+      { key: 'hero_flam', name: 'Mage de flamme', magic: 0xff3b30, spellFx: { anim: 'fx-explosion', tex: 'fx_explosion', frame: 40, tint: false }, proj: { anim: 'fx-fireball', tex: 'fx_fireball', tint: false } }, // rouge, boule de feu
     ],
   },
   tank: {
@@ -68,9 +68,9 @@ export const CLASSES = {
     abilities: { melee: false, ranged: true, heal: true },
     kit: 'Projectile (F) · Soin (1)',
     heroes: [
-      { key: 'hero_sorcerer', name: 'Soigneuse des ombres', magic: 0x8ef0a0 }, // SorcererBlack ; magie de soin (vert sacré)
-      { key: 'hero_cavegirl', name: 'Mia la soigneuse', magic: 0x8ef0a0 }, // Cavegirl, au MILIEU
-      { key: 'hero_sorcerer_orange', name: 'Soigneuse de la lumière', magic: 0x8ef0a0 }, // SorcererOrange
+      { key: 'hero_sorcerer', name: 'Soigneuse des ombres', magic: 0x8ef0a0, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // SorcererBlack ; magie de soin (vert sacré)
+      { key: 'hero_cavegirl', name: 'Mia la soigneuse', magic: 0x8ef0a0, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // Cavegirl, au MILIEU
+      { key: 'hero_sorcerer_orange', name: 'Soigneuse de la lumière', magic: 0x8ef0a0, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // SorcererOrange
     ],
   },
 }

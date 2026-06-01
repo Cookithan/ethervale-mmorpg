@@ -2574,7 +2574,7 @@ export default class GameScene extends Phaser.Scene {
 
     const proj = this.projectiles.get(p.x, p.y)
     if (!proj) return
-    proj.fire(p.x, p.y, tx, ty, Math.round(p.attackPower * p.rangedDmgMul), this.time.now, target, p.magicColor)
+    proj.fire(p.x, p.y, tx, ty, Math.round(p.attackPower * p.rangedDmgMul), this.time.now, target, p.magicColor, p.projFx)
     // on VOIT l'arme à distance (sceptre/baguette) pointer vers la cible
     const wi = p.equipped?.weapon?.icon
     if (wi && this.textures.exists(wi)) this.showWeaponPoint(p.x, p.y, p.facing, wi)
