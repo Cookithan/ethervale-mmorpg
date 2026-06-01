@@ -575,18 +575,33 @@ export default class GameScene extends Phaser.Scene {
     // PETITS CHEMINS : chaque PNJ dispersé est relié par un sentier qui se GREFFE sur la route
     // principale la plus proche (-> les sentiers rejoignent le réseau et se croisent près des routes).
     const roadCells = [...this.pathCells] // routes principales seulement (avant d'ajouter les sentiers PNJ)
+    const grafts = [] // points de greffe déjà utilisés (pour ne pas coller deux sentiers ensemble)
+    const GRAFT_GAP = 9 // distance mini entre deux points de greffe -> les sentiers ne fusionnent pas
     for (const npc of this.wildNpcs ?? []) {
+      // point de route le plus proche du PNJ, MAIS assez loin des greffes déjà posées (sinon les
+      // sentiers se rejoignent et se fusionnent, surtout dans les zones étroites comme l'hiver).
       let best = null
       let bd = Infinity
+      let fallback = null
+      let fbd = Infinity
       for (const k of roadCells) {
         const [px, py] = k.split(',').map(Number)
         const d = this.dist(px, py, npc.tx, npc.ty)
+        if (d < fbd) {
+          fbd = d
+          fallback = { x: px, y: py }
+        }
+        if (grafts.some((g) => this.dist(g.x, g.y, px, py) < GRAFT_GAP)) continue
         if (d < bd) {
           bd = d
           best = { x: px, y: py }
         }
       }
-      if (best) this.routePath(carve, best, { x: npc.tx, y: npc.ty })
+      const graft = best || fallback
+      if (graft) {
+        grafts.push(graft)
+        this.routePath(carve, graft, { x: npc.tx, y: npc.ty })
+      }
     }
     // retire le rendu du chemin DANS la clairière du village (il a ses propres allées) ; le chemin
     // qui traverse le DÉSERT est repeint en argile rouge (sinon invisible sur le sable = terre)
@@ -599,6 +614,15 @@ export default class GameScene extends Phaser.Scene {
     }
     this.paintBlob(cells, BLOB.dirt, true)
     this.paintBlob(desertPath, BLOB.cursed, true)
+    // GUÉS : là où un chemin traverse une rivière-FRONTIÈRE, on retire l'eau (le chemin fait le gué)
+    // -> les routes franchissent les frontières tout droit, sans zigzaguer pour trouver un trou.
+    for (const k of this.pathCells) {
+      if (this.frontierCells && this.frontierCells.has(k)) {
+        this.waterCells.delete(k)
+        const [x, y] = k.split(',').map(Number)
+        this.waterLayer.removeTileAt(x, y)
+      }
+    }
   }
 
   /** Trace une ROUTE de a vers b qui CONTOURNE l'eau et ne la franchit QUE par les ponts : on
@@ -730,12 +754,16 @@ export default class GameScene extends Phaser.Scene {
     return null
   }
 
-  /** Case franchissable à pied par une route : dans la map, ni océan, ni rivière (sauf PONT). */
+  /** Case franchissable par une ROUTE : ni océan, ni grande rivière (sauf PONT). Les rivières-
+   *  FRONTIÈRES (fines) sont franchissables tout droit -> on y posera un gué (cf. fin de paintPaths)
+   *  au lieu de faire zigzaguer le chemin pour trouver un trou. */
   walkableForPath(x, y) {
     if (x <= 1 || y <= 1 || x >= MAP_W - 1 || y >= MAP_H - 1) return false
     if (this.isOcean(x, y)) return false
     const k = this.key(x, y)
-    return !this.waterCells.has(k) || this.bridgeCells.has(k)
+    if (this.bridgeCells && this.bridgeCells.has(k)) return true
+    if (this.frontierCells && this.frontierCells.has(k)) return true
+    return !this.waterCells.has(k)
   }
 
   /** BFS 8 directions (sans couper les diagonales d'eau) de (sx,sy) à (gx,gy) sur les cases
@@ -950,12 +978,13 @@ export default class GameScene extends Phaser.Scene {
     this.spawnPonds() // petits lacs (forêt/prairie) + lacs gelés marchables (neige) -> crée iceCells
 
     if (RIVERS_ENABLED) {
+      this.buildFrontierRivers() // rivières-FRONTIÈRES fines le long des bords de zones (avec gués)
       // 2 grandes rivières : naissent DANS LA NEIGE (Nord = "montagnes") et descendent en serpentant
-      // vers la mer au Sud, larges (~3 tuiles) -> elles coupent le passage (goulots, ponts).
+      // jusqu'à la MER au Sud, larges (~3 tuiles) -> elles coupent le passage (goulots, ponts).
       const sources = this.findRiverSources()
       const baseAngs = [Math.PI * 0.58, Math.PI * 0.42] // descente Sud, l'une un peu O, l'autre un peu E
       sources.forEach((s, i) => this.carveRiver(s.tx, s.ty, baseAngs[i % 2]))
-      this.buildBridges() // plusieurs ponts PERPENDICULAIRES espacés le long de chaque rivière
+      this.buildBridges() // plusieurs ponts PERPENDICULAIRES espacés le long de chaque grande rivière
     }
 
     // rendu : eau générée (rendue AUSSI sous les ponts -> on la voit à travers les planches).
@@ -1036,34 +1065,80 @@ export default class GameScene extends Phaser.Scene {
     return [pick(this.icx - 24), pick(this.icx + 24)].filter(Boolean)
   }
 
-  /** Creuse UNE rivière LARGE (~3 tuiles) et sinueuse de (sx,sy) jusqu'à l'OCÉAN, en gardant un cap
-   *  général `baseAng` (vers le Sud) + méandres. Ne traverse pas la clairière du village. */
+  /** Creuse UNE rivière LARGE (~3 tuiles) et sinueuse de (sx,sy) jusqu'à la MER. On vise une CIBLE
+   *  d'océan (1er point d'eau en allant tout droit dans `baseAng`) et on garde un CAP FERME vers
+   *  elle (+ méandres) -> la rivière serpente mais DESCEND toujours jusqu'à la mer, sans boucler. */
   carveRiver(sx, sy, baseAng) {
+    // cible = premier point d'OCÉAN en partant tout droit dans baseAng (= "la mer en aval")
+    let tx2 = sx
+    let ty2 = sy
+    for (let s = 0; s < 500; s++) {
+      const rx = Math.round(tx2)
+      const ry = Math.round(ty2)
+      if (rx < 1 || ry < 1 || rx > MAP_W - 2 || ry > MAP_H - 2 || this.isOcean(rx, ry)) break
+      tx2 += Math.cos(baseAng)
+      ty2 += Math.sin(baseAng)
+    }
     let x = sx
     let y = sy
     let ang = baseAng
     const center = [] // tracé (centerline) -> sert à poser les ponts
-    for (let guard = 0; guard < 1200; guard++) {
+    for (let guard = 0; guard < 1500; guard++) {
       const rx = Math.round(x)
       const ry = Math.round(y)
       if (rx < 2 || ry < 2 || rx > MAP_W - 3 || ry > MAP_H - 3) break
       if (this.isOcean(rx, ry)) break // arrivée à la mer
       center.push({ x: rx, y: ry })
-      for (let dx = -1; dx <= 1; dx++) {
-        for (let dy = -1; dy <= 1; dy++) {
-          const tx = rx + dx
-          const ty = ry + dy
-          if (tx > 1 && ty > 1 && tx < MAP_W - 1 && ty < MAP_H - 1 && this.biomeAt(tx, ty) !== 'prairie' && !this.isOcean(tx, ty)) {
-            this.waterCells.add(this.key(tx, ty))
-          }
+      // FINE (~2 tuiles de large) : la cellule + 1 voisine (au lieu d'un disque 3x3)
+      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
+        const tx = rx + dx
+        const ty = ry + dy
+        if (tx > 1 && ty > 1 && tx < MAP_W - 1 && ty < MAP_H - 1 && this.biomeAt(tx, ty) !== 'prairie' && !this.isOcean(tx, ty)) {
+          this.waterCells.add(this.key(tx, ty))
         }
       }
-      ang = Phaser.Math.Angle.RotateTo(ang, baseAng, 0.04) // garde le cap général (descente vers le Sud)
-      ang += Phaser.Math.FloatBetween(-0.5, 0.5) // méandres
+      // CAP FERME vers la cible mer (0.12 -> empêche les boucles) + méandres plus doux
+      ang = Phaser.Math.Angle.RotateTo(ang, Math.atan2(ty2 - y, tx2 - x), 0.12)
+      ang += Phaser.Math.FloatBetween(-0.38, 0.38)
       x += Math.cos(ang) * 1.3
       y += Math.sin(ang) * 1.3
     }
     if (center.length > 8) this.riverPaths.push(center)
+  }
+
+  /** Rivières-FRONTIÈRES le long des bords entre deux zones de biome (sépare forêt/neige/désert).
+   *  Bord détecté puis DILATÉ d'1 tuile -> rivière ~3 de large. On épargne la prairie (pas de douve
+   *  au village) et on laisse ~1 cellule sur 5 en GUÉ -> traversable à pied / par les chemins. */
+  buildFrontierRivers() {
+    const border = new Set()
+    for (let ty = 1; ty < MAP_H - 1; ty++) {
+      for (let tx = 1; tx < MAP_W - 1; tx++) {
+        if (this.isOcean(tx, ty)) continue
+        const b = this.biomeAt(tx, ty)
+        if (b === 'prairie') continue
+        const nb = [this.biomeAt(tx + 1, ty), this.biomeAt(tx - 1, ty), this.biomeAt(tx, ty + 1), this.biomeAt(tx, ty - 1)]
+        if (nb.some((o) => o !== b && o !== 'prairie')) border.add(this.key(tx, ty))
+      }
+    }
+    // dilatation d'1 tuile (vers la terre) -> frontières un peu plus larges
+    const wide = new Set(border)
+    for (const k of border) {
+      const [x, y] = k.split(',').map(Number)
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx
+        const ny = y + dy
+        if (nx > 1 && ny > 1 && nx < MAP_W - 1 && ny < MAP_H - 1 && !this.isOcean(nx, ny) && this.biomeAt(nx, ny) !== 'prairie') {
+          wide.add(this.key(nx, ny))
+        }
+      }
+    }
+    this.frontierCells = new Set() // pour que les chemins puissent les traverser (gué) sans zigzaguer
+    for (const k of wide) {
+      const [x, y] = k.split(',').map(Number)
+      if (tileNoise(x, y, 17) < 0.2) continue // gué naturel (~1 cellule sur 5)
+      this.waterCells.add(k)
+      this.frontierCells.add(k)
+    }
   }
 
   /**
