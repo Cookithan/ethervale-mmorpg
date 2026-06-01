@@ -103,7 +103,10 @@ const MONSTERS_BY_BIOME = {
 // (+ domain-warping) -> contours organiques (golfes, presqu'îles, îlots), surtout pas des bandes.
 const FOREST_MIN_R = 46 // ceinture de FORÊT garantie autour du village (rayon en tuiles) : la neige/le désert ne peuvent JAMAIS entrer dedans -> tampon prairie<->extrêmes
 const FOREST_LAT = 38 // au-delà de la ceinture : neige si latitude < -38 (Nord), désert si > 38 (Sud)
-const CLIMATE_WARP = 20 // amplitude (tuiles) du bruit qui distord les frontières climatiques (organique sans tout casser le tampon)
+const VILLAGE_OFF_X = 16 // décalage (tuiles) du village par rapport au centre de l'île -> casse la symétrie
+const VILLAGE_OFF_Y = -12 // (village au Nord-Est du centre géométrique du continent)
+const CLIMATE_WARP = 30 // amplitude (tuiles) du bruit basse fréquence qui distord les frontières climatiques
+const CLIMATE_WARP2 = 14 // amplitude du bruit HAUTE fréquence -> doigts de neige / langues de désert qui s'imbriquent
 const LEVEL_REACH = 66 // distance (tuiles) au village où le niveau atteint le max (5) ; près du village = niv1
 const MONSTER_MAX_LEVEL = 5
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
@@ -192,8 +195,13 @@ export default class GameScene extends Phaser.Scene {
 
     this.worldW = MAP_W * TILE
     this.worldH = MAP_H * TILE
-    this.cx = Math.floor(MAP_W / 2)
-    this.cy = Math.floor(MAP_H / 2)
+    // centre de l'ÎLE + du climat = centre géométrique de la grille (océan équilibré tout autour)
+    this.icx = Math.floor(MAP_W / 2)
+    this.icy = Math.floor(MAP_H / 2)
+    // centre du VILLAGE (et de la ceinture de forêt + des niveaux de mobs) = DÉCALÉ du centre de
+    // l'île -> le village n'est plus au centre géométrique du continent (casse la symétrie circulaire).
+    this.cx = this.icx + VILLAGE_OFF_X
+    this.cy = this.icy + VILLAGE_OFF_Y
 
     // --- couches de sol ---
     // fond herbe plein derrière la tilemap : masque les interstices d'1px entre tuiles
@@ -619,9 +627,14 @@ export default class GameScene extends Phaser.Scene {
    *  coins Est/Ouest restent tempérés (forêt) -> neige/désert deviennent des BLOBS, pas des
    *  bandes pleine largeur. Le bruit 2D distord le tout (contours organiques). */
   climateLat(tx, ty) {
-    const nx = (tx - this.cx) / (MAP_W * 0.5) // -1 (Ouest) .. 0 (centre) .. 1 (Est)
+    const nx = (tx - this.icx) / (MAP_W * 0.5) // -1 (Ouest) .. 0 (centre) .. 1 (Est)
     const centerBias = 1 - 0.55 * nx * nx // ~1 au centre, ~0.45 aux bords E/O
-    return (ty - this.cy) * centerBias + this.noise2D(tx, ty) * CLIMATE_WARP
+    // bruit basse fréquence (forme générale des blobs) + bruit haute fréquence (CLIMATE_WARP2) qui
+    // crée des DOIGTS de neige descendant dans la forêt et des LANGUES de désert remontant -> les
+    // frontières s'imbriquent au lieu de faire des bandes droites. (Le tampon forêt reste protégé.)
+    return (ty - this.icy) * centerBias
+      + this.noise2D(tx, ty) * CLIMATE_WARP
+      + this.noise2D(tx * 2.3 + 50, ty * 2.3 + 50) * CLIMATE_WARP2
   }
 
   /** Biome type CONTINENT : clairière de prairie au centre (village), FORÊT tempérée tout
@@ -649,8 +662,8 @@ export default class GameScene extends Phaser.Scene {
    *  radiale -> aucune portion de côte ne ressemble à la voisine). Golfe borné pour ne JAMAIS
    *  mordre la ceinture de forêt (intrusion max ~0.30 du rayon, soit > FOREST_MIN_R). */
   isOcean(tx, ty) {
-    const dx = tx - this.cx
-    const dy = ty - this.cy
+    const dx = tx - this.icx
+    const dy = ty - this.icy
     const r = Math.hypot(dx / ISLAND_RX, dy / ISLAND_RY) // rayon dans l'ellipse normalisée (1 = côte de base)
     const a = Math.atan2(dy, dx) // angle réel du point depuis le centre
     let coast =
