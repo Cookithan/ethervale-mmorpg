@@ -64,16 +64,19 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.casting = false // en incantation (Météore du Mage) -> déplacement bloqué
     this.castInterrupted = false // mis à true si on prend un coup pendant l'incantation -> sort annulé
     // MANA + LE sort de la classe (1 seul : coût mana + cooldown). Régén lente gérée dans update().
-    this.maxMana = cls.mana ?? 0
+    this.baseMana = cls.mana ?? 0 // mana de base de la classe ; +Anneau via recomputeStats
+    this.maxMana = this.baseMana
     this.mana = this.maxMana
     this.spell = cls.spell ?? null // { id, name, cost, cd }
     this.nextSpellAt = 0 // fin du cooldown du sort de classe
     this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -50 % dégâts reçus
 
-    // équipement (3 slots) + sac. ARME DE DÉPART selon la classe (équipée d'office) + tunique équipée.
+    // équipement 4 SLOTS (Arme/Armure/Casque/Anneau) + sac. Arme de départ selon la classe + tunique.
     const starterId = STARTER_WEAPON[this.className] ?? 'sword'
-    this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: cloneItem(ITEMS.leather), accessory: null }
-    this.inventory = [cloneItem(ITEMS.amulet)]
+    this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: cloneItem(ITEMS.leather), focus: null, ring: null }
+    this.spellCdMul = 1 // <1 = cooldown de compétence réduit (Focus)
+    this.spellPowerMul = 1 // >1 = effet de compétence renforcé (Focus)
+    this.inventory = [cloneItem(ITEMS.amulet)] // un Anneau de mana de départ dans le sac
     // (les armes à LANCER ne sont pas de départ : trop fortes -> uniquement achetables au marché)
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
 
@@ -104,10 +107,18 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.baseMaxHp = s.baseMaxHp ?? this.baseMaxHp
     this.baseAttack = s.baseAttack ?? this.baseAttack
     this.baseDefense = s.baseDefense ?? this.baseDefense
-    if (s.equipped) this.equipped = s.equipped
+    if (s.equipped) {
+      // garantit les 4 slots + migre une ancienne sauvegarde (slot 'accessory' -> 'ring')
+      this.equipped = { weapon: null, armor: null, focus: null, ring: null, ...s.equipped }
+      if (this.equipped.accessory) {
+        this.equipped.ring = this.equipped.ring || this.equipped.accessory
+        delete this.equipped.accessory
+      }
+    }
     if (s.inventory) this.inventory = s.inventory
     this.recomputeStats()
     this.hp = Math.min(s.hp ?? this.maxHp, this.maxHp)
+    this.mana = this.maxMana
     this.invVersion++
   }
 
@@ -134,6 +145,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     let atk = 0
     let def = 0
     let hp = 0
+    let mana = 0
+    let spellCd = 0
+    let spellPower = 0
     for (const slot of Object.keys(this.equipped)) {
       const it = this.equipped[slot]
       if (!it) continue
@@ -141,11 +155,18 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       atk += s.attack ?? 0
       def += s.defense ?? 0
       hp += s.hp ?? 0
+      mana += s.mana ?? 0 // Anneau -> +Mana max
+      spellCd += it.spellCd ?? 0 // Focus -> cooldown de compétence réduit
+      spellPower += it.spellPower ?? 0 // Focus -> effet de compétence renforcé
     }
     this.attackPower = this.baseAttack + atk
     this.defense = this.baseDefense + def
     this.maxHp = this.baseMaxHp + hp
+    this.maxMana = (this.baseMana ?? 0) + mana
+    this.spellCdMul = Math.max(0.3, 1 - spellCd) // -X% cooldown (jamais sous 30 % du cd)
+    this.spellPowerMul = 1 + spellPower // +X% effet du sort
     if (this.hp > this.maxHp) this.hp = this.maxHp // si on retire un bonus de PV max
+    if (this.mana > this.maxMana) this.mana = this.maxMana
   }
 
   /** Ajoute un objet au sac. */

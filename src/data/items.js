@@ -1,6 +1,6 @@
 /**
  * Catalogue des objets d'équipement (Phase 3 + marchand).
- * Chaque objet : id, nom, slot (weapon/armor/accessory), icône (clé de texture),
+ * Chaque objet : id, nom, slot (weapon/armor/focus/ring), icône (clé de texture),
  * rareté, prix d'achat, et bonus de stats appliqués quand il est équipé.
  */
 
@@ -45,10 +45,16 @@ export const ITEMS = {
   chainmail: { id: 'chainmail', name: 'Cotte de mailles', slot: 'armor', icon: 'eq_armor', rarity: 'rare', price: 100, stats: { hp: 30, defense: 5 }, dur: 80 },
   plate: { id: 'plate', name: 'Armure de plaques', slot: 'armor', icon: 'eq_armor', rarity: 'epic', price: 230, stats: { hp: 50, defense: 10 }, dur: 120 },
 
-  // accessoires (slot 'accessory') -> bonus variés
-  amulet: { id: 'amulet', name: 'Amulette de garde', slot: 'accessory', icon: 'eq_amulet', rarity: 'common', price: 35, stats: { defense: 3 } },
-  ring: { id: 'ring', name: 'Anneau de force', slot: 'accessory', icon: 'eq_ring', rarity: 'rare', price: 80, stats: { attack: 5 } },
-  signet: { id: 'signet', name: 'Sceau du champion', slot: 'accessory', icon: 'eq_ring', rarity: 'epic', price: 210, stats: { attack: 9, defense: 3 } },
+  // FOCUS (slot 'focus') -> améliore LA COMPÉTENCE de classe : cooldown réduit + effet renforcé.
+  // (PAS de dégâts : `spellCd` = % de cooldown en moins, `spellPower` = % d'effet en plus.)
+  focus1: { id: 'focus1', name: "Focus d'apprenti", slot: 'focus', icon: 'eq_amulet', rarity: 'common', price: 40, spellCd: 0.1, spellPower: 0.1 },
+  focus2: { id: 'focus2', name: 'Focus de mage', slot: 'focus', icon: 'eq_amulet', rarity: 'rare', price: 110, spellCd: 0.18, spellPower: 0.22 },
+  focus3: { id: 'focus3', name: "Focus d'archimage", slot: 'focus', icon: 'eq_amulet', rarity: 'epic', price: 240, spellCd: 0.28, spellPower: 0.38 },
+
+  // ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire) [ex-accessoires]
+  amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring', rarity: 'common', price: 35, stats: { mana: 20 } },
+  ring: { id: 'ring', name: 'Anneau arcanique', slot: 'ring', icon: 'eq_ring', rarity: 'rare', price: 80, stats: { mana: 40, attack: 4 } },
+  signet: { id: 'signet', name: "Anneau de l'archonte", slot: 'ring', icon: 'eq_ring', rarity: 'epic', price: 210, stats: { mana: 70, defense: 4 } },
 
   // LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand ni en butin normal, cf. SHOP_STOCK / equipmentOfTier) :
   legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
@@ -56,6 +62,8 @@ export const ITEMS = {
   legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
   legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_armor', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
+  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'eq_amulet', rarity: 'legendary', price: 560, spellCd: 0.42, spellPower: 0.65 },
+  legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'eq_ring', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8 } },
 
   // consommables (type 'consumable') -> usage = soin immédiat (clic dans le sac)
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'drop_heart', rarity: 'common', price: 25, heal: 45 },
@@ -65,12 +73,12 @@ export const ITEMS = {
 // stock du marchand = tout le catalogue SAUF les légendaires (exclusifs aux boss, brief §8)
 export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary')
 
-// libellés FR des slots (ordre d'affichage de l'équipement)
-export const SLOTS = ['weapon', 'armor', 'accessory']
-export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', accessory: 'Accessoire' }
+// 4 slots d'équipement : Arme(+ATQ) / Armure(+DEF) / Focus(améliore la compétence) / Anneau(+Mana)
+export const SLOTS = ['weapon', 'armor', 'focus', 'ring']
+export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', focus: 'Focus', ring: 'Anneau' }
 
 // abréviations FR des stats (pour l'affichage des bonus)
-export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV' }
+export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Mana' }
 
 const CLASS_FR = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank', healer: 'Soigneur' }
 // arme de DÉPART par classe (équipée à la création du perso)
@@ -136,6 +144,12 @@ export function itemName(item) {
 export function describeItem(item) {
   if (item.type === 'consumable') return item.heal ? `Rend ${item.heal} PV (clic = boire)` : 'Consommable'
   let txt = describeStats(effectiveStats(item))
+  if (item.spellCd || item.spellPower) {
+    const parts = []
+    if (item.spellCd) parts.push(`-${Math.round(item.spellCd * 100)}% cooldown du sort`)
+    if (item.spellPower) parts.push(`+${Math.round(item.spellPower * 100)}% effet du sort`)
+    txt = (txt ? txt + '\n' : '') + parts.join('\n')
+  }
   if (hasDurability(item)) {
     const broken = (item.durability ?? item.dur) <= 0
     txt += `\nDurabilité ${item.durability ?? item.dur}/${item.dur}${broken ? ' (CASSÉ)' : ''}`

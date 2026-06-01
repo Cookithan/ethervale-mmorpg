@@ -2374,7 +2374,7 @@ export default class GameScene extends Phaser.Scene {
     const fn = effects[sp.id]
     if (!fn || fn() === false) return // sort inconnu / non exécuté -> on ne consomme ni mana ni cd
     p.spendMana(sp.cost)
-    p.nextSpellAt = now + sp.cd
+    p.nextSpellAt = now + sp.cd * (p.spellCdMul ?? 1) // Focus -> cooldown réduit
   }
 
   /** SOIN (Soigneur) : se soigne SOI-MÊME de 35 % des PV max (en solo il n'y a pas d'allié ; le choix
@@ -2386,7 +2386,7 @@ export default class GameScene extends Phaser.Scene {
       this.floatingText(p.x, p.y - 18, 'PV au max', '#ffd27a')
       return false
     }
-    const healed = p.heal(Math.round(p.maxHp * 0.35))
+    const healed = p.heal(Math.round(p.maxHp * 0.35 * (p.spellPowerMul ?? 1)))
     this.showHealEffect(p.x, p.y)
     const aura = this.add.sprite(p.x, p.y - 2, 'fx_aura').setDepth(p.y + 61).setScale(1.6).setTint(0x8ef0a0) // aura animée teintée vert
     aura.play('fx-aura')
@@ -2411,7 +2411,7 @@ export default class GameScene extends Phaser.Scene {
     const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
     const ang = Math.atan2(dir[1], dir[0])
     const SPD = 520
-    const dur = 200 // bond fixe (~100px) -> esquive / repositionnement
+    const dur = Math.round(200 * (p.spellPowerMul ?? 1)) // bond (allongé par le Focus) -> esquive / repositionnement
     p.invulnUntil = now + dur + 130 // i-frames = vraie esquive pendant le dash
     p.attacking = true // bloque le déplacement normal pendant le bond
     p.attackUntil = now + dur + 20
@@ -2448,12 +2448,13 @@ export default class GameScene extends Phaser.Scene {
    *  (cf. Player.takeDamage) + aura bleue qui suit le héros. */
   spellShield() {
     const p = this.player
-    p.shieldUntil = this.time.now + 4000
-    // bulle de bouclier ANIMÉE (FX du pack) qui suit le héros pendant les 4 s
+    const dur = 4000 * (p.spellPowerMul ?? 1) // Focus -> bouclier plus long
+    p.shieldUntil = this.time.now + dur
+    // bulle de bouclier ANIMÉE (FX du pack) qui suit le héros pendant la durée
     const bubble = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 60).setScale(1.7).setAlpha(0.9)
     bubble.play('fx-shield')
     const ev = this.time.addEvent({ delay: 30, loop: true, callback: () => bubble.setPosition(p.x, p.y).setDepth(p.y + 60) })
-    this.time.delayedCall(4000, () => {
+    this.time.delayedCall(dur, () => {
       ev.remove()
       bubble.destroy()
     })
@@ -2542,7 +2543,7 @@ export default class GameScene extends Phaser.Scene {
       tx = p.x + dir[0] * 80
       ty = p.y + dir[1] * 80
     }
-    const R = 46
+    const R = Math.round(46 * (p.spellPowerMul ?? 1)) // Focus -> zone plus large (pas plus de dégâts)
     const col = p.magicColor // couleur de la magie de l'apparence (violet / blanc / rouge...)
     const dealAoe = () => {
       const dmg = p.attackPower * 3.0 // gros dégâts AoE (récompense de l'incantation)

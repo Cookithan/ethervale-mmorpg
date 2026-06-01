@@ -396,8 +396,8 @@ export default class UIScene extends Phaser.Scene {
     const ch = this.scale.height
 
     reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.55).setOrigin(0, 0))
-    const W = 300
-    const H = 300
+    const W = 320
+    const H = 336
     const x0 = cw / 2 - W / 2
     const y0 = ch / 2 - H / 2
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.97).setStrokeStyle(2, GOLD))
@@ -408,18 +408,20 @@ export default class UIScene extends Phaser.Scene {
 
     // portrait au centre
     const cx = cw / 2
-    const pSize = 64
-    const pY = y0 + 96
+    const pSize = 60
+    const pY = y0 + 110
     reg(this.add.rectangle(cx, pY, pSize, pSize, 0x000000, 0.5).setStrokeStyle(2, GOLD))
     const portrait = reg(this.add.image(cx, pY, this.game_.player?.heroKey ?? 'player', 0))
     portrait.setScale((pSize - 10) / portrait.width)
 
-    // 3 slots autour du portrait (paper-doll) : Arme à gauche, Armure à droite, Accessoire dessous
-    const cellSz = 48
+    // 4 slots autour du portrait (paper-doll) : Arme/Armure en haut (G/D), Casque/Anneau en bas (G/D)
+    const cellSz = 46
+    const dy = 32
     const place = {
-      weapon: { x: cx - 96, y: pY, lx: cx - 96, ly: pY - cellSz / 2 - 12 },
-      armor: { x: cx + 96, y: pY, lx: cx + 96, ly: pY - cellSz / 2 - 12 },
-      accessory: { x: cx, y: pY + 84, lx: cx, ly: pY + 84 + cellSz / 2 + 4 },
+      weapon: { x: cx - 96, y: pY - dy, lx: cx - 96, ly: pY - dy - cellSz / 2 - 9 },
+      armor: { x: cx + 96, y: pY - dy, lx: cx + 96, ly: pY - dy - cellSz / 2 - 9 },
+      focus: { x: cx - 96, y: pY + dy, lx: cx - 96, ly: pY + dy + cellSz / 2 + 9 },
+      ring: { x: cx + 96, y: pY + dy, lx: cx + 96, ly: pY + dy + cellSz / 2 + 9 },
     }
     SLOTS.forEach((slot) => {
       const pos = place[slot]
@@ -439,17 +441,10 @@ export default class UIScene extends Phaser.Scene {
       }
     })
 
-    // stats
-    const sY = y0 + H - 64
-    reg(
-      this.add
-        .text(cx, sY, `Attaque ${p.attackPower}     Défense ${p.defense}     PV ${p.hp}/${p.maxHp}`, {
-          fontFamily: 'monospace',
-          fontSize: '13px',
-          color: '#cfe8ff',
-        })
-        .setOrigin(0.5)
-    )
+    // stats (totaux base + équipement), Mana inclus
+    const sY = y0 + H - 62
+    reg(this.add.text(cx, sY, `Attaque ${p.attackPower}      Défense ${p.defense}`, { fontFamily: 'monospace', fontSize: '13px', color: '#cfe8ff' }).setOrigin(0.5))
+    reg(this.add.text(cx, sY + 19, `PV ${Math.round(p.hp)}/${p.maxHp}      Mana ${Math.round(p.mana)}/${p.maxMana}`, { fontFamily: 'monospace', fontSize: '13px', color: '#ffd1d1' }).setOrigin(0.5))
     reg(this.add.text(cx, y0 + H - 16, 'Clic objet du sac = équiper  ·  clic slot = retirer  ·  C = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5))
   }
 
@@ -460,7 +455,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.charOpen) this.closeChar()
     if (this.forgeOpen) this.closeForge()
     this.shopOpen = true
-    this.shopTab = 'buy' // onglet par défaut
+    this.shopTab = 'weapon' // onglet (catégorie) par défaut
     this.scene.pause('GameScene')
     this.buildShop()
   }
@@ -511,16 +506,28 @@ export default class UIScene extends Phaser.Scene {
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
     this.drawPanelHeader(reg, x0, y0, W, 'merchant_face', undefined, 'Marchand', p.gold)
 
-    // onglets Acheter / Vendre
+    // onglets par CATÉGORIE (+ Vendre) -> tout est rangé et entièrement visible
+    const cats = [
+      { key: 'weapon', label: 'Armes' },
+      { key: 'armor', label: 'Armures' },
+      { key: 'focus', label: 'Focus' },
+      { key: 'ring', label: 'Anneaux' },
+      { key: 'potion', label: 'Potions' },
+      { key: 'sell', label: 'Vendre' },
+    ]
+    if (!cats.some((c) => c.key === this.shopTab)) this.shopTab = 'weapon'
     const tabY = y0 + 56
-    this.drawTab(reg, x0 + 16, tabY, 'Acheter', this.shopTab === 'buy', () => { this.shopTab = 'buy'; this.buildShop() })
-    this.drawTab(reg, x0 + 120, tabY, 'Vendre', this.shopTab === 'sell', () => { this.shopTab = 'sell'; this.buildShop() })
+    const tabW = (W - 32) / cats.length
+    cats.forEach((c, i) => this.drawTab(reg, x0 + 16 + i * tabW, tabY, c.label, this.shopTab === c.key, () => { this.shopTab = c.key; this.buildShop() }, tabW - 4))
 
-    // grille de cartes
-    const items = this.shopTab === 'buy' ? SHOP_STOCK : p.inventory
-    const gridY = tabY + 30
+    // items selon la catégorie (armes = uniquement celles utilisables par la classe -> on s'y retrouve)
+    let items
+    if (this.shopTab === 'sell') items = p.inventory
+    else if (this.shopTab === 'potion') items = SHOP_STOCK.filter((it) => it.type === 'consumable')
+    else items = SHOP_STOCK.filter((it) => it.slot === this.shopTab && (this.shopTab !== 'weapon' || canEquip(it, p.className)))
+    const gridY = tabY + 32
     if (items.length === 0) {
-      reg(this.add.text(cw / 2, gridY + 50, '(sac vide)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
+      reg(this.add.text(cw / 2, gridY + 50, this.shopTab === 'sell' ? '(sac vide)' : '(rien dans cette catégorie)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
     }
     this.drawCardGrid(reg, x0 + 16, gridY, W - 32, items, (item) => {
       if (this.shopTab === 'buy') {
@@ -544,8 +551,7 @@ export default class UIScene extends Phaser.Scene {
   }
 
   /** Onglet cliquable (actif = doré). */
-  drawTab(reg, x, y, label, active, onClick) {
-    const w = 96
+  drawTab(reg, x, y, label, active, onClick, w = 96) {
     const h = 22
     reg(this.add.rectangle(x, y, w, h, active ? GOLD : 0x2a3340, 1).setOrigin(0, 0).setStrokeStyle(1, GOLD))
     reg(this.add.text(x + w / 2, y + h / 2, label, { fontFamily: 'monospace', fontSize: '11px', color: active ? '#1a1a1a' : '#cfe8ff' }).setOrigin(0.5))
