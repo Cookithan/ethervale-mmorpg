@@ -32,8 +32,13 @@ function makeSeededRandom(seed) {
 }
 
 const TILE = 16
-const MAP_W = 200
-const MAP_H = 150
+// grille TOTALE agrandie : le continent est une ÎLE elliptique CENTRÉE, entourée d'OCÉAN de
+// tous les côtés (marges nettes à gauche/droite ET haut/bas). Cf. isOcean/buildOcean.
+const MAP_W = 240
+const MAP_H = 200
+const ISLAND_RX = 92 // demi-largeur du continent (tuiles) -> marge océan gauche/droite = cx - RX
+const ISLAND_RY = 80 // demi-hauteur du continent (tuiles) -> marge océan haut/bas = cy - RY
+const COAST_NOISE = 0.16 // ondulation de la côte (fraction du rayon -> presqu'îles/golfes)
 
 // --- sol (TilesetField / field.png, 5 colonnes) ---
 const GRASS = 21 // herbe verte claire = sol de base
@@ -86,20 +91,27 @@ const MONSTERS_BY_BIOME = {
   cursed: ['skull', 'spirit', 'flam'],
 }
 
-// niveau des monstres = selon la DISTANCE au village (cf. monsterLevelAt) : près de la
-// prairie = niveau bas, plus on s'enfonce = plus haut. Le niveau scale PV/dégâts/XP/or.
-const LEVEL_PER_TILES = 7 // +1 niveau tous les N tuiles d'éloignement du centre
+// MONDE type CONTINENT (pas en anneaux ni en bandes) : village au centre dans une clairière de
+// PRAIRIE, entourée de FORÊT dans toutes les directions (zone tempérée). Au NORD un grand blob de
+// NEIGE/hiver, au SUD un grand blob de DÉSERT. Les frontières sont déformées par un BRUIT 2D fort
+// (+ domain-warping) -> contours organiques (golfes, presqu'îles, îlots), surtout pas des bandes.
+const FOREST_MIN_R = 46 // ceinture de FORÊT garantie autour du village (rayon en tuiles) : la neige/le désert ne peuvent JAMAIS entrer dedans -> tampon prairie<->extrêmes
+const FOREST_LAT = 38 // au-delà de la ceinture : neige si latitude < -38 (Nord), désert si > 38 (Sud)
+const CLIMATE_WARP = 20 // amplitude (tuiles) du bruit qui distord les frontières climatiques (organique sans tout casser le tampon)
+const LEVEL_REACH = 66 // distance (tuiles) au village où le niveau atteint le max (5) ; près du village = niv1
+const MONSTER_MAX_LEVEL = 5
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
 const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
 
 // BOSS DE BIOME (un par zone, repaire FIXE au fond du biome -> "boss de monde" style WoW).
 // type = monstre emblématique du biome ; dir = direction du repaire depuis le centre ; dist = tuiles.
+// repaires de boss : direction + distance depuis le centre ; findBossTile ajuste sur une
+// tuile valide du bon biome. Forêt = ceinture Nord/Sud, neige = grand Nord, désert = grand Sud.
 const BIOME_BOSSES = {
-  forest: { type: 'mushroom', name: 'Gorthak, Gardien de la Forêt', dir: [1, 0], dist: 44 },
-  desert: { type: 'spider', name: 'Sslyth, Reine des Sables', dir: [0, 1], dist: 66 },
-  snow: { type: 'bear', name: 'Brakka, Colosse des Glaces', dir: [0, -1], dist: 66 },
-  cursed: { type: 'flam', name: 'Dargoth, Seigneur des Maudits', dir: [1, 0], dist: 96 },
+  forest: { type: 'mushroom', name: 'Gorthak, Gardien de la Forêt', dir: [1, -1], dist: 34 },
+  desert: { type: 'spider', name: 'Sslyth, Reine des Sables', dir: [0, 1], dist: 64 },
+  snow: { type: 'bear', name: 'Brakka, Colosse des Glaces', dir: [0, -1], dist: 64 },
 }
 const BOSS_BAR_RANGE = 240 // distance (px) à laquelle la barre de boss apparaît en haut de l'écran
 
@@ -144,7 +156,9 @@ const BUILDINGS = {
 }
 
 // --- eau (TilesetWater / water.png, 28 colonnes) ---
-const RIVERS_ENABLED = true // rivières avec eau GÉNÉRÉE PAR CODE ('water_gen', 4 variantes)
+const RIVERS_ENABLED = false // OFF pour la map "continent" organique (les rivières-frontières
+// latitudinales referaient un effet "bandes"). Côtes/rivières naturelles à rajouter ensuite.
+const PATHS_ENABLED = false // OFF : plus de routes de terre rayonnant vers les 4 coins (à la demande)
 
 /**
  * GameScene — Phase 1, "vraie map".
@@ -193,6 +207,7 @@ export default class GameScene extends Phaser.Scene {
     this.paintBiomes() // sols des biomes (anneaux) AVANT les chemins
     this.paintPaths()
     this.buildRivers() // rivières-frontières + ponts + petits lacs (après les chemins)
+    this.buildOcean() // océan autour du continent (île entourée d'eau)
     this.spawnDryLakes() // lacs asséchés (terre craquelée) dans le désert
 
     // --- physique / héros ---
@@ -493,6 +508,16 @@ export default class GameScene extends Phaser.Scene {
    * sont mémorisés pour y dégager le décor et y poser des amorces (clairières).
    */
   paintPaths() {
+    // CHEMINS DE CARTE RETIRÉS pour l'instant (à la demande) : plus de routes rayonnant vers
+    // les 4 coins. On garde les structures vides pour que le reste du code (onPath/déco/village)
+    // continue de fonctionner ; le village ajoutera ses propres petits chemins.
+    this.places = [{ x: this.cx, y: this.cy }] // seul le spawn central
+    this.plazaCells = new Set()
+    if (PATHS_ENABLED) this.paintMapPaths()
+  }
+
+  /** (Désactivé) Anciennes routes de terre reliant le spawn à 4 lieux des coins. */
+  paintMapPaths() {
     const cells = new Set()
     const carve = (x, y, w) => {
       for (let dx = 0; dx < w; dx++) {
@@ -507,7 +532,6 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
-    // points d'intérêt : le spawn (centre) + 4 lieux répartis (un par "quart")
     this.places = [
       { x: this.cx, y: this.cy }, // spawn
       { x: Math.floor(MAP_W * 0.18), y: Math.floor(MAP_H * 0.22) },
@@ -515,23 +539,15 @@ export default class GameScene extends Phaser.Scene {
       { x: Math.floor(MAP_W * 0.2), y: Math.floor(MAP_H * 0.8) },
       { x: Math.floor(MAP_W * 0.8), y: Math.floor(MAP_H * 0.78) },
     ]
-
-    // petite clairière de terre à chaque lieu (donne un "but" visible)
     for (const p of this.places) {
       for (let dx = -1; dx <= 1; dx++)
         for (let dy = -1; dy <= 1; dy++) carve(p.x + dx, p.y + dy, 1)
     }
-
-    // relie le spawn (places[0]) à chacun des autres lieux
     for (let i = 1; i < this.places.length; i++) {
       this.carvePathTo(carve, this.places[0], this.places[i])
     }
 
-    // PAS de chemin dans la prairie : on retire du RENDU les cellules de chemin situées
-    // dans la prairie (le joueur la traverse à l'herbe, sort par les ponts). On garde
-    // pathCells (pour placer les ponts au bord) -> la prairie reste de l'herbe propre.
-    this.plazaCells = new Set() // (plus de place carrée)
-    const desertPath = new Set() // chemins en zone désert : à colorer différemment du sable
+    const desertPath = new Set()
     for (const k of [...cells]) {
       const [x, y] = k.split(',').map(Number)
       const b = this.biomeAt(x, y)
@@ -578,18 +594,67 @@ export default class GameScene extends Phaser.Scene {
    * Biome d'une tuile selon sa distance (elliptique, suit le ratio de la map) au
    * centre -> anneaux concentriques. Ondulation d'angle + bruit = bords organiques.
    */
+  /** Bruit 2D lisse et déterministe, ~[-1,1], avec DOMAIN-WARPING : les coordonnées sont
+   *  elles-mêmes décalées par des sinus -> le champ devient "blobby"/isotrope (pas aligné
+   *  horizontalement). C'est lui qui casse l'effet bandes des frontières de biomes. */
+  noise2D(tx, ty) {
+    const wx = tx + Math.sin(ty * 0.05) * 7 + Math.sin(ty * 0.11 + 1.0) * 3
+    const wy = ty + Math.sin(tx * 0.045) * 7 + Math.sin(tx * 0.09 + 2.0) * 3
+    const n =
+      Math.sin(wx * 0.06) +
+      Math.sin(wy * 0.075 + 1.3) +
+      Math.sin((wx + wy) * 0.04 + 0.6) +
+      Math.sin((wx - wy) * 0.05 + 2.2)
+    return n / 4
+  }
+
+  /** "Température" du climat : froid (<0) au Nord -> neige, chaud (>0) au Sud -> désert.
+   *  Le froid/chaud sont CONCENTRÉS vers le centre horizontal (biais en x) pour que les
+   *  coins Est/Ouest restent tempérés (forêt) -> neige/désert deviennent des BLOBS, pas des
+   *  bandes pleine largeur. Le bruit 2D distord le tout (contours organiques). */
+  climateLat(tx, ty) {
+    const nx = (tx - this.cx) / (MAP_W * 0.5) // -1 (Ouest) .. 0 (centre) .. 1 (Est)
+    const centerBias = 1 - 0.55 * nx * nx // ~1 au centre, ~0.45 aux bords E/O
+    return (ty - this.cy) * centerBias + this.noise2D(tx, ty) * CLIMATE_WARP
+  }
+
+  /** Biome type CONTINENT : clairière de prairie au centre (village), FORÊT tempérée tout
+   *  autour (toutes directions + E/O), gros blob de NEIGE au Nord et de DÉSERT au Sud.
+   *  Contours organiques grâce au bruit 2D (anti-bandes). */
   biomeAt(tx, ty) {
-    const dx = tx - this.cx
-    const dy = ty - this.cy
-    const dt = Math.hypot(dx, dy) // distance RÉELLE en tuiles -> biomes en cercles concentriques
-    if (dt < PRAIRIE_TILE_R) return 'prairie' // cercle net (hub central sûr)
-    if (dt < 50) return 'forest' // anneau de forêt
-    if (dt < 92) {
-      // grande zone intermédiaire : NEIGE en haut, DÉSERT en bas (frontière légèrement ondulée)
-      const split = Math.sin(dx / 26) * 4
-      return dy < split ? 'snow' : 'desert'
+    const d = Math.hypot(tx - this.cx, ty - this.cy)
+    // clairière du village : prairie au centre (bord légèrement irrégulier), toujours sûre
+    if (d < PRAIRIE_TILE_R + this.noise2D(tx, ty) * 3) return 'prairie'
+    // ceinture de forêt GARANTIE autour du village (bord ondulé) : tampon infranchissable par
+    // la neige/le désert -> ils gardent toujours leurs distances avec la prairie
+    if (d < FOREST_MIN_R + this.noise2D(tx, ty) * 5) return 'forest'
+    // au-delà du tampon : climat. Nord = neige, Sud = désert, reste (E/O, tempéré) = forêt
+    const L = this.climateLat(tx, ty)
+    if (L < -FOREST_LAT) return 'snow'
+    if (L > FOREST_LAT) return 'desert'
+    return 'forest'
+  }
+
+  /** Vrai si la tuile est dans l'OCÉAN : tout ce qui est HORS de l'ellipse du continent
+   *  (centrée, demi-axes ISLAND_RX/RY), avec une côte ondulée par le bruit. -> île entourée
+   *  d'eau de TOUS les côtés (gauche/droite/haut/bas). */
+  isOcean(tx, ty) {
+    const ex = (tx - this.cx) / ISLAND_RX
+    const ey = (ty - this.cy) / ISLAND_RY
+    return ex * ex + ey * ey > 1 + this.noise2D(tx, ty) * COAST_NOISE
+  }
+
+  /** Pose l'eau de l'OCÉAN (tuiles 'water_gen') sur le pourtour, avec collision. À appeler
+   *  après buildRivers (qui a créé this.waterLayer / this.waterCells). */
+  buildOcean() {
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        if (!this.isOcean(tx, ty)) continue
+        this.waterCells.add(this.key(tx, ty)) // exclut déco/monstres/village
+        this.waterLayer.putTileAt(Math.floor(tileNoise(tx, ty, 3) * 4), tx, ty)
+      }
     }
-    return 'cursed' // bord extérieur (le plus loin = le plus dur)
+    this.waterLayer.setCollisionByExclusion([-1]) // l'eau bloque le joueur et les monstres
   }
 
   /**
@@ -1060,12 +1125,14 @@ export default class GameScene extends Phaser.Scene {
    * Place UN monstre à un endroit valide (hors spawn/décor/eau, type selon le biome).
    * `initial` = false pour un respawn -> évite d'apparaître trop près du joueur.
    */
-  /** Niveau d'un monstre selon la DISTANCE au village : niv1 au bord de la prairie,
-   *  +1 tous les LEVEL_PER_TILES tuiles vers l'extérieur (il faut s'enfoncer pour le haut niveau). */
+  /** Niveau de BASE d'un monstre (1 à 5) selon sa place DANS son biome : bord intérieur
+   *  (côté village) = niv1, bord extérieur (le plus loin) = niv5. La variation aléatoire
+   *  qui crée la diversité est ajoutée au moment du spawn (cf. spawnOneMonster). */
   monsterLevelAt(tx, ty) {
-    const dist = Math.hypot(tx - this.cx, ty - this.cy)
-    const lvl = 1 + Math.floor((dist - PRAIRIE_TILE_R) / LEVEL_PER_TILES)
-    return Phaser.Math.Clamp(lvl, 1, 18)
+    if (this.biomeAt(tx, ty) === 'prairie') return 1 // prairie sûre (pas de monstre)
+    const d = Math.hypot(tx - this.cx, ty - this.cy) // distance au village
+    const t = (d - PRAIRIE_TILE_R) / (LEVEL_REACH - PRAIRIE_TILE_R) // 0 près du village -> 1 au loin
+    return Phaser.Math.Clamp(Math.round(1 + t * (MONSTER_MAX_LEVEL - 1)), 1, MONSTER_MAX_LEVEL)
   }
 
   spawnOneMonster(initial = false, near = null, forceElite = null) {
@@ -1099,7 +1166,10 @@ export default class GameScene extends Phaser.Scene {
       // élite : forcée (respawn d'élite) si demandé ; sinon tirage seulement au spawn INITIAL
       // (les respawns normaux ne créent jamais d'élite -> elles restent rares dans le temps)
       const elite = forceElite !== null ? forceElite : initial && Phaser.Math.Between(1, 100) <= SHINY_CHANCE
-      const level = this.monsterLevelAt(tx, ty) + (elite ? 2 : 0) // + haut quand on s'enfonce
+      // niveau = base du biome (1-5) + variation ±1 -> diversité sur un même type d'ennemi.
+      // (déterministe au spawn initial car PRNG seedé ; varié sur les respawns.)
+      let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) + (elite ? 1 : 0)
+      level = Phaser.Math.Clamp(level, 1, MONSTER_MAX_LEVEL)
       const name = elite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}` : null
       this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite, name }))
       return true
@@ -1122,7 +1192,7 @@ export default class GameScene extends Phaser.Scene {
     if (!cfg) return null
     const tile = this.findBossTile(this.cx + cfg.dir[0] * cfg.dist, this.cy + cfg.dir[1] * cfg.dist, biome)
     if (!tile) return null
-    const level = Phaser.Math.Clamp(this.monsterLevelAt(tile.tx, tile.ty) + 3, 1, 20)
+    const level = MONSTER_MAX_LEVEL + 2 // boss de monde = niveau fixe élevé (au-dessus des 1-5)
     const boss = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, cfg.type, { level, boss: true, name: cfg.name })
     boss.bossBiome = biome
     boss.homeX = tile.tx * TILE + 8 // ancre de patrouille = son repaire
