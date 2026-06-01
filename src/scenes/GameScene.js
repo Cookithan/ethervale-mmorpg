@@ -566,11 +566,13 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     }
-    // ÉTAPE 3 : UN SEUL chemin — village -> camp du désert (boss Sslyth), sinueux, et qui FRANCHIT
-    // la rivière par un PONT (pas de route coupée). On ajoutera les autres chemins un par un ensuite.
+    // CHEMINS (ajoutés un par un) — chacun sinueux et FRANCHISSANT les rivières par un PONT :
+    // étape 3 : village -> camp du désert (Sud) ; étape 4 : village -> camp de la neige (Nord).
     const village = { x: this.cx, y: this.cy }
     const desert = this.bossLairs?.desert
     if (desert) this.routePath(carve, village, { x: desert.tx, y: desert.ty })
+    const snow = this.bossLairs?.snow
+    if (snow) this.routePath(carve, village, { x: snow.tx, y: snow.ty })
     // retire le rendu du chemin DANS la clairière du village (il a ses propres allées) ; le chemin
     // qui traverse le DÉSERT est repeint en argile rouge (sinon invisible sur le sable = terre)
     const desertPath = new Set()
@@ -584,40 +586,158 @@ export default class GameScene extends Phaser.Scene {
     this.paintBlob(desertPath, BLOB.cursed, true)
   }
 
-  /** Trace un chemin sinueux a->b. Si une rivière coupe la ligne directe, on passe par le PONT le
-   *  plus proche (a -> pont -> b) -> la route franchit l'eau par un pont au lieu d'être coupée. */
+  /** Trace une ROUTE de a vers b qui CONTOURNE l'eau et ne la franchit QUE par les ponts : on
+   *  calcule un vrai chemin (BFS sur les cases marchables = terre + ponts, jamais rivière/océan)
+   *  puis on le creuse. -> la route ne traverse jamais l'eau hors pont. */
   routePath(carve, a, b) {
-    if (this.segmentCrossesRiver(a, b) && this.bridgeCells && this.bridgeCells.size) {
-      let best = null
-      let bd = Infinity
-      for (const k of this.bridgeCells) {
-        const [bx, by] = k.split(',').map(Number)
-        const d = this.dist(a.x, a.y, bx, by) + this.dist(bx, by, b.x, b.y) // détour mini
-        if (d < bd) {
-          bd = d
-          best = { x: bx, y: by }
-        }
-      }
-      if (best) {
-        this.carvePathTo(carve, a, best)
-        this.carvePathTo(carve, best, b)
-        return
+    // 1) points de passage en courbes douces ; 2) chemin complet par BFS (contourne l'eau / ponts) ;
+    // 3) on SIMPLIFIE par ligne de vue (supprime l'escalier du BFS = les angles droits) ; 4) on
+    //    creuse des segments DROITS entre les points simplifiés -> route lisse, jamais dans l'eau.
+    const wps = [{ x: Math.round(a.x), y: Math.round(a.y) }, ...this.sinuousWaypoints(a, b), { x: Math.round(b.x), y: Math.round(b.y) }]
+    let full = []
+    let prev = wps[0]
+    for (let i = 1; i < wps.length; i++) {
+      const seg = this.findWalkPath(prev.x, prev.y, wps[i].x, wps[i].y)
+      if (seg) {
+        if (full.length) seg.shift() // évite de doubler la jonction
+        full = full.concat(seg)
+        prev = wps[i]
       }
     }
-    this.carvePathTo(carve, a, b)
+    if (!full.length) {
+      this.carvePathTo(carve, a, b)
+      return
+    }
+    const simp = this.simplifyPath(full)
+    for (let i = 1; i < simp.length; i++) this.carveLine(carve, simp[i - 1], simp[i])
   }
 
-  /** true si le segment a->b traverse une cellule d'eau BLOQUANTE (rivière, hors pont). */
-  segmentCrossesRiver(a, b) {
-    const steps = Math.ceil(this.dist(a.x, a.y, b.x, b.y))
-    const ang = Math.atan2(b.y - a.y, b.x - a.x)
-    for (let i = 0; i <= steps; i++) {
-      const x = Math.round(a.x + Math.cos(ang) * i)
-      const y = Math.round(a.y + Math.sin(ang) * i)
-      const k = this.key(x, y)
-      if (this.waterCells.has(k) && !this.bridgeCells.has(k)) return true
+  /** Simplifie un chemin de cellules par LIGNE DE VUE : garde le point le plus loin atteignable en
+   *  ligne droite marchable -> remplace l'escalier par de longs segments droits. */
+  simplifyPath(path) {
+    if (path.length <= 2) return path
+    const out = [path[0]]
+    let anchor = 0
+    for (let i = 2; i < path.length; i++) {
+      if (!this.lineWalkable(path[anchor], path[i])) {
+        out.push(path[i - 1])
+        anchor = i - 1
+      }
     }
-    return false
+    out.push(path[path.length - 1])
+    return out
+  }
+
+  /** true si le segment droit a->b ne passe que par des cases marchables (terre/pont). */
+  lineWalkable(a, b) {
+    const steps = Math.ceil(this.dist(a.x, a.y, b.x, b.y))
+    for (let i = 0; i <= steps; i++) {
+      const x = Math.round(a.x + ((b.x - a.x) * i) / steps)
+      const y = Math.round(a.y + ((b.y - a.y) * i) / steps)
+      if (!this.walkableForPath(x, y)) return false
+    }
+    return true
+  }
+
+  /** Creuse un segment de chemin DROIT entre a et b (largeur 2). */
+  carveLine(carve, a, b) {
+    const steps = Math.ceil(this.dist(a.x, a.y, b.x, b.y))
+    for (let i = 0; i <= steps; i++) {
+      carve(Math.round(a.x + ((b.x - a.x) * i) / steps), Math.round(a.y + ((b.y - a.y) * i) / steps), 2)
+    }
+  }
+
+  /** Points de passage en COURBES DOUCES de a vers b : on suit la ligne a->b mais avec un décalage
+   *  latéral LISSE (sinus basse fréquence, nul aux deux bouts) -> 1 à 2 grandes courbes naturelles,
+   *  PAS d'oscillation gauche/droite aléatoire. Chaque point est snappé sur une case marchable. */
+  sinuousWaypoints(a, b) {
+    const pts = []
+    const d = this.dist(a.x, a.y, b.x, b.y)
+    const dirAng = Math.atan2(b.y - a.y, b.x - a.x)
+    const px = -Math.sin(dirAng) // perpendiculaire à la ligne a->b
+    const py = Math.cos(dirAng)
+    const bends = Phaser.Math.FloatBetween(1.2, 2.0) // nombre de grandes courbes sur le trajet
+    const amp = Math.min(14, d * 0.12) // amplitude latérale DOUCE (la courbe reste sur les terres)
+    const phase = Phaser.Math.FloatBetween(0, Math.PI)
+    const steps = Math.max(4, Math.round(d / 9))
+    for (let i = 1; i < steps; i++) {
+      const t = i / steps
+      // sin(t*pi) = enveloppe -> décalage nul au départ et à l'arrivée (route alignée sur a et b)
+      const off = Math.sin(t * Math.PI * bends + phase) * amp * Math.sin(t * Math.PI)
+      const lx = Math.round(a.x + (b.x - a.x) * t + px * off)
+      const ly = Math.round(a.y + (b.y - a.y) * t + py * off)
+      // on NE garde que les points qui tombent sur la TERRE (pas de snap lointain qui crée des
+      // détours parasites) ; si le point est dans l'eau, on l'ignore et le BFS relie directement.
+      if (this.walkableForPath(lx, ly)) pts.push({ x: lx, y: ly })
+    }
+    return pts
+  }
+
+  /** Case marchable la plus proche de (x,y) (spirale courte) ou null. */
+  nearestWalkable(x, y) {
+    for (let r = 0; r <= 8; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue
+          if (this.walkableForPath(x + dx, y + dy)) return { x: x + dx, y: y + dy }
+        }
+      }
+    }
+    return null
+  }
+
+  /** Case franchissable à pied par une route : dans la map, ni océan, ni rivière (sauf PONT). */
+  walkableForPath(x, y) {
+    if (x <= 1 || y <= 1 || x >= MAP_W - 1 || y >= MAP_H - 1) return false
+    if (this.isOcean(x, y)) return false
+    const k = this.key(x, y)
+    return !this.waterCells.has(k) || this.bridgeCells.has(k)
+  }
+
+  /** BFS 8 directions (sans couper les diagonales d'eau) de (sx,sy) à (gx,gy) sur les cases
+   *  marchables -> renvoie la liste des cases du chemin (ou null si injoignable par voie terrestre). */
+  findWalkPath(sx, sy, gx, gy) {
+    const W = MAP_W
+    const H = MAP_H
+    const prev = new Int32Array(W * H).fill(-1)
+    const idx = (x, y) => y * W + x
+    const start = idx(sx, sy)
+    prev[start] = start
+    const q = [start]
+    let head = 0
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]
+    let found = false
+    while (head < q.length) {
+      const cur = q[head++]
+      const cx = cur % W
+      const cy = (cur - cx) / W
+      if (cx === gx && cy === gy) {
+        found = true
+        break
+      }
+      for (const [dx, dy] of dirs) {
+        const nx = cx + dx
+        const ny = cy + dy
+        if (!this.walkableForPath(nx, ny)) continue
+        if (dx && dy && (!this.walkableForPath(cx + dx, cy) || !this.walkableForPath(cx, cy + dy))) continue // pas de coupe en diagonale
+        const ni = idx(nx, ny)
+        if (prev[ni] !== -1) continue
+        prev[ni] = cur
+        q.push(ni)
+      }
+    }
+    if (!found) return null
+    const path = []
+    let c = idx(gx, gy)
+    while (c !== start) {
+      const x = c % W
+      const y = (c - x) / W
+      path.push({ x, y })
+      c = prev[c]
+    }
+    path.push({ x: sx, y: sy })
+    path.reverse()
+    return path
   }
 
   /** Peint les sols des biomes en anneaux concentriques (bords ondulés organiques). */
