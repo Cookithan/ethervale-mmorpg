@@ -8,7 +8,14 @@ import { DEFAULT_CHARACTER } from '../data/classes.js'
 import { makeSave, writeSave } from '../data/save.js'
 
 const MONSTER_COUNT = 70 // nombre de monstres sur la map
-const MONSTER_GAP = 7 // distance mini entre deux monstres au spawn (en tuiles, anti-paquets)
+const MONSTER_GAP = 7 // distance mini entre deux monstres ISOLÉS au spawn (en tuiles, anti-paquets)
+// Répartition "mix" type WoW : chaque biome reçoit un budget de mobs proportionnel à sa surface
+// jouable (aucune zone vide/surchargée). Une partie part en CAMPS (nids de 2-4 du même type,
+// espacés entre eux -> zones de marche vides), le reste en monstres ISOLÉS errants.
+const CAMP_SHARE = 0.6 // part du budget d'un biome placée en camps (le reste = isolés)
+const CAMP_RADIUS = 2 // rayon (tuiles) d'un camp autour de son centre (nid serré)
+const CAMP_GAP = 2 // distance mini entre deux mobs D'UN MÊME camp (assez serré pour faire "nid")
+const CAMP_SPACING = 12 // distance mini entre deux CENTRES de camps (-> couloirs vides entre nids)
 const POND_COUNT = 13 // petits lacs (eau) dans forêt/neige/prairie
 const DRY_COUNT = 9 // lacs asséchés (terre craquelée) dans le désert
 const HOMING_RANGE = 90 // distance max pour qu'une boule "accroche" une créature proche (px)
@@ -1118,7 +1125,96 @@ export default class GameScene extends Phaser.Scene {
   // ---------- combat ----------
 
   spawnMonsters() {
-    for (let i = 0; i < MONSTER_COUNT; i++) this.spawnOneMonster(true)
+    // Budget de population par biome ∝ sa surface jouable (échantillon 1 tuile sur 4) :
+    // aucune zone vide ni surchargée. Prairie (sûre) et cursed (verrouillé) hors-jeu.
+    const land = { forest: 0, desert: 0, snow: 0 }
+    for (let tx = 2; tx < MAP_W - 2; tx += 2)
+      for (let ty = 2; ty < MAP_H - 2; ty += 2) {
+        if (this.isOcean(tx, ty)) continue
+        const b = this.biomeAt(tx, ty)
+        if (land[b] !== undefined) land[b]++
+      }
+    const total = land.forest + land.desert + land.snow || 1
+    for (const biome of ['forest', 'desert', 'snow']) {
+      this.populateBiome(biome, Math.round((MONSTER_COUNT * land[biome]) / total))
+    }
+  }
+
+  /** Peuple UN biome avec `budget` monstres : ~CAMP_SHARE en camps (nids de 2-4 du même type,
+   *  espacés de CAMP_SPACING -> couloirs vides entre eux), le reste en isolés bien dispersés. */
+  populateBiome(biome, budget) {
+    if (budget <= 0) return
+    const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
+    const camps = [] // centres de camps déjà posés (pour les espacer entre eux)
+    let placed = 0
+    // --- CAMPS ---
+    const campTarget = Math.round(budget * CAMP_SHARE)
+    for (let guard = 0; placed < campTarget && guard < 80; guard++) {
+      const center = this.findTileInBiome(biome, { gap: MONSTER_GAP, awayFrom: camps, awayDist: CAMP_SPACING })
+      if (!center) break
+      camps.push(center)
+      const campType = Phaser.Utils.Array.GetRandom(pool) // un nid = un seul type (lecture "intentionnelle")
+      const size = Phaser.Math.Between(2, 4)
+      for (let k = 0, made = 0; k < size * 5 && made < size && placed < budget; k++) {
+        const tx = center.tx + Phaser.Math.Between(-CAMP_RADIUS, CAMP_RADIUS)
+        const ty = center.ty + Phaser.Math.Between(-CAMP_RADIUS, CAMP_RADIUS)
+        if (!this.spawnableTile(tx, ty) || this.biomeAt(tx, ty) !== biome) continue
+        if (this.monsterTooClose(tx, ty, CAMP_GAP)) continue
+        this.placeMonsterAt(tx, ty, biome, { type: campType })
+        made++
+        placed++
+      }
+    }
+    // --- ISOLÉS (le reste) ---
+    for (let guard = 0; placed < budget && guard < budget * 12; guard++) {
+      const t = this.findTileInBiome(biome, { gap: MONSTER_GAP })
+      if (!t) break
+      this.placeMonsterAt(t.tx, t.ty, biome, {})
+      placed++
+    }
+  }
+
+  /** true si la tuile peut accueillir un monstre (dans la map, hors village/eau/objet réservé). */
+  spawnableTile(tx, ty) {
+    return (
+      tx >= 2 && ty >= 2 && tx <= MAP_W - 3 && ty <= MAP_H - 3 &&
+      !this.nearSpawn(tx, ty, 8) && !this.occupied.has(this.key(tx, ty)) && !this.onWater(tx, ty, 1)
+    )
+  }
+
+  /** true si un monstre vivant est à moins de `gap` tuiles de (tx,ty). */
+  monsterTooClose(tx, ty, gap) {
+    for (const m of this.monsters.getChildren())
+      if (m.active && this.dist(tx, ty, m.x / TILE, m.y / TILE) < gap) return true
+    return false
+  }
+
+  /** Tire une tuile valide AU HASARD dans un biome donné (espacée des autres mobs, et
+   *  optionnellement loin de centres `awayFrom`). Renvoie {tx,ty} ou null après N essais. */
+  findTileInBiome(biome, { gap = MONSTER_GAP, awayFrom = null, awayDist = 0 } = {}) {
+    for (let tries = 0; tries < 120; tries++) {
+      const tx = Phaser.Math.Between(2, MAP_W - 3)
+      const ty = Phaser.Math.Between(2, MAP_H - 3)
+      if (!this.spawnableTile(tx, ty) || this.biomeAt(tx, ty) !== biome) continue
+      if (awayFrom && awayFrom.some((c) => this.dist(tx, ty, c.tx, c.ty) < awayDist)) continue
+      if (this.monsterTooClose(tx, ty, gap)) continue
+      return { tx, ty }
+    }
+    return null
+  }
+
+  /** Crée et enregistre un monstre à (tx,ty) : type imposé ou tiré du biome, niveau = base du
+   *  biome ±1, élite éventuelle (tirage SHINY au spawn initial). Renvoie le monstre. */
+  placeMonsterAt(tx, ty, biome, { type = null, elite = null } = {}) {
+    const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
+    const typeKey = type || Phaser.Utils.Array.GetRandom(pool)
+    const isElite = elite !== null ? elite : Phaser.Math.Between(1, 100) <= SHINY_CHANCE
+    let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) + (isElite ? 1 : 0)
+    level = Phaser.Math.Clamp(level, 1, MONSTER_MAX_LEVEL)
+    const name = isElite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}` : null
+    const m = new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite: isElite, name })
+    this.monsters.add(m)
+    return m
   }
 
   /**
