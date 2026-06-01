@@ -88,7 +88,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_spirit', 'assets/fx/spirit.png', { frameWidth: 32, frameHeight: 32 }) // 5 frames (blanc, teintable)
     this.load.spritesheet('fx_shield', 'assets/fx/shield.png', { frameWidth: 24, frameHeight: 26 }) // 6 frames (bouclier Tank)
     this.load.spritesheet('fx_aura', 'assets/fx/aura.png', { frameWidth: 25, frameHeight: 24 }) // 5 frames (soin, teinté vert)
-    this.load.spritesheet('fx_circslash', 'assets/fx/circslash.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (Charge)
+    this.load.spritesheet('fx_circslash', 'assets/fx/circslash.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (Charge + masses)
+    this.load.spritesheet('fx_slash', 'assets/fx/slash.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (tranche lames)
   }
 
   create() {
@@ -127,6 +128,9 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('fx-circslash')) {
       this.anims.create({ key: 'fx-circslash', frames: this.anims.generateFrameNumbers('fx_circslash', { start: 0, end: 3 }), frameRate: 18, repeat: 0 })
+    }
+    if (!this.anims.exists('fx-slash')) {
+      this.anims.create({ key: 'fx-slash', frames: this.anims.generateFrameNumbers('fx_slash', { start: 0, end: 3 }), frameRate: 26, repeat: 0 })
     }
   }
 

@@ -2251,9 +2251,12 @@ export default class GameScene extends Phaser.Scene {
     const RANGE = 20 // rayon de la zone de frappe (généreux)
 
     // arme équipée -> son sprite fait un MOUVEMENT DE COUP (swing) ; sinon simple arc blanc
-    const wIcon = p.equipped?.weapon?.icon
+    const weapon = p.equipped?.weapon
+    const wIcon = weapon?.icon
     if (wIcon && this.textures.exists(wIcon)) this.showWeaponSwing(p.x, p.y, p.facing, wIcon)
     else this.showSlash(p.x, p.y, p.facing)
+    // tranche FX selon le TYPE d'arme (lame = tranche courbée, masse = slash circulaire)
+    if (weapon?.fx && this.anims.exists(weapon.fx)) this.showSlashFx(p.x, p.y, p.facing, weapon.fx)
 
     let hitAny = false
     this.monsters.getChildren().forEach((mon) => {
@@ -2356,6 +2359,12 @@ export default class GameScene extends Phaser.Scene {
     const aura = this.add.sprite(p.x, p.y - 2, 'fx_aura').setDepth(p.y + 61).setScale(1.6).setTint(0x8ef0a0) // aura animée teintée vert
     aura.play('fx-aura')
     aura.once('animationcomplete', () => aura.destroy())
+    // on voit le bâton de soin se lever pendant l'incantation
+    const wIcon = p.equipped?.weapon?.icon
+    if (wIcon && this.textures.exists(wIcon)) {
+      const staff = this.add.image(p.x + 5, p.y + 1, wIcon).setDepth(p.y + 60).setScale(0.95).setRotation(-0.4)
+      this.tweens.add({ targets: staff, y: p.y - 4, duration: 200, yoyo: true, onComplete: () => staff.destroy() })
+    }
     this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A')
     return true
   }
@@ -2445,10 +2454,14 @@ export default class GameScene extends Phaser.Scene {
       .setOrigin(0.5, 1)
       .setDepth(99999)
       .setResolution(3)
+    // sceptre/baguette brandi pendant l'incantation -> on voit l'arme du Mage
+    const wIcon = p.equipped?.weapon?.icon
+    const staff = wIcon && this.textures.exists(wIcon) ? this.add.image(p.x + 5, p.y + 1, wIcon).setDepth(p.y + 60).setScale(0.85) : null
     const cleanup = () => {
       bg.destroy()
       bar.destroy()
       lbl.destroy()
+      staff?.destroy()
       p.casting = false
     }
     const ev = this.time.addEvent({
@@ -2465,6 +2478,14 @@ export default class GameScene extends Phaser.Scene {
         bg.setPosition(p.x, p.y - yOff)
         lbl.setPosition(p.x, p.y - yOff - 7)
         bar.setPosition(p.x - W / 2, p.y - yOff).setSize(W * t, 4)
+        if (staff) {
+          if (this.time.now - start < CAST - 200) {
+            staff.rotation += 0.3 // tourne pendant l'incantation
+          } else {
+            staff.rotation = 0 // 200ms avant la fin : il s'arrête et se BRANDIT (dressé), prêt à lancer
+            staff.setPosition(p.x + 5, p.y - 5)
+          }
+        }
         if (t >= 1) {
           ev.remove()
           cleanup()
@@ -2551,6 +2572,9 @@ export default class GameScene extends Phaser.Scene {
     const proj = this.projectiles.get(p.x, p.y)
     if (!proj) return
     proj.fire(p.x, p.y, tx, ty, Math.round(p.attackPower * p.rangedDmgMul), this.time.now, target, p.magicColor)
+    // on VOIT l'arme à distance (sceptre/baguette) pointer vers la cible
+    const wi = p.equipped?.weapon?.icon
+    if (wi && this.textures.exists(wi)) this.showWeaponPoint(p.x, p.y, p.facing, wi)
   }
 
   /** Petit éclair blanc en arc pour matérialiser le coup d'épée. */
@@ -2581,6 +2605,26 @@ export default class GameScene extends Phaser.Scene {
     }
     place()
     this.tweens.add({ targets: st, a: center + SWING / 2, duration: 150, ease: 'Quad.easeInOut', onUpdate: place, onComplete: () => w.destroy() })
+  }
+
+  /** Joue un effet de TRANCHE animé (FX du pack) devant le héros, orienté selon la direction d'attaque.
+   *  `fxKey` = clé d'anim (ex. 'fx-slash' / 'fx-circslash') ; la texture est dérivée ('fx_slash'…). */
+  showSlashFx(px, py, facing, fxKey) {
+    const tex = fxKey.replace('-', '_')
+    if (!this.textures.exists(tex)) return
+    const deg = { right: 0, down: 90, left: 180, up: -90 }[facing] ?? 0
+    const rad = Phaser.Math.DegToRad(deg)
+    const fx = this.add.sprite(px + Math.cos(rad) * 16, py + Math.sin(rad) * 16, tex).setDepth(py + 52).setScale(1.4)
+    fx.setRotation(rad + Phaser.Math.DegToRad(90)) // oriente la tranche vers la direction d'attaque
+    fx.play(fxKey)
+    fx.once('animationcomplete', () => fx.destroy())
+  }
+
+  /** Montre l'arme à distance (sceptre/baguette) TENUE DANS LA MAIN avec un petit "poke" vers le haut.
+   *  Elle NE pivote PAS vers le curseur/l'ennemi (la visée auto faisait "tourner" l'arme = moche). */
+  showWeaponPoint(px, py, facing, iconKey) {
+    const w = this.add.image(px + 5, py + 1, iconKey).setDepth(py + 51).setScale(1.0).setRotation(-0.3)
+    this.tweens.add({ targets: w, y: py - 4, duration: 90, yoyo: true, onComplete: () => w.destroy() })
   }
 
   onMonsterKilled(mon) {
