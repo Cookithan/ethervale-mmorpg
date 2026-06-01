@@ -2353,6 +2353,9 @@ export default class GameScene extends Phaser.Scene {
     }
     const healed = p.heal(Math.round(p.maxHp * 0.35))
     this.showHealEffect(p.x, p.y)
+    const aura = this.add.sprite(p.x, p.y - 2, 'fx_aura').setDepth(p.y + 61).setScale(1.6).setTint(0x8ef0a0) // aura animée teintée vert
+    aura.play('fx-aura')
+    aura.once('animationcomplete', () => aura.destroy())
     this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A')
     return true
   }
@@ -2373,6 +2376,10 @@ export default class GameScene extends Phaser.Scene {
     p.attackUntil = now + dur + 20
     p.setVelocity(Math.cos(ang) * SPD, Math.sin(ang) * SPD)
     p.anims.play(`${p.heroKey}-attack-` + p.facing, true)
+    // slash circulaire animé au départ de la charge
+    const slash = this.add.sprite(p.x, p.y, 'fx_circslash').setDepth(p.y + 60).setScale(1.5)
+    slash.play('fx-circslash')
+    slash.once('animationcomplete', () => slash.destroy())
     // dégâts à tout ennemi TRAVERSÉ pendant le bond (échantillonné le long du trajet, chacun 1 seule fois)
     const hit = new Set()
     const dmg = p.attackPower * 2.2
@@ -2401,13 +2408,13 @@ export default class GameScene extends Phaser.Scene {
   spellShield() {
     const p = this.player
     p.shieldUntil = this.time.now + 4000
-    const aura = this.add.circle(p.x, p.y, 14, 0x66ccff, 0.22).setStrokeStyle(2, 0x99ddff, 0.85).setDepth(p.y + 60)
-    const ev = this.time.addEvent({ delay: 30, loop: true, callback: () => aura.setPosition(p.x, p.y).setDepth(p.y + 60) })
-    this.tweens.add({ targets: aura, alpha: 0.08, yoyo: true, repeat: -1, duration: 420 })
+    // bulle de bouclier ANIMÉE (FX du pack) qui suit le héros pendant les 4 s
+    const bubble = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 60).setScale(1.7).setAlpha(0.9)
+    bubble.play('fx-shield')
+    const ev = this.time.addEvent({ delay: 30, loop: true, callback: () => bubble.setPosition(p.x, p.y).setDepth(p.y + 60) })
     this.time.delayedCall(4000, () => {
       ev.remove()
-      this.tweens.killTweensOf(aura)
-      aura.destroy()
+      bubble.destroy()
     })
     this.floatingText(p.x, p.y - 18, 'Bouclier !', '#99ddff')
     return true
