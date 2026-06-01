@@ -780,7 +780,7 @@ export default class UIScene extends Phaser.Scene {
     const ox = (cw - mapPxW) / 2
     const oy = (ch - mapPxH) / 2 + 10
 
-    const COLOR = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72 }
+    const COLOR = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72, cursed: 0x7c4a63 }
     const gfx = reg(this.add.graphics().setDepth(301))
     // cadre + fond océan
     gfx.fillStyle(COLOR.ocean, 1).fillRect(ox, oy, mapPxW, mapPxH)
@@ -810,10 +810,10 @@ export default class UIScene extends Phaser.Scene {
         bgfx.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.8, cell + 0.8)
       }
     }
-    // sentiers (chemins de terre) : petits points bruns reliant village et repaires
+    // gués (terre battue marron clair) traversant les rivières-séparatrices
     if (g.pathCells && g.pathCells.size) {
       const pg = reg(this.add.graphics().setDepth(301.5))
-      pg.fillStyle(0x7a5a32, 1)
+      pg.fillStyle(0xb5915c, 1)
       for (const k of g.pathCells) {
         const [tx, ty] = k.split(',').map(Number)
         pg.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.6, cell + 0.6)
@@ -828,7 +828,7 @@ export default class UIScene extends Phaser.Scene {
     reg(this.add.text(vx, vy - 10, 'Village', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
 
     // marqueurs des REPAIRES DE BOSS (loin du spawn, au fond des zones)
-    const bossNames = { forest: 'Gorthak', desert: 'Sslyth', snow: 'Brakka' }
+    const bossNames = { forest: 'Gorthak', desert: 'Sslyth', snow: 'Brakka', cursed: 'Dargoth' }
     for (const [biome, lair] of Object.entries(g.bossLairs ?? {})) {
       const bx = ox + lair.tx * cell
       const by = oy + lair.ty * cell
@@ -852,7 +852,7 @@ export default class UIScene extends Phaser.Scene {
     // titre + aide + légende
     reg(this.add.text(cw / 2, oy - 24, 'Carte du monde', { fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(303))
     reg(this.add.text(cw / 2, oy + mapPxH + 20, 'M / Échap : fermer', { fontFamily: 'monospace', fontSize: '12px', color: '#bcd' }).setOrigin(0.5).setDepth(303))
-    const legend = [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Océan', COLOR.ocean]]
+    const legend = [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Maudit', COLOR.cursed], ['Océan', COLOR.ocean]]
     let lx = cw / 2 - (legend.length * 78) / 2
     const ly = oy + mapPxH + 40
     for (const [name, col] of legend) {

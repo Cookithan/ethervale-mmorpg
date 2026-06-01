@@ -36,7 +36,7 @@ function makeSeededRandom(seed) {
 const TILE = 16
 // grille TOTALE agrandie : le continent est une ÎLE elliptique CENTRÉE, entourée d'OCÉAN de
 // tous les côtés (marges nettes à gauche/droite ET haut/bas). Cf. isOcean/buildOcean.
-const MAP_W = 280 // grille avec marge d'OCÉAN autour du continent (vue d'ensemble au dézoom, sans île perdue)
+const MAP_W = 360 // élargie à l'EST : place pour la grande ÎLE MAUDITE au large (hors du cadre d'accueil)
 const MAP_H = 220
 const ISLAND_RX = 96 // demi-largeur du continent (tuiles) -> marge océan gauche/droite = icx - RX
 const ISLAND_RY = 82 // demi-hauteur du continent (tuiles) -> marge océan haut/bas = icy - RY
@@ -114,7 +114,12 @@ const BIOME_BOSSES = {
   forest: { type: 'mushroom', name: 'Gorthak, Gardien de la Forêt' },
   desert: { type: 'spider', name: 'Sslyth, Reine des Sables' },
   snow: { type: 'bear', name: 'Brakka, Colosse des Glaces' },
+  cursed: { type: 'flam', name: 'Dargoth, Seigneur Maudit' }, // sur l'ÎLE MAUDITE (verrouillée, end-game)
 }
+// ÎLE MAUDITE (end-game) : GRANDE île détachée loin au SUD-OUEST, au-delà des mers. Biome `cursed` +
+// boss Dargoth. Entourée d'océan, AUCUN gué -> VERROUILLÉE tant que la nage n'existe pas. Placée hors
+// du cadre d'accueil (centré sur le village) -> on n'en voit qu'un BOUT au dézoom = secret end-game.
+const CURSED_ISLE = { ox: -100, oy: 60, r: 28 } // [offset tuiles depuis le centre de l'île, rayon]
 const BOSS_BAR_RANGE = 240 // distance (px) à laquelle la barre de boss apparaît en haut de l'écran
 
 // groupe de décor par biome (les arbres ne doivent pas déborder sur un autre groupe)
@@ -158,8 +163,8 @@ const BUILDINGS = {
 }
 
 // --- eau (TilesetWater / water.png, 28 colonnes) ---
-const RIVERS_ENABLED = true // grandes rivières serpentant de l'intérieur jusqu'à la mer (+ ponts aux gués)
-const PATHS_ENABLED = true // chemins ajoutés UN PAR UN (étape 3+) ; routés par les ponts
+const RIVERS_ENABLED = true // SEULES rivières = séparatrices de biomes (neige/forêt et forêt/désert)
+const PATHS_ENABLED = false // PLUS de routes hors village (le village garde ses propres allées)
 
 /**
  * GameScene — Phase 1, "vraie map".
@@ -206,6 +211,8 @@ export default class GameScene extends Phaser.Scene {
       ['snow', icx - 52, icy - 50], ['snow', icx + 2, icy - 64], ['snow', icx + 54, icy - 48], ['snow', icx - 78, icy - 30], ['snow', icx + 34, icy - 62],
       ['desert', icx - 58, icy + 52], ['desert', icx + 6, icy + 68], ['desert', icx + 60, icy + 50], ['desert', icx + 74, icy + 32], ['desert', icx - 24, icy + 56],
     ]
+    // lissage de la CÔTE (masque d'océan) AVANT toute lecture (biomes/rivières/chemins/spawns/boss)
+    this.computeCoast()
     // repaires de boss : un point PROFOND dans chaque zone, LOIN du village (= points d'intérêt pour
     // les sentiers). Calculés tôt (avant chemins/rivières) car les sentiers les relient.
     this.computeBossLairs()
@@ -556,54 +563,39 @@ export default class GameScene extends Phaser.Scene {
         for (let dy = 0; dy < w; dy++) {
           const tx = Math.round(x) + dx
           const ty = Math.round(y) + dy
-          if (tx > 0 && ty > 0 && tx < MAP_W - 1 && ty < MAP_H - 1) {
+          // jamais de terre peinte dans la MER (évite les pixels de terrain qui débordent sur l'océan
+          // au ras de la côte) ; les gués/ponts sur les rivières restent gérés séparément.
+          if (tx > 0 && ty > 0 && tx < MAP_W - 1 && ty < MAP_H - 1 && !this.isOcean(tx, ty)) {
             cells.add(this.key(tx, ty))
             this.pathCells.add(this.key(tx, ty))
           }
         }
       }
     }
-    // CHEMINS (ajoutés un par un) — chacun sinueux et FRANCHISSANT les rivières par un PONT :
-    // étape 3 : village -> camp du désert (Sud) ; étape 4 : village -> camp de la neige (Nord).
+    // RÉSEAU = ÉTOILE + ANNEAU.
+    // Étoile : village -> chaque repaire de boss (une route directe par zone).
     const village = { x: this.cx, y: this.cy }
     const desert = this.bossLairs?.desert
-    if (desert) this.routePath(carve, village, { x: desert.tx, y: desert.ty })
     const snow = this.bossLairs?.snow
-    if (snow) this.routePath(carve, village, { x: snow.tx, y: snow.ty })
     const forest = this.bossLairs?.forest
-    if (forest) this.routePath(carve, village, { x: forest.tx, y: forest.ty }) // étape 5 : forêt (Est)
-    // PETITS CHEMINS : chaque PNJ dispersé est relié par un sentier qui se GREFFE sur la route
-    // principale la plus proche (-> les sentiers rejoignent le réseau et se croisent près des routes).
-    const roadCells = [...this.pathCells] // routes principales seulement (avant d'ajouter les sentiers PNJ)
-    const grafts = [] // points de greffe déjà utilisés (pour ne pas coller deux sentiers ensemble)
-    const GRAFT_GAP = 9 // distance mini entre deux points de greffe -> les sentiers ne fusionnent pas
-    for (const npc of this.wildNpcs ?? []) {
-      // point de route le plus proche du PNJ, MAIS assez loin des greffes déjà posées (sinon les
-      // sentiers se rejoignent et se fusionnent, surtout dans les zones étroites comme l'hiver).
-      let best = null
-      let bd = Infinity
-      let fallback = null
-      let fbd = Infinity
-      for (const k of roadCells) {
-        const [px, py] = k.split(',').map(Number)
-        const d = this.dist(px, py, npc.tx, npc.ty)
-        if (d < fbd) {
-          fbd = d
-          fallback = { x: px, y: py }
-        }
-        if (grafts.some((g) => this.dist(g.x, g.y, px, py) < GRAFT_GAP)) continue
-        if (d < bd) {
-          bd = d
-          best = { x: px, y: py }
-        }
-      }
-      const graft = best || fallback
-      if (graft) {
-        grafts.push(graft)
-        this.routePath(carve, graft, { x: npc.tx, y: npc.ty })
-      }
+    if (desert) this.routePath(carve, village, { x: desert.tx, y: desert.ty })
+    if (snow) this.routePath(carve, village, { x: snow.tx, y: snow.ty })
+    if (forest) this.routePath(carve, village, { x: forest.tx, y: forest.ty })
+    // Anneau : relie les ZONES entre elles (les joueurs circulent zone-à-zone sans repasser au
+    // village). On connecte en boucle des points à MI-CHEMIN village->boss (donc DANS chaque zone,
+    // mais loin des repaires dangereux). Le BFS contourne l'eau -> l'anneau passe par les ponts.
+    const lairs = [desert, snow, forest].filter(Boolean)
+    const midOf = (l) => {
+      const mx = Math.round((village.x + l.tx) / 2)
+      const my = Math.round((village.y + l.ty) / 2)
+      return this.nearestWalkable(mx, my) || { x: mx, y: my }
     }
-    // retire le rendu du chemin DANS la clairière du village (il a ses propres allées) ; le chemin
+    const mids = lairs.map(midOf)
+    for (let i = 0; i < mids.length; i++) this.routePath(carve, mids[i], mids[(i + 1) % mids.length])
+    // Les 15 sentiers PNJ en cul-de-sac d'avant sont RETIRÉS (map plus lisible) ; les PNJ dispersés
+    // (this.wildNpcs) restent en place, simplement sans sentier dédié.
+
+    // retire le rendu du chemin DANS la clairière du village (elle a ses propres allées) ; le chemin
     // qui traverse le DÉSERT est repeint en argile rouge (sinon invisible sur le sable = terre)
     const desertPath = new Set()
     for (const k of [...cells]) {
@@ -625,33 +617,18 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Trace une ROUTE de a vers b qui CONTOURNE l'eau et ne la franchit QUE par les ponts : on
-   *  calcule un vrai chemin (BFS sur les cases marchables = terre + ponts, jamais rivière/océan)
-   *  puis on le creuse. -> la route ne traverse jamais l'eau hors pont. */
+  /** Trace une ROUTE de a vers b. On prend le PLUS COURT CHEMIN terrestre (BFS sur les cases
+   *  marchables = terre + ponts, jamais rivière/océan) puis on le lisse (Chaikin) -> route DIRECTE et
+   *  douce, SANS détour ni dédoublement. Si aucune voie terrestre n'existe, on ne trace RIEN (jamais
+   *  de route dans l'eau). */
   routePath(carve, a, b) {
-    // 1) points de passage en courbes douces ; 2) chemin complet par BFS (contourne l'eau / ponts) ;
-    // 3) on SIMPLIFIE par ligne de vue (supprime l'escalier du BFS = les angles droits) ; 4) on
-    //    creuse des segments DROITS entre les points simplifiés -> route lisse, jamais dans l'eau.
-    const wps = [{ x: Math.round(a.x), y: Math.round(a.y) }, ...this.sinuousWaypoints(a, b), { x: Math.round(b.x), y: Math.round(b.y) }]
-    let full = []
-    let prev = wps[0]
-    for (let i = 1; i < wps.length; i++) {
-      const seg = this.findWalkPath(prev.x, prev.y, wps[i].x, wps[i].y)
-      if (seg) {
-        if (full.length) seg.shift() // évite de doubler la jonction
-        full = full.concat(seg)
-        prev = wps[i]
-      }
-    }
-    if (!full.length) {
-      this.carvePathTo(carve, a, b)
-      return
-    }
-    // points de contrôle (1 cellule sur 5) puis lissage CHAIKIN -> courbe qui SERPENTE (pas droite,
-    // pas d'escalier). Les points sont clampés sur la terre -> la courbe ne plonge jamais dans l'eau.
+    const seg = this.findWalkPath(Math.round(a.x), Math.round(a.y), Math.round(b.x), Math.round(b.y))
+    if (!seg || seg.length < 2) return // pas de voie terrestre -> on ne trace pas (zéro route en mer)
+    // points de contrôle (1 cellule sur 4) sur le plus court chemin, puis lissage CHAIKIN -> route qui
+    // suit le terrain en douceur, sans escalier ni S parasites.
     const ctrl = []
-    for (let i = 0; i < full.length; i += 5) ctrl.push(full[i])
-    if (ctrl[ctrl.length - 1] !== full[full.length - 1]) ctrl.push(full[full.length - 1])
+    for (let i = 0; i < seg.length; i += 4) ctrl.push(seg[i])
+    if (ctrl[ctrl.length - 1] !== seg[seg.length - 1]) ctrl.push(seg[seg.length - 1])
     let pts = ctrl
     for (let it = 0; it < 3; it++) pts = this.chaikin(pts)
     for (let i = 1; i < pts.length; i++) {
@@ -664,7 +641,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Lissage de Chaikin (corner-cutting) : arrondit la polyligne en courbe douce. Chaque point coupé
-   *  est CLAMPÉ : s'il tombe hors-terre on garde l'angle d'origine -> la courbe ne traverse pas l'eau. */
+   *  qui tomberait hors-terre est rapproché de la terre la plus proche (cf. smoothClamp) au lieu de
+   *  revenir sur l'angle d'origine -> plus d'angles secs près des berges, la courbe reste douce. */
   chaikin(pts) {
     if (pts.length < 3) return pts
     const out = [pts[0]]
@@ -673,11 +651,19 @@ export default class GameScene extends Phaser.Scene {
       const b = pts[i + 1]
       const q = { x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 }
       const r = { x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 }
-      out.push(this.walkableForPath(Math.round(q.x), Math.round(q.y)) ? q : a)
-      out.push(this.walkableForPath(Math.round(r.x), Math.round(r.y)) ? r : b)
+      out.push(this.smoothClamp(q, a))
+      out.push(this.smoothClamp(r, b))
     }
     out.push(pts[pts.length - 1])
     return out
+  }
+
+  /** Garde le point lissé `p` s'il est sur une case marchable, sinon le rapproche de la case
+   *  marchable la plus proche (repli sur `fb` si aucune trouvée) -> évite les angles secs. */
+  smoothClamp(p, fb) {
+    if (this.walkableForPath(Math.round(p.x), Math.round(p.y))) return p
+    const nw = this.nearestWalkable(Math.round(p.x), Math.round(p.y))
+    return nw || fb
   }
 
   /** Simplifie un chemin de cellules par LIGNE DE VUE : garde le point le plus loin atteignable en
@@ -724,8 +710,8 @@ export default class GameScene extends Phaser.Scene {
     const dirAng = Math.atan2(b.y - a.y, b.x - a.x)
     const px = -Math.sin(dirAng) // perpendiculaire à la ligne a->b
     const py = Math.cos(dirAng)
-    const bends = Phaser.Math.FloatBetween(1.2, 2.0) // nombre de grandes courbes sur le trajet
-    const amp = Math.min(14, d * 0.12) // amplitude latérale DOUCE (la courbe reste sur les terres)
+    const bends = Phaser.Math.FloatBetween(0.8, 1.3) // peu de courbes -> routes plus directes (étoile nette)
+    const amp = Math.min(7, d * 0.06) // amplitude latérale RÉDUITE -> plus de S qui se dédoublent / s'emmêlent
     const phase = Phaser.Math.FloatBetween(0, Math.PI)
     const steps = Math.max(4, Math.round(d / 9))
     for (let i = 1; i < steps; i++) {
@@ -873,6 +859,7 @@ export default class GameScene extends Phaser.Scene {
    *  frontières organiques qui s'emboîtent (pas de bandes, pas d'anneau radial). Les graines de
    *  neige tendent vers le Nord, celles de désert vers le Sud, mais décalées (patchwork). */
   biomeAt(tx, ty) {
+    if (this.isCursedIsland(tx, ty)) return 'cursed' // île maudite au large (end-game verrouillé)
     // petit bourg dégagé autour du village (clairière irrégulière ~11 tuiles) -> le village est DANS
     // la forêt, ce n'est PAS un grand ovale concentrique
     const dv = Math.hypot(tx - this.cx, ty - this.cy)
@@ -899,13 +886,12 @@ export default class GameScene extends Phaser.Scene {
    *  d'océan). Biome selon la latitude (Nord => neige, Sud => désert). [deg, rayon, marge]. */
   islands() {
     const { icx, icy } = this
+    // 3 GROSSES îles détachées au large (r=4-5 -> ~8-10 tuiles, lisibles comme de vraies îles, PAS des
+    // pixels parasites). Directions différentes pour un effet archipel propre.
     const DIRS = [
-      [-52, 2, 0.16], [-128, 2, 0.16], // NE / NO (diagonales : place pour de vraies îles)
-      [52, 2, 0.16], [128, 2, 0.16], // SE / SO
-      [-88, 2, 0.12], [90, 2, 0.12], // N (neige) / S (désert)
-      [-20, 1, 0.13], [-160, 1, 0.13], // petites NE-est / NO-ouest
-      [30, 1, 0.10], [156, 1, 0.13], // petites SE-est / SO-ouest
-      [-100, 1, 0.10], [70, 1, 0.18], // toutes petites supplémentaires
+      [-122, 5, 0.20], // NO -> au large de la neige
+      [44, 5, 0.18], // SE -> au large du désert
+      [150, 4, 0.22], // SO
     ]
     return DIRS.map(([deg, r, margin]) => {
       const a = (deg * Math.PI) / 180
@@ -919,9 +905,17 @@ export default class GameScene extends Phaser.Scene {
   }
 
   isIsland(tx, ty) {
+    if (this.isCursedIsland(tx, ty)) return true // l'île maudite est de la terre (entourée d'océan)
     for (const [ix, iy, r] of this.islands())
       if (Math.hypot(tx - ix, ty - iy) <= r + this.noise2D(tx, ty)) return true
     return false
+  }
+
+  /** Vrai si la tuile est sur l'ÎLE MAUDITE (île détachée au large, biome cursed, end-game verrouillé). */
+  isCursedIsland(tx, ty) {
+    const cx = this.icx + CURSED_ISLE.ox
+    const cy = this.icy + CURSED_ISLE.oy
+    return Math.hypot(tx - cx, ty - cy) <= CURSED_ISLE.r + this.noise2D(tx, ty)
   }
 
   /** Vrai si la tuile est dans l'OCÉAN : tout ce qui est HORS du continent (et pas une petite île).
@@ -931,6 +925,16 @@ export default class GameScene extends Phaser.Scene {
    *  portion de côte ne ressemble à la voisine). Golfe borné pour ne JAMAIS mordre la ceinture de
    *  forêt (intrusion max ~0.30 du rayon -> reste loin du village). */
   isOcean(tx, ty) {
+    // une fois le masque calculé (computeCoast), on lit la côte LISSÉE ; sinon on retombe sur la brute.
+    if (this.oceanMask) {
+      if (tx < 0 || ty < 0 || tx >= MAP_W || ty >= MAP_H) return true
+      return this.oceanMask[ty * MAP_W + tx] === 1
+    }
+    return this.rawOcean(tx, ty)
+  }
+
+  /** Forme BRUTE de l'océan (ellipse + lobes + bruit). Lissée ensuite par computeCoast. */
+  rawOcean(tx, ty) {
     if (this.isIsland(tx, ty)) return false // île détachée = terre
     const dx = tx - this.icx
     const dy = ty - this.icy
@@ -943,6 +947,31 @@ export default class GameScene extends Phaser.Scene {
       0.16 * this.noise2D(tx, ty) // bruit local -> golfes/caps organiques (anti-rond)
     coast = Phaser.Math.Clamp(coast, -0.30, 0.5) // -0.30 = golfe le plus profond (reste hors forêt)
     return r > 1 + coast
+  }
+
+  /** Calcule le masque d'océan LISSÉ : on part de la forme brute puis on retire les langues de terre
+   *  isolées (1 tuile cernée de mer) et on comble les trous d'eau isolés -> rivage net, SANS dithering
+   *  1px, tout en gardant le contour irrégulier (caps/golfes). Doit tourner AVANT toute lecture de la
+   *  côte (paintBiomes/rivières/chemins/spawns). */
+  computeCoast() {
+    const W = MAP_W
+    const H = MAP_H
+    const mask = new Uint8Array(W * H)
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) mask[y * W + x] = this.rawOcean(x, y) ? 1 : 0
+    const NEI = [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]]
+    for (let pass = 0; pass < 2; pass++) {
+      const src = mask.slice()
+      for (let y = 1; y < H - 1; y++) {
+        for (let x = 1; x < W - 1; x++) {
+          let sea = 0
+          for (const [dx, dy] of NEI) sea += src[(y + dy) * W + (x + dx)]
+          const i = y * W + x
+          if (src[i] === 0 && sea >= 6) mask[i] = 1 // langue de terre isolée -> mer
+          else if (src[i] === 1 && sea <= 2) mask[i] = 0 // trou d'eau isolé -> terre
+        }
+      }
+    }
+    this.oceanMask = mask
   }
 
   /** Pose l'eau de l'OCÉAN (tuiles 'water_gen') sur le pourtour, avec collision. À appeler
@@ -966,6 +995,7 @@ export default class GameScene extends Phaser.Scene {
   buildRivers() {
     this.waterCells = new Set()
     this.bridgeCells = new Set() // cellules de pont (marchables ; eau rendue dessous, visible)
+    this.frontierCells = new Set() // (rivières-frontières retirées : laissé vide pour les gardes)
     this.riverPaths = [] // tracé (centerline) de chaque rivière -> sert à poser les ponts régulièrement
     const wmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
     const wts = wmap.addTilesetImage('water_gen', 'water_gen', TILE, TILE) // eau générée par code
@@ -974,17 +1004,18 @@ export default class GameScene extends Phaser.Scene {
     const bmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
     const bts = bmap.addTilesetImage('bridge_gen', 'bridge_gen', TILE, TILE)
     this.bridgeLayer = bmap.createBlankLayer('bridge', bts, 0, 0).setDepth(-7)
+    // couche des GUÉS (terre battue marron clair) au-dessus de l'eau/sol
+    const fmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
+    const fts = fmap.addTilesetImage('ford_gen', 'ford_gen', TILE, TILE)
+    this.fordLayer = fmap.createBlankLayer('ford', fts, 0, 0).setDepth(-7)
 
     this.spawnPonds() // petits lacs (forêt/prairie) + lacs gelés marchables (neige) -> crée iceCells
 
     if (RIVERS_ENABLED) {
-      this.buildFrontierRivers() // rivières-FRONTIÈRES fines le long des bords de zones (avec gués)
-      // 2 grandes rivières : naissent DANS LA NEIGE (Nord = "montagnes") et descendent en serpentant
-      // jusqu'à la MER au Sud, larges (~3 tuiles) -> elles coupent le passage (goulots, ponts).
-      const sources = this.findRiverSources()
-      const baseAngs = [Math.PI * 0.58, Math.PI * 0.42] // descente Sud, l'une un peu O, l'autre un peu E
-      sources.forEach((s, i) => this.carveRiver(s.tx, s.ty, baseAngs[i % 2]))
-      this.buildBridges() // plusieurs ponts PERPENDICULAIRES espacés le long de chaque grande rivière
+      // SEULES rivières du monde : 2 rivières-SÉPARATRICES de biomes (neige|forêt et forêt|désert).
+      // Elles longent uniquement ces 2 transitions (pas tous les bords -> pas de toile de bandes).
+      // Les traversées sont des GUÉS en TUILE DE CHEMIN (terre), pas des ponts en planches.
+      this.buildBiomeRivers()
     }
 
     // rendu : eau générée (rendue AUSSI sous les ponts -> on la voit à travers les planches).
@@ -1005,7 +1036,7 @@ export default class GameScene extends Phaser.Scene {
   /** Pose plusieurs PONTS le long de chaque rivière, espacés, chacun PERPENDICULAIRE à l'écoulement
    *  (vraie travée de berge à berge, pas une ligne diagonale). */
   buildBridges() {
-    const SPACING = 26 // ~34 tuiles entre deux ponts sur une même rivière
+    const SPACING = 18 // espacement des ponts (resserré -> les routes trouvent une traversée plus directe)
     for (const path of this.riverPaths) {
       for (let i = SPACING; i < path.length - 6; i += SPACING) {
         const p = path[i]
@@ -1089,10 +1120,13 @@ export default class GameScene extends Phaser.Scene {
       if (rx < 2 || ry < 2 || rx > MAP_W - 3 || ry > MAP_H - 3) break
       if (this.isOcean(rx, ry)) break // arrivée à la mer
       center.push({ x: rx, y: ry })
-      // FINE (~2 tuiles de large) : la cellule + 1 voisine (au lieu d'un disque 3x3)
-      for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) {
-        const tx = rx + dx
-        const ty = ry + dy
+      // LARGE (~4 tuiles) : on creuse PERPENDICULAIREMENT à l'écoulement -> largeur constante et nette
+      // (au lieu d'un petit bloc 2x2 qui faisait une rivière maigre).
+      const px = -Math.sin(ang)
+      const py = Math.cos(ang)
+      for (const o of [-1.5, -0.5, 0.5, 1.5]) {
+        const tx = Math.round(x + px * o)
+        const ty = Math.round(y + py * o)
         if (tx > 1 && ty > 1 && tx < MAP_W - 1 && ty < MAP_H - 1 && this.biomeAt(tx, ty) !== 'prairie' && !this.isOcean(tx, ty)) {
           this.waterCells.add(this.key(tx, ty))
         }
@@ -1106,10 +1140,17 @@ export default class GameScene extends Phaser.Scene {
     if (center.length > 8) this.riverPaths.push(center)
   }
 
-  /** Rivières-FRONTIÈRES le long des bords entre deux zones de biome (sépare forêt/neige/désert).
-   *  Bord détecté puis DILATÉ d'1 tuile -> rivière ~3 de large. On épargne la prairie (pas de douve
-   *  au village) et on laisse ~1 cellule sur 5 en GUÉ -> traversable à pied / par les chemins. */
-  buildFrontierRivers() {
+  /** SEULES rivières du monde : elles séparent NEIGE|FORÊT et FORÊT|DÉSERT (et RIEN d'autre -> pas de
+   *  toile de bandes sur tous les bords). ~3 tuiles de large, épargne la prairie/le village. Quelques
+   *  GUÉS en TUILE DE CHEMIN (terre) permettent de passer d'une zone à l'autre à pied. */
+  buildBiomeRivers() {
+    this.frontierCells = new Set()
+    this.fordCells = new Set()
+    // bords entre {neige,forêt} ou {forêt,désert} UNIQUEMENT
+    const isSep = (a, b) => {
+      const s = a + '|' + b
+      return s === 'snow|forest' || s === 'forest|snow' || s === 'forest|desert' || s === 'desert|forest'
+    }
     const border = new Set()
     for (let ty = 1; ty < MAP_H - 1; ty++) {
       for (let tx = 1; tx < MAP_W - 1; tx++) {
@@ -1117,10 +1158,10 @@ export default class GameScene extends Phaser.Scene {
         const b = this.biomeAt(tx, ty)
         if (b === 'prairie') continue
         const nb = [this.biomeAt(tx + 1, ty), this.biomeAt(tx - 1, ty), this.biomeAt(tx, ty + 1), this.biomeAt(tx, ty - 1)]
-        if (nb.some((o) => o !== b && o !== 'prairie')) border.add(this.key(tx, ty))
+        if (nb.some((o) => isSep(b, o))) border.add(this.key(tx, ty))
       }
     }
-    // dilatation d'1 tuile (vers la terre) -> frontières un peu plus larges
+    // dilatation d'1 tuile -> rivière ~3 de large (épargne prairie/océan)
     const wide = new Set(border)
     for (const k of border) {
       const [x, y] = k.split(',').map(Number)
@@ -1132,12 +1173,32 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     }
-    this.frontierCells = new Set() // pour que les chemins puissent les traverser (gué) sans zigzaguer
     for (const k of wide) {
-      const [x, y] = k.split(',').map(Number)
-      if (tileNoise(x, y, 17) < 0.2) continue // gué naturel (~1 cellule sur 5)
       this.waterCells.add(k)
       this.frontierCells.add(k)
+    }
+    // GUÉS en TERRE : quelques colonnes traversantes (près du village + étalées) où on retire l'eau
+    // et on pose la tuile de chemin -> traversée d'une zone à l'autre.
+    const fordXs = [this.cx - 48, this.cx, this.cx + 48].map((x) => Phaser.Math.Clamp(Math.round(x), 3, MAP_W - 4))
+    for (const fx of fordXs) {
+      for (let ty = 2; ty < MAP_H - 2; ty++) {
+        let onRiver = false
+        for (let dx = -1; dx <= 1; dx++) if (wide.has(this.key(fx + dx, ty))) onRiver = true
+        if (!onRiver) continue
+        for (let dx = -2; dx <= 2; dx++) {
+          const k = this.key(fx + dx, ty)
+          if (!wide.has(k)) continue
+          this.waterCells.delete(k)
+          this.frontierCells.delete(k)
+          this.fordCells.add(k)
+          this.pathCells.add(k) // déco/spawns évitent le gué
+        }
+      }
+    }
+    // rendu des gués en TERRE BATTUE marron CLAIR (texture ford_gen) sur leur couche dédiée
+    for (const k of this.fordCells) {
+      const [x, y] = k.split(',').map(Number)
+      this.fordLayer.putTileAt(Math.floor(tileNoise(x, y, 23) * 4), x, y)
     }
   }
 
@@ -1663,6 +1724,9 @@ export default class GameScene extends Phaser.Scene {
       }
     }
     for (const b of Object.keys(BIOME_BOSSES)) if (best[b]) this.bossLairs[b] = { tx: best[b].tx, ty: best[b].ty }
+    // cursed = boss Dargoth sur l'ÎLE MAUDITE (la boucle ci-dessus saute les îles -> on fixe à la main
+    // le centre de l'île ; findBossTile y trouvera une tuile cursed valide).
+    this.bossLairs.cursed = { tx: this.icx + CURSED_ISLE.ox, ty: this.icy + CURSED_ISLE.oy }
   }
 
   /** Tuile de TERRE du bon biome proche de (tx,ty), en spirale (test océan/île/biome uniquement). */

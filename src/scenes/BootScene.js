@@ -192,6 +192,30 @@ export default class BootScene extends Phaser.Scene {
       g.destroy()
     }
 
+    // 'ford_gen' : tileset 64x16 = 4 variantes 16x16 de TERRE BATTUE marron CLAIR -> gués (traversées
+    // de rivière en chemin de terre clair, à la place des planches).
+    if (!this.textures.exists('ford_gen')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      const dots = [
+        [[3, 4], [11, 9], [6, 13]],
+        [[8, 3], [2, 10], [13, 12]],
+        [[5, 6], [12, 4], [9, 11]],
+        [[2, 5], [7, 9], [14, 7]],
+      ]
+      for (let i = 0; i < 4; i++) {
+        const ox = i * 16
+        g.fillStyle(0xb5915c, 1) // terre battue marron clair (un peu plus foncé)
+        g.fillRect(ox, 0, 16, 16)
+        g.fillStyle(0xc7a877, 1) // éclaircis (terre tassée)
+        g.fillRect(ox + 1, 2, 5, 3)
+        g.fillRect(ox + 9, 10, 5, 3)
+        g.fillStyle(0x97743f, 1) // petits cailloux / nuances plus foncées
+        for (const [sx, sy] of dots[i]) g.fillRect(ox + sx, sy, 2, 2)
+      }
+      g.generateTexture('ford_gen', 64, 16)
+      g.destroy()
+    }
+
     // 'dry_lake' : 4 variantes 16x16 de terre craquelée (lacs asséchés du désert)
     if (!this.textures.exists('dry_lake')) {
       const g = this.make.graphics({ x: 0, y: 0, add: false })
