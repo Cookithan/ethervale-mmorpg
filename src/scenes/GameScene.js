@@ -164,7 +164,7 @@ const BUILDINGS = {
 
 // --- eau (TilesetWater / water.png, 28 colonnes) ---
 const RIVERS_ENABLED = true // grandes rivières serpentant de l'intérieur jusqu'à la mer (+ ponts aux gués)
-const PATHS_ENABLED = false // (chemins ajoutés ENSUITE, un par un, après rivières + ponts)
+const PATHS_ENABLED = true // chemins ajoutés UN PAR UN (étape 3+) ; routés par les ponts
 
 /**
  * GameScene — Phase 1, "vraie map".
@@ -232,11 +232,11 @@ export default class GameScene extends Phaser.Scene {
     // --- terrain : chemins de terre qui serpentent (pas de gros blobs colorés) ---
     this.painted = new Set() // cellules de sol déjà peintes (évite les superpositions)
     this.pathCells = new Set() // cellules de chemin (pour dégager arbres/rochers)
-    this.paintBiomes() // sols des biomes (anneaux) AVANT les chemins
-    this.paintPaths()
-    this.buildRivers() // rivières-frontières + ponts + petits lacs (après les chemins)
+    this.paintBiomes() // sols des biomes AVANT le reste
+    this.buildRivers() // rivières + ponts (AVANT les chemins -> les chemins passent PAR les ponts)
     this.buildOcean() // océan autour du continent (île entourée d'eau)
     this.spawnDryLakes() // lacs asséchés (terre craquelée) dans le désert
+    this.paintPaths() // chemins (routés par les ponts pour franchir les rivières)
 
     // --- physique / héros ---
     this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
@@ -566,12 +566,11 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     }
-    // SENTIERS ORGANIQUES : un chemin sinueux du village vers chaque repaire de boss (carvePathTo
-    // ajoute des virages doux + du bruit -> rien de radial/droit). Donne un but à l'exploration.
+    // ÉTAPE 3 : UN SEUL chemin — village -> camp du désert (boss Sslyth), sinueux, et qui FRANCHIT
+    // la rivière par un PONT (pas de route coupée). On ajoutera les autres chemins un par un ensuite.
     const village = { x: this.cx, y: this.cy }
-    for (const lair of Object.values(this.bossLairs ?? {})) {
-      this.carvePathTo(carve, village, { x: lair.tx, y: lair.ty })
-    }
+    const desert = this.bossLairs?.desert
+    if (desert) this.routePath(carve, village, { x: desert.tx, y: desert.ty })
     // retire le rendu du chemin DANS la clairière du village (il a ses propres allées) ; le chemin
     // qui traverse le DÉSERT est repeint en argile rouge (sinon invisible sur le sable = terre)
     const desertPath = new Set()
@@ -583,6 +582,42 @@ export default class GameScene extends Phaser.Scene {
     }
     this.paintBlob(cells, BLOB.dirt, true)
     this.paintBlob(desertPath, BLOB.cursed, true)
+  }
+
+  /** Trace un chemin sinueux a->b. Si une rivière coupe la ligne directe, on passe par le PONT le
+   *  plus proche (a -> pont -> b) -> la route franchit l'eau par un pont au lieu d'être coupée. */
+  routePath(carve, a, b) {
+    if (this.segmentCrossesRiver(a, b) && this.bridgeCells && this.bridgeCells.size) {
+      let best = null
+      let bd = Infinity
+      for (const k of this.bridgeCells) {
+        const [bx, by] = k.split(',').map(Number)
+        const d = this.dist(a.x, a.y, bx, by) + this.dist(bx, by, b.x, b.y) // détour mini
+        if (d < bd) {
+          bd = d
+          best = { x: bx, y: by }
+        }
+      }
+      if (best) {
+        this.carvePathTo(carve, a, best)
+        this.carvePathTo(carve, best, b)
+        return
+      }
+    }
+    this.carvePathTo(carve, a, b)
+  }
+
+  /** true si le segment a->b traverse une cellule d'eau BLOQUANTE (rivière, hors pont). */
+  segmentCrossesRiver(a, b) {
+    const steps = Math.ceil(this.dist(a.x, a.y, b.x, b.y))
+    const ang = Math.atan2(b.y - a.y, b.x - a.x)
+    for (let i = 0; i <= steps; i++) {
+      const x = Math.round(a.x + Math.cos(ang) * i)
+      const y = Math.round(a.y + Math.sin(ang) * i)
+      const k = this.key(x, y)
+      if (this.waterCells.has(k) && !this.bridgeCells.has(k)) return true
+    }
+    return false
   }
 
   /** Peint les sols des biomes en anneaux concentriques (bords ondulés organiques). */
@@ -1387,23 +1422,30 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Pose les boss de biome à leurs repaires fixes (un par zone). */
-  /** Calcule le repaire de chaque boss : la tuile la plus PROFONDE/lointaine de sa zone (on part de
-   *  la graine de zone la plus éloignée du village). Loin du spawn = exigence. Calculé tôt (avant les
-   *  chemins) avec seulement biome + océan. */
+  /** Calcule le repaire de chaque boss EN PROFONDEUR de sa zone : désert = le plus au SUD, neige =
+   *  le plus au NORD, forêt = le plus loin du village. On exige une marge intérieure (pas sur un cap
+   *  de côte). Loin du spawn = exigence. Calculé tôt (avant les chemins) avec biome + océan. */
   computeBossLairs() {
     this.bossLairs = {}
-    for (const biome of Object.keys(BIOME_BOSSES)) {
-      const seeds = this.zoneSeeds
-        .filter((z) => z[0] === biome)
-        .sort((a, b) => Math.hypot(b[1] - this.cx, b[2] - this.cy) - Math.hypot(a[1] - this.cx, a[2] - this.cy))
-      for (const s of seeds) {
-        const lair = this.findLairTile(s[1], s[2], biome)
-        if (lair) {
-          this.bossLairs[biome] = lair
-          break
-        }
+    const dirScore = {
+      desert: (tx, ty) => ty, // le plus au SUD
+      snow: (tx, ty) => -ty, // le plus au NORD
+      forest: (tx, ty) => Math.hypot(tx - this.cx, ty - this.cy), // le plus loin du village
+    }
+    const inland = (tx, ty) =>
+      !this.isOcean(tx - 3, ty) && !this.isOcean(tx + 3, ty) && !this.isOcean(tx, ty - 3) && !this.isOcean(tx, ty + 3)
+    const best = {}
+    for (let ty = 8; ty < MAP_H - 8; ty++) {
+      for (let tx = 8; tx < MAP_W - 8; tx++) {
+        if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
+        const b = this.biomeAt(tx, ty)
+        const sc = dirScore[b]
+        if (!sc || !inland(tx, ty)) continue
+        const s = sc(tx, ty)
+        if (!best[b] || s > best[b].s) best[b] = { tx, ty, s }
       }
     }
+    for (const b of Object.keys(BIOME_BOSSES)) if (best[b]) this.bossLairs[b] = { tx: best[b].tx, ty: best[b].ty }
   }
 
   /** Tuile de TERRE du bon biome proche de (tx,ty), en spirale (test océan/île/biome uniquement). */
