@@ -3,12 +3,11 @@ import { ITEMS, effectiveStats, cloneItem } from '../data/items.js'
 import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
 
 const SPEED = 65 // vitesse de déplacement de base (px/s) — modulée par la classe (speedMul)
-const ATTACK_MS = 320 // durée de l'animation d'attaque (déplacement bloqué)
-const ATTACK_COOLDOWN = 380 // délai mini entre deux attaques
+const ATTACK_MS = 260 // durée de l'animation d'attaque (déplacement bloqué)
+const ATTACK_COOLDOWN = 340 // cadence de l'attaque de base : rapide/spammable mais pas "mitraillette"
 const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
-const SHOOT_COOLDOWN = 450 // délai mini entre deux tirs à distance (ms)
-const HEAL_COOLDOWN = 6000 // délai mini entre deux soins (ms) — classe Soigneur
-const HEAL_FRACTION = 0.35 // PV rendus par soin = 35 % des PV max
+const SHOOT_COOLDOWN = 360 // délai mini entre deux tirs à distance (ms) — attaque de base à distance
+const MANA_REGEN = 6 // mana régénéré par seconde (régén LENTE, brief §1)
 
 /**
  * Player — héros contrôlé au clavier (ZQSD/WASD/flèches) ET au clic (click-to-move).
@@ -53,7 +52,20 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // capacités EXCLUSIVES de la classe (verrouillées à la création) + vitesse
     this.abilities = cls.abilities ?? { melee: true, ranged: false, heal: false }
     this.speed = SPEED * (cls.speedMul ?? 1)
-    this.nextHealAt = 0 // cooldown du sort de soin (Soigneur)
+    this.attackCdMul = cls.attackCdMul ?? 1 // cadence de l'attaque de base (Tank = plus lent)
+    this.meleeKnock = cls.meleeKnock ?? 0 // recul de l'attaque de base : SEUL le Tank repousse (les autres = 0)
+    this.shootCdMul = cls.shootCdMul ?? 1 // cadence du tir à distance (Mage = plus lent, tape plus fort)
+    this.rangedDmgMul = cls.rangedDmgMul ?? 1 // multiplicateur de dégâts du tir à distance
+    // couleur de magie PROPRE à l'apparence (projectile + Météore) -> chaque mage a sa magie
+    this.magicColor = (cls.heroes ?? []).find((h) => h.key === heroKey)?.magic ?? 0xffffff
+    this.casting = false // en incantation (Météore du Mage) -> déplacement bloqué
+    this.castInterrupted = false // mis à true si on prend un coup pendant l'incantation -> sort annulé
+    // MANA + LE sort de la classe (1 seul : coût mana + cooldown). Régén lente gérée dans update().
+    this.maxMana = cls.mana ?? 0
+    this.mana = this.maxMana
+    this.spell = cls.spell ?? null // { id, name, cost, cd }
+    this.nextSpellAt = 0 // fin du cooldown du sort de classe
+    this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -50 % dégâts reçus
 
     // équipement (3 slots) + sac. Quelques objets de départ pour tester.
     this.equipped = { weapon: null, armor: null, accessory: null }
@@ -105,8 +117,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   startAttack(now) {
     if (this.attacking || now < this.nextAttackAt) return false
     this.attacking = true
-    this.attackUntil = now + ATTACK_MS
-    this.nextAttackAt = now + ATTACK_COOLDOWN
+    this.attackUntil = now + ATTACK_MS * this.attackCdMul
+    this.nextAttackAt = now + ATTACK_COOLDOWN * this.attackCdMul
     this.moveTarget = null
     this.setVelocity(0, 0)
     this.anims.play(`${this.heroKey}-attack-` + this.facing, true)
@@ -194,25 +206,23 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   /** Autorise un tir si le cooldown est passé et arme le prochain. Renvoie true si OK. */
   startShoot(now) {
     if (now < this.nextShootAt) return false
-    this.nextShootAt = now + SHOOT_COOLDOWN
+    this.nextShootAt = now + SHOOT_COOLDOWN * this.shootCdMul
     return true
   }
 
-  /**
-   * Sort de soin (classe Soigneur). Soigne 35 % des PV max si le cooldown est passé
-   * et que ce n'est pas déjà au max. Renvoie les PV rendus (0 si en cooldown / déjà plein).
-   */
-  castHeal(now) {
-    if (!this.abilities.heal) return 0
-    if (now < this.nextHealAt || this.hp <= 0 || this.hp >= this.maxHp) return 0
-    this.nextHealAt = now + HEAL_COOLDOWN
-    return this.heal(Math.round(this.maxHp * HEAL_FRACTION))
+  /** Dépense `cost` mana si dispo. Renvoie true si payé (sinon false -> pas assez de mana). */
+  spendMana(cost) {
+    if (this.mana < cost) return false
+    this.mana -= cost
+    return true
   }
 
   /** Inflige des dégâts au héros (respecte les i-frames). Renvoie true si touché. */
   takeDamage(amount, now) {
     if (now < this.invulnUntil || this.hp <= 0) return false
-    const dmg = Math.max(1, amount - this.defense) // la défense réduit les dégâts (min 1)
+    if (this.casting) this.castInterrupted = true // un coup pendant l'incantation l'annule (sort perdu)
+    if (now < this.shieldUntil) amount *= 0.2 // Bouclier (Tank) : le bouclier absorbe 80 % -> héros = 20 %
+    const dmg = Math.max(1, Math.round(amount - this.defense)) // la défense réduit les dégâts (min 1)
     this.hp = Math.max(0, this.hp - dmg)
     this.invulnUntil = now + HURT_IFRAMES
     this.setTintFill(0xffffff)
@@ -247,6 +257,19 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   update(time) {
+    // régénération LENTE de mana (tourne aussi pendant l'attaque)
+    if (this.maxMana > 0 && this.mana < this.maxMana) {
+      const dt = this._lastT ? time - this._lastT : 16
+      this.mana = Math.min(this.maxMana, this.mana + (MANA_REGEN * dt) / 1000)
+    }
+    this._lastT = time
+    // incantation (Météore) : le mage est ENRACINÉ (ne bouge pas) tant qu'il incante
+    if (this.casting) {
+      this.setVelocity(0, 0)
+      this.moveTarget = null
+      this.anims.play(`${this.heroKey}-idle-${this.facing}`, true)
+      return
+    }
     // fin de l'attaque
     if (this.attacking && time >= this.attackUntil) this.attacking = false
     if (this.attacking) return // déplacement bloqué pendant l'attaque

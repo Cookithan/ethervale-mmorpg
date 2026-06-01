@@ -119,6 +119,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
     this.nextBiteAt = 0
     this.repickAt = 0
+    this.knockbackUntil = 0 // fenêtre de RECUL : l'IA ne reprend pas la main tant qu'elle dure
     this.aggroed = false // poursuit-il le joueur en ce moment ?
     this.returning = false // rentre-t-il à son spawn après avoir abandonné ? (ignore le joueur)
     this.leashX = x // ancre posée au moment où il repère le joueur (origine du leash)
@@ -194,6 +195,15 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
   update(time, player) {
     if (!this.active) return
+    // FENÊTRE DE RECUL : on laisse la vélocité du knockback agir (légèrement amortie) sans que l'IA
+    // ne reprenne le contrôle -> le coup repousse VRAIMENT le monstre, qui se replace ensuite.
+    if (time < this.knockbackUntil) {
+      this.body.velocity.scale(0.94)
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.aura?.setPosition(this.x, this.y + 4)
+      this.updateHpBar(time)
+      return
+    }
     const def = this.def
     const dx = player.x - this.x
     const dy = player.y - this.y

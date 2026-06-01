@@ -18,8 +18,10 @@ export const CLASSES = {
   warrior: {
     key: 'warrior', name: 'Guerrier', desc: 'Corps à corps robuste',
     hp: 110, attack: 14, defense: 1, speedMul: 1.0,
+    mana: 60,
+    spell: { id: 'charge', name: 'Charge', cost: 25, cd: 6000 }, // bond sur l'ennemi + gros dégât
     abilities: { melee: true, ranged: false, heal: false },
-    kit: 'Épée (Espace)',
+    kit: 'Épée (Espace) · Charge (1)',
     heroes: [
       { key: 'hero_gladiator_blue', name: 'Gladiateur' },
       { key: 'hero_gladiator_red', name: 'Gladiateur rouge' },
@@ -29,19 +31,28 @@ export const CLASSES = {
   mage: {
     key: 'mage', name: 'Mage', desc: 'Sorts à distance, fragile',
     hp: 70, attack: 20, defense: 0, speedMul: 1.0,
+    mana: 120,
+    shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec)
+    rangedDmgMul: 1.1, // ...mais qui tape MOINS fort par boule
+    spell: { id: 'meteor', name: 'Météore', cost: 45, cd: 8000 }, // AoE avec barre d'incantation
     abilities: { melee: false, ranged: true, heal: false },
-    kit: 'Sorts (F) · pas d’épée',
+    kit: 'Boule (F) · Météore incanté (1)',
+    // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
     heroes: [
-      { key: 'hero_mage_black', name: 'Mage de l’ombre' },
-      { key: 'hero_samurai_red', name: 'Mage des cieux' },
-      { key: 'hero_sorcerer', name: 'Sorcière de magie' },
+      { key: 'hero_spirit', name: 'Mage des cieux', magic: 0xeaf2ff }, // blanc (Spirit, spectre céleste)
+      { key: 'hero_mage_black', name: 'Mage de l’ombre', magic: 0x9b4dff }, // violet (au MILIEU)
+      { key: 'hero_flam', name: 'Mage de flamme', magic: 0xff3b30 }, // rouge (Flam, élémentaire de feu)
     ],
   },
   tank: {
     key: 'tank', name: 'Tank', desc: 'Très lent, énormément de PV',
     hp: 200, attack: 9, defense: 5, speedMul: 0.6,
+    mana: 70,
+    attackCdMul: 2.0, // attaque de base nettement plus LENTE (coup lourd de tank)
+    meleeKnock: 200, // son coup REPOUSSE l'ennemi
+    spell: { id: 'shield', name: 'Bouclier', cost: 30, cd: 10000 }, // bouclier absorbe 80% (héros = 20%) 4s
     abilities: { melee: true, ranged: false, heal: false },
-    kit: 'Épée (Espace) · lent',
+    kit: 'Coup lent qui repousse (Espace) · Bouclier (1) · lent',
     heroes: [
       { key: 'hero_knight', name: 'Chevalier' },
       { key: 'hero_knight_gold', name: 'Chevalier doré' },
@@ -51,12 +62,14 @@ export const CLASSES = {
   healer: {
     key: 'healer', name: 'Soigneur', desc: 'Soigne, sorts légers',
     hp: 100, attack: 11, defense: 1, speedMul: 1.0,
+    mana: 110,
+    spell: { id: 'heal', name: 'Soin', cost: 30, cd: 4000 }, // rend des PV (soi / allié blessé)
     abilities: { melee: false, ranged: true, heal: true },
-    kit: 'Soin (R) · sorts (F)',
+    kit: 'Projectile (F) · Soin (1)',
     heroes: [
-      { key: 'hero_monk', name: 'Moine' },
-      { key: 'hero_master', name: 'Maître' },
-      { key: 'hero_princess', name: 'Prêtresse' },
+      { key: 'hero_monk', name: 'Moine', magic: 0x8ef0a0 }, // magie de soin (vert sacré)
+      { key: 'hero_master', name: 'Maître', magic: 0x8ef0a0 },
+      { key: 'hero_princess', name: 'Prêtresse', magic: 0x8ef0a0 },
     ],
   },
 }

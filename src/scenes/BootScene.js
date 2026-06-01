@@ -108,10 +108,11 @@ export default class BootScene extends Phaser.Scene {
   createGeneratedTextures() {
     if (!this.textures.exists('proj')) {
       const g = this.make.graphics({ x: 0, y: 0, add: false })
-      g.fillStyle(0x9be15d, 1) // halo vert clair
+      // boule BLANCHE/grise -> TEINTÉE par la couleur de magie de l'apparence (setTint dans Projectile)
+      g.fillStyle(0xdedede, 1) // halo (gris clair -> prend la teinte, un peu plus sombre = bord)
       g.fillCircle(5, 5, 5)
-      g.fillStyle(0xffffff, 1) // cœur lumineux
-      g.fillCircle(5, 5, 2)
+      g.fillStyle(0xffffff, 1) // cœur lumineux (blanc -> teinte pleine, centre brillant)
+      g.fillCircle(5, 5, 2.5)
       g.generateTexture('proj', 10, 10)
       g.destroy()
     }

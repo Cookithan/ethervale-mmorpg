@@ -26,11 +26,12 @@ export default class Projectile extends Phaser.Physics.Arcade.Image {
    * Arme et lance le projectile depuis (x,y) vers (tx,ty).
    * Si `target` est fourni (cible verrouillée), la boule la suit jusqu'au contact.
    */
-  fire(x, y, tx, ty, damage, now, target = null) {
+  fire(x, y, tx, ty, damage, now, target = null, tint = 0xffffff) {
     this.damage = damage
     this.dieAt = now + LIFESPAN
     this.target = target
     this.enableBody(true, x, y, true, true)
+    this.setTint(tint) // couleur de magie de l'apparence (violet / blanc / orange...)
     this.setDepth(y + 40)
     const a = Math.atan2(ty - y, tx - x)
     this.setVelocity(Math.cos(a) * SPEED, Math.sin(a) * SPEED)

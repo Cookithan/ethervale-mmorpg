@@ -277,11 +277,11 @@ export default class GameScene extends Phaser.Scene {
     this.projectiles = this.physics.add.group({ classType: Projectile, runChildUpdate: true })
     this.physics.add.overlap(this.projectiles, this.monsters, (proj, mon) => {
       if (!proj.active || !mon.active) return
-      // recul AVANT les dégâts : takeDamage peut détruire le monstre (body disparaît)
-      const a = Math.atan2(mon.y - proj.y, mon.x - proj.x)
-      mon.setVelocity(Math.cos(a) * 120, Math.sin(a) * 120)
+      const px = proj.x
+      const py = proj.y
+      const dmg = proj.damage
       proj.kill()
-      mon.takeDamage(proj.damage)
+      this.hitMonster(mon, dmg, px, py, 0) // pas de recul (seul le Tank repousse) ; dégâts seuls
     })
     // les projectiles s'arrêtent sur le décor
     this.physics.add.collider(this.projectiles, this.obstacles, (proj) => proj.kill())
@@ -347,7 +347,8 @@ export default class GameScene extends Phaser.Scene {
       this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
       this.input.keyboard.on('keydown-SPACE', () => this.doAttack())
       this.input.keyboard.on('keydown-F', () => this.shootForward())
-      this.input.keyboard.on('keydown-R', () => this.castHeal())
+      this.input.keyboard.on('keydown-ONE', () => this.castSpell()) // LE sort de la classe (touche 1)
+      this.input.keyboard.on('keydown-R', () => this.castSpell()) // alias pratique (R)
       this.input.keyboard.on('keydown-E', () => this.tryInteract())
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
@@ -1701,14 +1702,14 @@ export default class GameScene extends Phaser.Scene {
 
   /** Pose les boss de biome à leurs repaires fixes (un par zone). */
   /** Calcule le repaire de chaque boss EN PROFONDEUR de sa zone : désert = le plus au SUD, neige =
-   *  le plus au NORD, forêt = le plus loin du village. On exige une marge intérieure (pas sur un cap
+   *  le plus au NORD, forêt = le plus à l'EST. On exige une marge intérieure (pas sur un cap
    *  de côte). Loin du spawn = exigence. Calculé tôt (avant les chemins) avec biome + océan. */
   computeBossLairs() {
     this.bossLairs = {}
     const dirScore = {
       desert: (tx, ty) => ty, // le plus au SUD
       snow: (tx, ty) => -ty, // le plus au NORD
-      forest: (tx, ty) => Math.hypot(tx - this.cx, ty - this.cy), // le plus loin du village
+      forest: (tx, ty) => tx, // le plus à l'EST (Gorthak à l'est de la forêt)
     }
     const inland = (tx, ty) =>
       !this.isOcean(tx - 3, ty) && !this.isOcean(tx + 3, ty) && !this.isOcean(tx, ty - 3) && !this.isOcean(tx, ty + 3)
@@ -2230,6 +2231,14 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Coup d'épée : arc devant le héros, dégâts aux monstres dans la zone. */
+  /** Attaque de base déclenchée par le bouton ATK : épée (melee) ou projectile (ranged) selon la classe. */
+  basicAttack() {
+    const p = this.player
+    if (!p) return
+    if (p.abilities.melee) this.doAttack()
+    else if (p.abilities.ranged) this.shootForward()
+  }
+
   doAttack() {
     if (this.uiBusy()) return
     const p = this.player
@@ -2249,10 +2258,7 @@ export default class GameScene extends Phaser.Scene {
       // touché si le monstre est dans le rayon autour du point devant le perso
       if (Phaser.Math.Distance.Between(cx, cy, mon.x, mon.y) <= RANGE) {
         hitAny = true
-        // recul AVANT les dégâts : takeDamage peut détruire le monstre (body disparaît)
-        const a = Math.atan2(mon.y - p.y, mon.x - p.x)
-        mon.setVelocity(Math.cos(a) * 150, Math.sin(a) * 150)
-        mon.takeDamage(p.attackPower)
+        this.hitMonster(mon, p.attackPower, p.x, p.y, p.meleeKnock) // dégât + recul (Tank repousse +)
       }
     })
     // l'arme s'use quand le coup porte ; casse à 0 -> notif
@@ -2260,6 +2266,21 @@ export default class GameScene extends Phaser.Scene {
       const broke = p.wearSlot('weapon')
       if (broke) this.notifyBreak(broke)
     }
+  }
+
+  /** Inflige `amount` dégâts à un monstre + recul depuis (fromX,fromY). CENTRALISÉ ici : toute la
+   *  logique de dégât (épée, projectile, sorts) passe par là -> facile à déplacer côté serveur (Phase 4).
+   *  Le recul est appliqué AVANT takeDamage (qui peut détruire le monstre -> body disparu). */
+  hitMonster(mon, amount, fromX, fromY, knock = 150) {
+    if (!mon || !mon.active) return
+    // recul AVANT les dégâts (takeDamage peut détruire le monstre -> body disparu). Les BOSS ne sont
+    // JAMAIS repoussés (ce sont des murs) ; les mobs ET les élites le sont normalement.
+    if (knock > 0 && !mon.isBoss) {
+      const a = Math.atan2(mon.y - fromY, mon.x - fromX)
+      mon.setVelocity(Math.cos(a) * knock, Math.sin(a) * knock)
+      mon.knockbackUntil = this.time.now + 220 // l'IA ne reprend pas la main pendant le recul
+    }
+    mon.takeDamage(Math.round(amount))
   }
 
   /** Monstre actif le plus proche de (x,y) dans `radius`, sinon null. */
@@ -2294,17 +2315,182 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /**
-   * R : sort de soin (classe Soigneur uniquement). Soigne le héros si le cooldown
-   * est passé, avec une aura verte + texte flottant. (Alliés/réanimation : plus tard.)
+   * Touche 1 : LE sort de la classe. SIMPLE : 1 sort, coût en MANA + cooldown. Auto-ciblé (ennemi le
+   * plus proche / soi-même) -> aucune visée pour l'instant (le ciblage WoW = Étape B). Retours clairs :
+   * "Pas prêt" (cooldown) / "Mana !" (mana insuffisant). On ne consomme rien si le sort ne part pas.
    */
-  castHeal() {
-    if (this.uiBusy()) return
+  castSpell() {
+    if (this.uiBusy() || this.gameOver) return
     const p = this.player
-    if (!p.abilities.heal) return // réservé au Soigneur
-    const healed = p.castHeal(this.time.now)
-    if (healed <= 0) return // en cooldown ou déjà au max
+    const sp = p.spell
+    if (!sp || p.hp <= 0) return
+    const now = this.time.now
+    if (now < p.nextSpellAt) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
+    if (p.mana < sp.cost) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
+    const effects = {
+      charge: () => this.spellCharge(),
+      shield: () => this.spellShield(),
+      meteor: () => this.spellMeteor(),
+      heal: () => this.spellHeal(),
+    }
+    const fn = effects[sp.id]
+    if (!fn || fn() === false) return // sort inconnu / non exécuté -> on ne consomme ni mana ni cd
+    p.spendMana(sp.cost)
+    p.nextSpellAt = now + sp.cd
+  }
+
+  /** SOIN (Soigneur) : se soigne SOI-MÊME de 35 % des PV max (en solo il n'y a pas d'allié ; le choix
+   *  de cible d'allié arrivera avec le multijoueur). Si déjà au max : message clair, et on ne consomme
+   *  ni mana ni cooldown. */
+  spellHeal() {
+    const p = this.player
+    if (p.hp >= p.maxHp) {
+      this.floatingText(p.x, p.y - 18, 'PV au max', '#ffd27a')
+      return false
+    }
+    const healed = p.heal(Math.round(p.maxHp * 0.35))
     this.showHealEffect(p.x, p.y)
     this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A')
+    return true
+  }
+
+  /** CHARGE (Guerrier) : DASH dans la direction du héros = outil de MOBILITÉ / ESQUIVE (i-frames
+   *  pendant le bond), utilisable même sans ennemi. Tout ennemi TRAVERSÉ pendant le dash prend de gros
+   *  dégâts (une seule fois chacun). Le joueur choisit donc d'esquiver, de se déplacer, ou de foncer
+   *  dans la mêlée. */
+  spellCharge() {
+    const p = this.player
+    const now = this.time.now
+    const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
+    const ang = Math.atan2(dir[1], dir[0])
+    const SPD = 520
+    const dur = 200 // bond fixe (~100px) -> esquive / repositionnement
+    p.invulnUntil = now + dur + 130 // i-frames = vraie esquive pendant le dash
+    p.attacking = true // bloque le déplacement normal pendant le bond
+    p.attackUntil = now + dur + 20
+    p.setVelocity(Math.cos(ang) * SPD, Math.sin(ang) * SPD)
+    p.anims.play(`${p.heroKey}-attack-` + p.facing, true)
+    // dégâts à tout ennemi TRAVERSÉ pendant le bond (échantillonné le long du trajet, chacun 1 seule fois)
+    const hit = new Set()
+    const dmg = p.attackPower * 2.2
+    const ev = this.time.addEvent({
+      delay: 24,
+      repeat: Math.ceil(dur / 24),
+      callback: () => {
+        this.monsters.getChildren().forEach((m) => {
+          if (m.active && !hit.has(m) && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= 22) {
+            hit.add(m)
+            this.hitMonster(m, dmg, p.x, p.y, 0) // dash = dégâts seuls, pas de recul (réservé au Tank)
+          }
+        })
+      },
+    })
+    this.time.delayedCall(dur, () => {
+      p.setVelocity(0, 0)
+      ev.remove()
+      if (hit.size) this.showSlash(p.x, p.y, p.facing)
+    })
+    return true
+  }
+
+  /** BOUCLIER (Tank) : le bouclier absorbe 80 % des dégâts (le héros n'en subit que 20 %) pendant 4 s
+   *  (cf. Player.takeDamage) + aura bleue qui suit le héros. */
+  spellShield() {
+    const p = this.player
+    p.shieldUntil = this.time.now + 4000
+    const aura = this.add.circle(p.x, p.y, 14, 0x66ccff, 0.22).setStrokeStyle(2, 0x99ddff, 0.85).setDepth(p.y + 60)
+    const ev = this.time.addEvent({ delay: 30, loop: true, callback: () => aura.setPosition(p.x, p.y).setDepth(p.y + 60) })
+    this.tweens.add({ targets: aura, alpha: 0.08, yoyo: true, repeat: -1, duration: 420 })
+    this.time.delayedCall(4000, () => {
+      ev.remove()
+      this.tweens.killTweensOf(aura)
+      aura.destroy()
+    })
+    this.floatingText(p.x, p.y - 18, 'Bouclier !', '#99ddff')
+    return true
+  }
+
+  /** MÉTÉORE (Mage) : sort à INCANTATION (~1,3s). Le mage est ENRACINÉ et une barre se remplit au-dessus
+   *  de sa tête ; s'il prend un COUP, l'incantation est ANNULÉE (sort perdu). À la fin, le météore tombe
+   *  en AoE sur l'ennemi le plus proche. */
+  spellMeteor() {
+    const p = this.player
+    if (p.casting) return false // déjà en incantation
+    if (!this.nearestMonster(p.x, p.y, 300)) {
+      this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a')
+      return false // pas d'ennemi visible -> on n'incante pas (ni mana ni cooldown perdus)
+    }
+    const CAST = 1300
+    const start = this.time.now
+    p.casting = true
+    p.castInterrupted = false
+    p.setVelocity(0, 0)
+    // barre d'incantation au-dessus de la tête (espace monde) : fond + remplissage + libellé
+    const W = 30
+    const yOff = 24
+    const bg = this.add.rectangle(p.x, p.y - yOff, W + 2, 6, 0x000000, 0.65).setDepth(99998)
+    const bar = this.add.rectangle(p.x - W / 2, p.y - yOff, 0, 4, p.magicColor).setOrigin(0, 0.5).setDepth(99999)
+    const lbl = this.add
+      .text(p.x, p.y - yOff - 7, 'Météore…', { fontFamily: 'monospace', fontSize: '8px', color: '#ffd27a', stroke: '#000', strokeThickness: 3 })
+      .setOrigin(0.5, 1)
+      .setDepth(99999)
+      .setResolution(3)
+    const cleanup = () => {
+      bg.destroy()
+      bar.destroy()
+      lbl.destroy()
+      p.casting = false
+    }
+    const ev = this.time.addEvent({
+      delay: 16,
+      loop: true,
+      callback: () => {
+        if (!p.active || p.castInterrupted || this.gameOver) {
+          if (p.castInterrupted) this.floatingText(p.x, p.y - 18, 'Incantation interrompue', '#ff8a8a')
+          ev.remove()
+          cleanup()
+          return
+        }
+        const t = Phaser.Math.Clamp((this.time.now - start) / CAST, 0, 1)
+        bg.setPosition(p.x, p.y - yOff)
+        lbl.setPosition(p.x, p.y - yOff - 7)
+        bar.setPosition(p.x - W / 2, p.y - yOff).setSize(W * t, 4)
+        if (t >= 1) {
+          ev.remove()
+          cleanup()
+          this.meteorImpact()
+        }
+      },
+    })
+    return true // l'incantation a démarré -> on paie le mana + le cooldown (perdus si interrompu)
+  }
+
+  /** Impact du Météore (fin d'incantation) : AoE sur l'ennemi le plus proche (ou devant si aucun). */
+  meteorImpact() {
+    const p = this.player
+    const target = this.nearestMonster(p.x, p.y, 280)
+    let tx = p.x
+    let ty = p.y
+    if (target) {
+      tx = target.x
+      ty = target.y
+    } else {
+      const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
+      tx = p.x + dir[0] * 80
+      ty = p.y + dir[1] * 80
+    }
+    const R = 46
+    const col = p.magicColor // couleur de la magie de l'apparence (violet / blanc / orange...)
+    const tele = this.add.circle(tx, ty, R, col, 0.18).setStrokeStyle(2, col, 0.8).setDepth(ty)
+    this.time.delayedCall(280, () => {
+      tele.destroy()
+      const boom = this.add.circle(tx, ty, R, col, 0.6).setDepth(ty + 1)
+      this.tweens.add({ targets: boom, alpha: 0, scale: 1.35, duration: 320, onComplete: () => boom.destroy() })
+      const dmg = p.attackPower * 3.0 // gros dégâts AoE (récompense de l'incantation)
+      this.monsters.getChildren().forEach((m) => {
+        if (m.active && Phaser.Math.Distance.Between(tx, ty, m.x, m.y) <= R) this.hitMonster(m, dmg, tx, ty, 0)
+      })
+    })
   }
 
   /** Aura de soin verte qui s'élargit et s'estompe autour de (x,y). */
@@ -2332,7 +2518,7 @@ export default class GameScene extends Phaser.Scene {
 
     const proj = this.projectiles.get(p.x, p.y)
     if (!proj) return
-    proj.fire(p.x, p.y, tx, ty, p.attackPower, this.time.now, target)
+    proj.fire(p.x, p.y, tx, ty, Math.round(p.attackPower * p.rangedDmgMul), this.time.now, target, p.magicColor)
   }
 
   /** Petit éclair blanc en arc pour matérialiser le coup d'épée. */

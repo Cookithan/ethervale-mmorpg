@@ -114,10 +114,11 @@ export default class UIScene extends Phaser.Scene {
 
     // aide (haut-centre) — adaptée aux capacités de la classe
     const ab = this.game_.player?.abilities ?? { melee: true, ranged: false, heal: false }
+    const spell = this.game_.player?.spell
     const parts = ['Clic = aller']
-    if (ab.melee) parts.push('Espace = épée')
-    if (ab.ranged) parts.push('F = sort')
-    if (ab.heal) parts.push('R = soin')
+    if (ab.melee) parts.push('Espace = attaque')
+    if (ab.ranged) parts.push('F = attaque')
+    if (spell) parts.push(`1 = ${spell.name}`)
     parts.push('C = perso', 'M = carte', 'Échap = menu')
     reg(
       this.add
@@ -147,21 +148,34 @@ export default class UIScene extends Phaser.Scene {
     const portrait = reg(this.add.image(px + pSize / 2, py + pSize / 2, this.game_.player?.heroKey ?? 'player', 0))
     portrait.setScale((pSize - 8) / portrait.width)
 
-    // vie + niveau + or à droite du portrait
+    // vie + mana + niveau + or à droite du portrait
     const tx = px + pSize + 10
-    this.lvlText = reg(this.add.text(tx, fy + 8, '', { fontFamily: 'monospace', fontSize: '12px', color: '#ffe066' }).setOrigin(0, 0))
+    this.lvlText = reg(this.add.text(tx, fy + 4, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066' }).setOrigin(0, 0))
     const hpW = 132
-    const hpH = 16
-    const hpY = fy + 28
+    const hpH = 13
+    const hpY = fy + 20
     reg(this.add.rectangle(tx - 1, hpY - 1, hpW + 2, hpH + 2, 0x000000, 0.6).setOrigin(0, 0))
     this.hpBarW = hpW
+    this.hpBarH = hpH
     this.hpBar = reg(this.add.rectangle(tx, hpY, hpW, hpH, 0x4caf50).setOrigin(0, 0))
     this.hpText = reg(
       this.add
-        .text(tx + hpW / 2, hpY + hpH / 2, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffffff', stroke: '#000', strokeThickness: 3 })
+        .text(tx + hpW / 2, hpY + hpH / 2, '', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff', stroke: '#000', strokeThickness: 3 })
         .setOrigin(0.5)
     )
-    this.goldText = reg(this.add.text(tx, fy + 50, '', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd84d' }).setOrigin(0, 0))
+    // barre de MANA (bleue) juste sous la Vie
+    const mpH = 9
+    const mpY = hpY + hpH + 2
+    reg(this.add.rectangle(tx - 1, mpY - 1, hpW + 2, mpH + 2, 0x000000, 0.6).setOrigin(0, 0))
+    this.mpBarW = hpW
+    this.mpBarH = mpH
+    this.mpBar = reg(this.add.rectangle(tx, mpY, hpW, mpH, 0x3f86e0).setOrigin(0, 0))
+    this.mpText = reg(
+      this.add
+        .text(tx + hpW / 2, mpY + mpH / 2, '', { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff', stroke: '#000', strokeThickness: 2 })
+        .setOrigin(0.5)
+    )
+    this.goldText = reg(this.add.text(tx, mpY + mpH + 3, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffd84d' }).setOrigin(0, 0))
 
     // --- barre d'XP (bas, pleine largeur) ---
     const xpH = 16
@@ -173,6 +187,41 @@ export default class UIScene extends Phaser.Scene {
     this.xpBar = reg(this.add.rectangle(0, xpY, 0, xpH, 0xa335ee).setOrigin(0, 0))
     this.xpText = reg(this.add.text(cw / 2, xpY + xpH / 2, '', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' }).setOrigin(0.5))
     this.xpRect = new Phaser.Geom.Rectangle(0, xpY, cw, xpH)
+
+    // --- BOUTONS DE COMBAT (bas-droite, à côté de la hotbar) : ATK + SORT ---
+    // Visibles + CLIQUABLES (mobile ET PC). Affichent la TOUCHE, le coût en mana et le cooldown.
+    // (`ab` et `spell` sont déjà définis plus haut dans buildHud.)
+    const atkKey = ab.melee ? 'Espace' : 'F'
+    const btn = 58
+    const bgap = 8
+    const byc = xpY - 8 - btn / 2 // centre Y, juste au-dessus de la barre d'XP
+    const sortCx = cw - 14 - btn / 2
+    const atkCx = sortCx - btn - bgap
+    this.skillsRect = new Phaser.Geom.Rectangle(atkCx - btn / 2 - 2, byc - btn / 2 - 2, btn * 2 + bgap + 4, btn + 4)
+
+    // bouton ATK (attaque de base, gratuite)
+    reg(this.add.rectangle(atkCx, byc, btn, btn, PANEL, 0.92).setStrokeStyle(2, GOLD))
+    reg(this.add.text(atkCx, byc - 11, 'ATK', { fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
+    reg(this.add.text(atkCx, byc + 13, atkKey, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(0.5))
+    const atkHit = reg(this.add.rectangle(atkCx, byc, btn, btn, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
+    atkHit.on('pointerdown', (po, lx, ly, ev) => {
+      ev?.stopPropagation?.()
+      this.game_.basicAttack?.()
+    })
+
+    // bouton SORT (le sort de la classe) — nom + touche + coût mana + voile de cooldown
+    reg(this.add.rectangle(sortCx, byc, btn, btn, 0x1a2740, 0.95).setStrokeStyle(2, 0x6fa8ff))
+    reg(this.add.text(sortCx, byc - 16, spell ? spell.name : '—', { fontFamily: 'monospace', fontSize: '10px', color: '#cfe2ff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
+    this.sortCostText = reg(this.add.text(sortCx, byc + 2, spell ? `${spell.cost} mana` : '', { fontFamily: 'monospace', fontSize: '9px', color: '#7fb3ff' }).setOrigin(0.5))
+    reg(this.add.text(sortCx, byc + 15, 'Touche 1', { fontFamily: 'monospace', fontSize: '8px', color: '#ffe066' }).setOrigin(0.5))
+    // voile de cooldown : rectangle sombre (ancré en haut) dont la hauteur fond quand le sort revient
+    this.sortCdVeil = reg(this.add.rectangle(sortCx, byc - btn / 2, btn, 0, 0x000000, 0.62).setOrigin(0.5, 0))
+    this.sortBtnSize = btn
+    const sortHit = reg(this.add.rectangle(sortCx, byc, btn, btn, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
+    sortHit.on('pointerdown', (po, lx, ly, ev) => {
+      ev?.stopPropagation?.()
+      this.game_.castSpell?.()
+    })
 
     // --- barre de BOSS (haut-centre, cachée hors combat de boss, style MMO) ---
     const bw = Math.min(440, cw * 0.62)
@@ -954,7 +1003,7 @@ export default class UIScene extends Phaser.Scene {
 
   pointerOverInventory(x, y) {
     const inside = (r) => r && Phaser.Geom.Rectangle.Contains(r, x, y)
-    return inside(this.bagRect) || inside(this.frameRect) || inside(this.xpRect)
+    return inside(this.bagRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect)
   }
 
   addIcon(x, y, key, fit) {
@@ -1051,9 +1100,20 @@ export default class UIScene extends Phaser.Scene {
     if (!p) return
 
     const ratio = Phaser.Math.Clamp(p.hp / p.maxHp, 0, 1)
-    this.hpBar.setSize(this.hpBarW * ratio, 16)
+    this.hpBar.setSize(this.hpBarW * ratio, this.hpBarH)
     this.hpBar.fillColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.25 ? 0xff9800 : 0xe23b3b
-    this.hpText.setText(`${p.hp} / ${p.maxHp}`)
+    this.hpText.setText(`Vie ${Math.round(p.hp)}/${p.maxHp}`)
+    // mana (bleu) — barre vide si la classe n'a pas de mana ; libellé "Mana" pour la distinguer
+    const mRatio = p.maxMana > 0 ? Phaser.Math.Clamp(p.mana / p.maxMana, 0, 1) : 0
+    this.mpBar.setSize(this.mpBarW * mRatio, this.mpBarH)
+    this.mpText.setText(p.maxMana > 0 ? `Mana ${Math.round(p.mana)}/${p.maxMana}` : '—')
+    // bouton SORT : voile de cooldown (fond quand le sort revient) + coût en rouge si mana insuffisant
+    if (this.sortCdVeil && p.spell) {
+      const rem = Math.max(0, p.nextSpellAt - this.game_.time.now)
+      const ratio = Phaser.Math.Clamp(rem / p.spell.cd, 0, 1)
+      this.sortCdVeil.setSize(this.sortBtnSize, this.sortBtnSize * ratio)
+      this.sortCostText?.setColor(p.mana >= p.spell.cost ? '#7fb3ff' : '#ff6b6b')
+    }
     this.lvlText.setText(p.level >= 10 ? 'Niveau 10 (MAX)' : `Niveau ${p.level}`)
     this.goldText.setText(`Or : ${p.gold}`)
 
