@@ -792,6 +792,24 @@ export default class UIScene extends Phaser.Scene {
         gfx.fillRect(ox + tx * cell, oy + ty * cell, cell * S + 0.6, cell * S + 0.6)
       }
     }
+    // rivières + lacs (eau interne) : bleu rivière par-dessus les biomes ; glace = bleu pâle
+    if (g.waterCells && g.waterCells.size) {
+      const rg = reg(this.add.graphics().setDepth(301.3))
+      for (const k of g.waterCells) {
+        const [tx, ty] = k.split(',').map(Number)
+        rg.fillStyle(g.iceCells?.has(k) ? 0xcfe6f5 : 0x3f7fc0, 1)
+        rg.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.6, cell + 0.6)
+      }
+    }
+    // sentiers (chemins de terre) : petits points bruns reliant village et repaires
+    if (g.pathCells && g.pathCells.size) {
+      const pg = reg(this.add.graphics().setDepth(301.5))
+      pg.fillStyle(0x7a5a32, 1)
+      for (const k of g.pathCells) {
+        const [tx, ty] = k.split(',').map(Number)
+        pg.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.6, cell + 0.6)
+      }
+    }
     reg(this.add.rectangle(ox + mapPxW / 2, oy + mapPxH / 2, mapPxW, mapPxH).setStrokeStyle(2, GOLD).setDepth(302))
 
     // marqueur VILLAGE

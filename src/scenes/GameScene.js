@@ -163,9 +163,8 @@ const BUILDINGS = {
 }
 
 // --- eau (TilesetWater / water.png, 28 colonnes) ---
-const RIVERS_ENABLED = false // OFF pour la map "continent" organique (les rivières-frontières
-// latitudinales referaient un effet "bandes"). Côtes/rivières naturelles à rajouter ensuite.
-const PATHS_ENABLED = false // OFF : plus de routes de terre rayonnant vers les 4 coins (à la demande)
+const RIVERS_ENABLED = true // grandes rivières serpentant de l'intérieur jusqu'à la mer (+ ponts aux gués)
+const PATHS_ENABLED = true // sentiers de terre ORGANIQUES reliant le village aux repaires de boss
 
 /**
  * GameScene — Phase 1, "vraie map".
@@ -550,16 +549,10 @@ export default class GameScene extends Phaser.Scene {
    * sont mémorisés pour y dégager le décor et y poser des amorces (clairières).
    */
   paintPaths() {
-    // CHEMINS DE CARTE RETIRÉS pour l'instant (à la demande) : plus de routes rayonnant vers
-    // les 4 coins. On garde les structures vides pour que le reste du code (onPath/déco/village)
-    // continue de fonctionner ; le village ajoutera ses propres petits chemins.
-    this.places = [{ x: this.cx, y: this.cy }] // seul le spawn central
     this.plazaCells = new Set()
-    if (PATHS_ENABLED) this.paintMapPaths()
-  }
-
-  /** (Désactivé) Anciennes routes de terre reliant le spawn à 4 lieux des coins. */
-  paintMapPaths() {
+    // points d'intérêt = village + repaires de boss (calculés tôt dans create)
+    this.places = (this.pois ?? [{ tx: this.cx, ty: this.cy }]).map((p) => ({ x: p.tx, y: p.ty }))
+    if (!PATHS_ENABLED) return
     const cells = new Set()
     const carve = (x, y, w) => {
       for (let dx = 0; dx < w; dx++) {
@@ -573,22 +566,14 @@ export default class GameScene extends Phaser.Scene {
         }
       }
     }
-
-    this.places = [
-      { x: this.cx, y: this.cy }, // spawn
-      { x: Math.floor(MAP_W * 0.18), y: Math.floor(MAP_H * 0.22) },
-      { x: Math.floor(MAP_W * 0.82), y: Math.floor(MAP_H * 0.2) },
-      { x: Math.floor(MAP_W * 0.2), y: Math.floor(MAP_H * 0.8) },
-      { x: Math.floor(MAP_W * 0.8), y: Math.floor(MAP_H * 0.78) },
-    ]
-    for (const p of this.places) {
-      for (let dx = -1; dx <= 1; dx++)
-        for (let dy = -1; dy <= 1; dy++) carve(p.x + dx, p.y + dy, 1)
+    // SENTIERS ORGANIQUES : un chemin sinueux du village vers chaque repaire de boss (carvePathTo
+    // ajoute des virages doux + du bruit -> rien de radial/droit). Donne un but à l'exploration.
+    const village = { x: this.cx, y: this.cy }
+    for (const lair of Object.values(this.bossLairs ?? {})) {
+      this.carvePathTo(carve, village, { x: lair.tx, y: lair.ty })
     }
-    for (let i = 1; i < this.places.length; i++) {
-      this.carvePathTo(carve, this.places[0], this.places[i])
-    }
-
+    // retire le rendu du chemin DANS la clairière du village (il a ses propres allées) ; le chemin
+    // qui traverse le DÉSERT est repeint en argile rouge (sinon invisible sur le sable = terre)
     const desertPath = new Set()
     for (const k of [...cells]) {
       const [x, y] = k.split(',').map(Number)
@@ -596,10 +581,7 @@ export default class GameScene extends Phaser.Scene {
       if (b === 'prairie') cells.delete(k)
       else if (b === 'desert') desertPath.add(k)
     }
-    this.paintBlob(cells, BLOB.dirt, true) // chemins (terre) hors de la prairie
-    // désert : le sol EST déjà de la terre/sable -> chemin invisible. On repeint le
-    // chemin du désert avec le bloc "terre maudite" (argile rouge) PAR-DESSUS pour
-    // qu'il ressorte du sable.
+    this.paintBlob(cells, BLOB.dirt, true)
     this.paintBlob(desertPath, BLOB.cursed, true)
   }
 
@@ -750,96 +732,74 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Rivières le long des frontières de biomes (eau pleine ~2 tuiles) sur une couche
-   * dédiée avec collision. Là où un chemin traverse, le chemin en terre fait le gué.
-   * `this.waterCells` = cellules d'eau (bloque déco/spawn de monstres).
+   * GRANDES RIVIÈRES qui serpentent depuis l'intérieur du continent jusqu'à la MER (eau ~2 tuiles,
+   * collision) + petits lacs/lacs gelés (cf. spawnPonds). Là où un CHEMIN croise l'eau, on pose un
+   * PONT en bois (gué marchable) -> passages obligés. `this.waterCells` = eau (bloque déco/spawn).
    */
   buildRivers() {
     this.waterCells = new Set()
-    // couche d'eau (vide si désactivé) pour que les colliders existent toujours
     const wmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
     const wts = wmap.addTilesetImage('water_gen', 'water_gen', TILE, TILE) // eau générée par code
     this.waterLayer = wmap.createBlankLayer('water', wts, 0, 0).setDepth(-8)
-    if (!RIVERS_ENABLED) return // rivières désactivées : map propre (biomes + déco + chemins)
-
-    // cellules de bord = entre deux biomes différents (des DEUX côtés -> rivière ~2 large)
-    const cursedMoat = new Set() // bord des terres maudites : large + PAS de gué (zone verrouillée)
-    const prairieEdge = new Set() // bord de la prairie (zone sûre) : un peu plus large, AVEC gués
-    const forestEdge = new Set() // bord forêt <-> neige/désert : élargi (passage vers les terres hostiles)
-    for (let ty = 1; ty < MAP_H - 1; ty++) {
-      for (let tx = 1; tx < MAP_W - 1; tx++) {
-        const b = this.biomeAt(tx, ty)
-        const n = [this.biomeAt(tx + 1, ty), this.biomeAt(tx - 1, ty), this.biomeAt(tx, ty + 1), this.biomeAt(tx, ty - 1)]
-        if (n.some((nb) => nb !== b)) {
-          this.waterCells.add(this.key(tx, ty))
-          if (b === 'cursed' || n.includes('cursed')) cursedMoat.add(this.key(tx, ty))
-          else if (b === 'prairie' || n.includes('prairie')) prairieEdge.add(this.key(tx, ty))
-          else if (
-            (b === 'forest' && (n.includes('snow') || n.includes('desert'))) ||
-            ((b === 'snow' || b === 'desert') && n.includes('forest'))
-          ) {
-            forestEdge.add(this.key(tx, ty))
-          }
-        }
-      }
-    }
-    // dilatation d'un ensemble de cellules d'eau (rayon r en tuiles)
-    const widen = (set, r, alsoInto = null) => {
-      for (const k of [...set]) {
-        const [bx, by] = k.split(',').map(Number)
-        for (let dx = -r; dx <= r; dx++) {
-          for (let dy = -r; dy <= r; dy++) {
-            const x = bx + dx
-            const y = by + dy
-            if (x < 1 || y < 1 || x >= MAP_W - 1 || y >= MAP_H - 1) continue
-            this.waterCells.add(this.key(x, y))
-            if (alsoInto) alsoInto.add(this.key(x, y))
-          }
-        }
-      }
-    }
-    widen(cursedMoat, 2, cursedMoat) // douve large infranchissable autour des maudites
-    widen(prairieEdge, 1) // rivière plus large autour de la prairie (mais gués conservés)
-    widen(forestEdge, 1) // rivière plus large entre la forêt et la neige/le désert (gués conservés)
-    // proche du moat maudit ? (pour ne pas y poser de pont troué)
-    const nearCursed = (x, y) => {
-      for (let dx = -2; dx <= 2; dx++)
-        for (let dy = -2; dy <= 2; dy++) if (cursedMoat.has(this.key(x + dx, y + dy))) return true
-      return false
-    }
-    // gués (pont entier marchable) vs pont en RUINE (chemin dans le moat maudit : reste eau)
-    const fords = []
-    const ruined = []
-    for (const k of [...this.waterCells]) {
-      const [x, y] = k.split(',').map(Number)
-      if (!this.onPath(x, y, 1)) continue
-      if (cursedMoat.has(k)) {
-        ruined.push([x, y]) // chemin coupé par le lac maudit -> pont en ruine (infranchissable)
-      } else if (!nearCursed(x, y)) {
-        this.waterCells.delete(k) // gué normal : devient marchable
-        fords.push([x, y])
-      }
-      // proche du moat (sans y être) : reste eau, pas de pont
-    }
     // couche de pont (au-dessus de l'eau)
     const bmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
     const bts = bmap.addTilesetImage('bridge_gen', 'bridge_gen', TILE, TILE)
     this.bridgeLayer = bmap.createBlankLayer('bridge', bts, 0, 0).setDepth(-7)
-    for (const [fx, fy] of fords) this.bridgeLayer.putTileAt(0, fx, fy) // ponts entiers
-    // pont en ruine vers les terres maudites : ~82% de planches, quelques trous (eau visible)
-    for (const [rx, ry] of ruined) {
-      if (tileNoise(rx, ry, 5) < 0.82) this.bridgeLayer.putTileAt(0, rx, ry)
-    }
-    // petits lacs décoratifs (eau) dans forêt / neige / prairie — pas désert ni maudit
-    this.spawnPonds()
 
-    // rendu : eau générée (les lacs gelés sont sur la couche de glace, pas ici)
+    this.spawnPonds() // petits lacs (forêt/prairie) + lacs gelés marchables (neige) -> crée iceCells
+
+    if (RIVERS_ENABLED) {
+      // 1-2 rivières qui partent de l'intérieur et coulent vers la côte la plus proche (méandres)
+      for (const [sx, sy] of [[this.icx - 18, this.icy - 24], [this.icx + 30, this.icy + 28]]) {
+        this.carveRiver(sx, sy)
+      }
+    }
+    // GUÉS : une cellule d'eau traversée par un chemin devient un PONT marchable (sinon route coupée)
+    const fords = []
+    for (const k of [...this.waterCells]) {
+      const [x, y] = k.split(',').map(Number)
+      if (this.onPath(x, y, 1)) {
+        this.waterCells.delete(k)
+        fords.push([x, y])
+      }
+    }
+    for (const [fx, fy] of fords) this.bridgeLayer.putTileAt(0, fx, fy)
+
+    // rendu : eau générée (la glace est rendue sur sa couche, marchable, sans collision)
     for (const k of this.waterCells) {
-      if (this.iceCells.has(k)) continue // glace = marchable, rendue ailleurs (pas de collision)
+      if (this.iceCells.has(k)) continue
       const [x, y] = k.split(',').map(Number)
       this.waterLayer.putTileAt(Math.floor(tileNoise(x, y, 3) * 4), x, y)
     }
     this.waterLayer.setCollisionByExclusion([-1]) // toute tuile d'eau (hors glace) bloque
+  }
+
+  /** Creuse UNE rivière sinueuse de (sx,sy) [intérieur] jusqu'à l'OCÉAN, ~2 tuiles de large. Tend
+   *  doucement vers l'extérieur de l'île (la côte) + méandres ; ne traverse pas la clairière du village. */
+  carveRiver(sx, sy) {
+    let x = sx
+    let y = sy
+    let ang = Math.atan2(y - this.icy, x - this.icx) // direction de départ : vers l'extérieur
+    for (let guard = 0; guard < 800; guard++) {
+      const rx = Math.round(x)
+      const ry = Math.round(y)
+      if (rx < 2 || ry < 2 || rx > MAP_W - 3 || ry > MAP_H - 3) break
+      if (this.isOcean(rx, ry)) break // arrivée à la mer
+      for (let dx = 0; dx <= 1; dx++) {
+        for (let dy = 0; dy <= 1; dy++) {
+          const tx = rx + dx
+          const ty = ry + dy
+          if (tx > 1 && ty > 1 && tx < MAP_W - 1 && ty < MAP_H - 1 && this.biomeAt(tx, ty) !== 'prairie' && !this.isOcean(tx, ty)) {
+            this.waterCells.add(this.key(tx, ty))
+          }
+        }
+      }
+      const out = Math.atan2(y - this.icy, x - this.icx)
+      ang = Phaser.Math.Angle.RotateTo(ang, out, 0.07) // tend vers la côte
+      ang += Phaser.Math.FloatBetween(-0.55, 0.55) // méandres
+      x += Math.cos(ang) * 1.3
+      y += Math.sin(ang) * 1.3
+    }
   }
 
   /**
