@@ -19,13 +19,13 @@ export const CLASSES = {
     key: 'warrior', name: 'Guerrier', desc: 'Corps à corps robuste',
     hp: 110, attack: 14, defense: 1, speedMul: 1.0,
     mana: 60,
-    spell: { id: 'charge', name: 'Charge', cost: 25, cd: 6000 }, // bond sur l'ennemi + gros dégât
+    spell: { id: 'charge', name: 'Charge', cost: 25, cd: 6000, desc: 'Bond/esquive ; blesse les ennemis traversés' }, // bond + dégâts
     abilities: { melee: true, ranged: false, heal: false },
     kit: 'Épée (Espace) · Charge (1)',
     heroes: [
       { key: 'hero_gladiator_blue', name: 'Gladiateur' },
+      { key: 'hero_barbarian', name: 'Barbare' }, // Caveman (remplace le samouraï), au MILIEU
       { key: 'hero_gladiator_red', name: 'Gladiateur rouge' },
-      { key: 'hero_samurai_blue', name: 'Samouraï bleu' },
     ],
   },
   mage: {
@@ -34,7 +34,7 @@ export const CLASSES = {
     mana: 120,
     shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec)
     rangedDmgMul: 1.1, // ...mais qui tape MOINS fort par boule
-    spell: { id: 'meteor', name: 'Météore', cost: 45, cd: 8000 }, // AoE avec barre d'incantation
+    spell: { id: 'meteor', name: 'Météore', cost: 45, cd: 8000, desc: 'Incantation puis grosse zone de dégâts' }, // AoE incantée
     abilities: { melee: false, ranged: true, heal: false },
     kit: 'Boule (F) · Météore incanté (1)',
     // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
@@ -51,26 +51,26 @@ export const CLASSES = {
     mana: 70,
     attackCdMul: 2.0, // attaque de base nettement plus LENTE (coup lourd de tank)
     meleeKnock: 200, // son coup REPOUSSE l'ennemi
-    spell: { id: 'shield', name: 'Bouclier', cost: 30, cd: 10000 }, // bouclier absorbe 80% (héros = 20%) 4s
+    spell: { id: 'shield', name: 'Bouclier', cost: 30, cd: 10000, desc: '-80% dégâts reçus pendant 4s' }, // absorbe 80%
     abilities: { melee: true, ranged: false, heal: false },
     kit: 'Coup lent qui repousse (Espace) · Bouclier (1) · lent',
     heroes: [
       { key: 'hero_knight', name: 'Chevalier' },
+      { key: 'hero_robot', name: 'Golem de fer' }, // au MILIEU
       { key: 'hero_knight_gold', name: 'Chevalier doré' },
-      { key: 'hero_robot', name: 'Golem de fer' },
     ],
   },
   healer: {
     key: 'healer', name: 'Soigneur', desc: 'Soigne, sorts légers',
     hp: 100, attack: 11, defense: 1, speedMul: 1.0,
     mana: 110,
-    spell: { id: 'heal', name: 'Soin', cost: 30, cd: 4000 }, // rend des PV (soi / allié blessé)
+    spell: { id: 'heal', name: 'Soin', cost: 30, cd: 4000, desc: 'Rend 35% de tes PV' }, // soin (soi / allié blessé)
     abilities: { melee: false, ranged: true, heal: true },
     kit: 'Projectile (F) · Soin (1)',
     heroes: [
-      { key: 'hero_monk', name: 'Moine', magic: 0x8ef0a0 }, // magie de soin (vert sacré)
-      { key: 'hero_master', name: 'Maître', magic: 0x8ef0a0 },
-      { key: 'hero_princess', name: 'Prêtresse', magic: 0x8ef0a0 },
+      { key: 'hero_sorcerer', name: 'Soigneuse des ombres', magic: 0x8ef0a0 }, // SorcererBlack ; magie de soin (vert sacré)
+      { key: 'hero_cavegirl', name: 'Mia la soigneuse', magic: 0x8ef0a0 }, // Cavegirl, au MILIEU
+      { key: 'hero_sorcerer_orange', name: 'Soigneuse de la lumière', magic: 0x8ef0a0 }, // SorcererOrange
     ],
   },
 }

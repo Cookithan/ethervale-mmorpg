@@ -45,6 +45,7 @@ export default class BootScene extends Phaser.Scene {
     // apparences jouables (choix du personnage) : spritesheets 16x16 (4×7)
     for (const h of HEROES) {
       this.load.spritesheet(h.key, `assets/sprites/${h.key}.png`, { frameWidth: 16, frameHeight: 16 })
+      this.load.image('face_' + h.key, `assets/faces/${h.key}.png`) // portrait (38×38) pour la création de perso
     }
 
     // monstres : spritesheets 16x16 (4x4)

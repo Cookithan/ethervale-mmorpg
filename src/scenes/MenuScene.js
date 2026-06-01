@@ -41,7 +41,8 @@ export default class MenuScene extends Phaser.Scene {
       .setDepth(11)
 
     // --- boutons ---
-    const buttons = [{ label: 'Nouvelle partie', cb: () => this.go(() => this.scene.start('CharacterScene')) }]
+    // Nouvelle partie : on NE coupe PAS le village -> il reste en fond de la création (continuité)
+    const buttons = [{ label: 'Nouvelle partie', cb: () => this.scene.start('CharacterScene') }]
     if (hasSave()) {
       const s = loadSave()
       const who = s?.character?.name ? `Continuer — ${s.character.name} (Niv.${s.level ?? 1})` : 'Continuer'
