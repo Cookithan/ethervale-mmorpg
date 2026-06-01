@@ -116,9 +116,9 @@ const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka',
 // repaires de boss : direction + distance depuis le centre ; findBossTile ajuste sur une
 // tuile valide du bon biome. Forêt = ceinture Nord/Sud, neige = grand Nord, désert = grand Sud.
 const BIOME_BOSSES = {
-  forest: { type: 'mushroom', name: 'Gorthak, Gardien de la Forêt', dir: [1, -1], dist: 34 },
-  desert: { type: 'spider', name: 'Sslyth, Reine des Sables', dir: [0, 1], dist: 64 },
-  snow: { type: 'bear', name: 'Brakka, Colosse des Glaces', dir: [0, -1], dist: 64 },
+  forest: { type: 'mushroom', name: 'Gorthak, Gardien de la Forêt' },
+  desert: { type: 'spider', name: 'Sslyth, Reine des Sables' },
+  snow: { type: 'bear', name: 'Brakka, Colosse des Glaces' },
 }
 const BOSS_BAR_RANGE = 240 // distance (px) à laquelle la barre de boss apparaît en haut de l'écran
 
@@ -212,6 +212,11 @@ export default class GameScene extends Phaser.Scene {
       ['snow', icx - 52, icy - 50], ['snow', icx + 2, icy - 64], ['snow', icx + 54, icy - 48], ['snow', icx - 78, icy - 30], ['snow', icx + 34, icy - 62],
       ['desert', icx - 58, icy + 52], ['desert', icx + 6, icy + 68], ['desert', icx + 60, icy + 50], ['desert', icx + 74, icy + 32], ['desert', icx - 24, icy + 56],
     ]
+    // repaires de boss : un point PROFOND dans chaque zone, LOIN du village (= points d'intérêt pour
+    // les sentiers). Calculés tôt (avant chemins/rivières) car les sentiers les relient.
+    this.computeBossLairs()
+    // points d'intérêt reliés par les sentiers organiques : village + repaires de boss
+    this.pois = [{ tx: this.cx, ty: this.cy }, ...Object.values(this.bossLairs)]
 
     // --- couches de sol ---
     // fond herbe plein derrière la tilemap : masque les interstices d'1px entre tuiles
@@ -1357,16 +1362,55 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Pose les boss de biome à leurs repaires fixes (un par zone). */
+  /** Calcule le repaire de chaque boss : la tuile la plus PROFONDE/lointaine de sa zone (on part de
+   *  la graine de zone la plus éloignée du village). Loin du spawn = exigence. Calculé tôt (avant les
+   *  chemins) avec seulement biome + océan. */
+  computeBossLairs() {
+    this.bossLairs = {}
+    for (const biome of Object.keys(BIOME_BOSSES)) {
+      const seeds = this.zoneSeeds
+        .filter((z) => z[0] === biome)
+        .sort((a, b) => Math.hypot(b[1] - this.cx, b[2] - this.cy) - Math.hypot(a[1] - this.cx, a[2] - this.cy))
+      for (const s of seeds) {
+        const lair = this.findLairTile(s[1], s[2], biome)
+        if (lair) {
+          this.bossLairs[biome] = lair
+          break
+        }
+      }
+    }
+  }
+
+  /** Tuile de TERRE du bon biome proche de (tx,ty), en spirale (test océan/île/biome uniquement). */
+  findLairTile(tx, ty, biome) {
+    tx = Math.round(tx)
+    ty = Math.round(ty)
+    for (let r = 0; r <= 20; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (r > 0 && Math.abs(dx) !== r && Math.abs(dy) !== r) continue
+          const x = tx + dx
+          const y = ty + dy
+          if (x < 4 || y < 4 || x > MAP_W - 5 || y > MAP_H - 5) continue
+          if (this.isOcean(x, y) || this.isIsland(x, y) || this.biomeAt(x, y) !== biome) continue
+          return { tx: x, ty: y }
+        }
+      }
+    }
+    return null
+  }
+
   spawnBosses() {
     this.bosses = []
     for (const biome of Object.keys(BIOME_BOSSES)) this.spawnBoss(biome)
   }
 
-  /** (Re)crée le boss d'un biome à son repaire (tuile fixe, ajustée si occupée/eau). */
+  /** (Re)crée le boss d'un biome à son repaire (au fond de la zone), re-calé sur tuile libre. */
   spawnBoss(biome) {
     const cfg = BIOME_BOSSES[biome]
-    if (!cfg) return null
-    const tile = this.findBossTile(this.cx + cfg.dir[0] * cfg.dist, this.cy + cfg.dir[1] * cfg.dist, biome)
+    const lair = this.bossLairs?.[biome]
+    if (!cfg || !lair) return null
+    const tile = this.findBossTile(lair.tx, lair.ty, biome) || lair
     if (!tile) return null
     const level = MONSTER_MAX_LEVEL + 2 // boss de monde = niveau fixe élevé (au-dessus des 1-5)
     const boss = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, cfg.type, { level, boss: true, name: cfg.name })
