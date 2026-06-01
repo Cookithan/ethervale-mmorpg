@@ -573,6 +573,8 @@ export default class GameScene extends Phaser.Scene {
     if (desert) this.routePath(carve, village, { x: desert.tx, y: desert.ty })
     const snow = this.bossLairs?.snow
     if (snow) this.routePath(carve, village, { x: snow.tx, y: snow.ty })
+    const forest = this.bossLairs?.forest
+    if (forest) this.routePath(carve, village, { x: forest.tx, y: forest.ty }) // étape 5 : forêt (Est)
     // retire le rendu du chemin DANS la clairière du village (il a ses propres allées) ; le chemin
     // qui traverse le DÉSERT est repeint en argile rouge (sinon invisible sur le sable = terre)
     const desertPath = new Set()
@@ -608,8 +610,37 @@ export default class GameScene extends Phaser.Scene {
       this.carvePathTo(carve, a, b)
       return
     }
-    const simp = this.simplifyPath(full)
-    for (let i = 1; i < simp.length; i++) this.carveLine(carve, simp[i - 1], simp[i])
+    // points de contrôle (1 cellule sur 5) puis lissage CHAIKIN -> courbe qui SERPENTE (pas droite,
+    // pas d'escalier). Les points sont clampés sur la terre -> la courbe ne plonge jamais dans l'eau.
+    const ctrl = []
+    for (let i = 0; i < full.length; i += 5) ctrl.push(full[i])
+    if (ctrl[ctrl.length - 1] !== full[full.length - 1]) ctrl.push(full[full.length - 1])
+    let pts = ctrl
+    for (let it = 0; it < 3; it++) pts = this.chaikin(pts)
+    for (let i = 1; i < pts.length; i++) {
+      if (this.lineWalkable(pts[i - 1], pts[i])) this.carveLine(carve, pts[i - 1], pts[i])
+      else {
+        carve(Math.round(pts[i - 1].x), Math.round(pts[i - 1].y), 2)
+        carve(Math.round(pts[i].x), Math.round(pts[i].y), 2)
+      }
+    }
+  }
+
+  /** Lissage de Chaikin (corner-cutting) : arrondit la polyligne en courbe douce. Chaque point coupé
+   *  est CLAMPÉ : s'il tombe hors-terre on garde l'angle d'origine -> la courbe ne traverse pas l'eau. */
+  chaikin(pts) {
+    if (pts.length < 3) return pts
+    const out = [pts[0]]
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]
+      const b = pts[i + 1]
+      const q = { x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 }
+      const r = { x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 }
+      out.push(this.walkableForPath(Math.round(q.x), Math.round(q.y)) ? q : a)
+      out.push(this.walkableForPath(Math.round(r.x), Math.round(r.y)) ? r : b)
+    }
+    out.push(pts[pts.length - 1])
+    return out
   }
 
   /** Simplifie un chemin de cellules par LIGNE DE VUE : garde le point le plus loin atteignable en
