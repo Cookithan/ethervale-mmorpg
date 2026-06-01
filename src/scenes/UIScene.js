@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost } from '../data/items.js'
+import { SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 
 // palette UI (style WoW lisible)
 const GOLD = 0xc8a24a
@@ -330,6 +330,7 @@ export default class UIScene extends Phaser.Scene {
       reg(this.addIcon(bx, gy, item.icon, cell - 12))
       c.on('pointerdown', () => {
         if (item.type === 'consumable') this.useConsumable(item)
+        else if (!canEquip(item, p.className)) this.showToast(classRestrictionLabel(item), '#e0a866')
         else if (p.equip(item)) this.showItemToast('Équipé', item)
         else this.showToast('Objet cassé — à réparer chez Aldric', '#e06666')
         this.hideTip()

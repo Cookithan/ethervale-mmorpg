@@ -14,12 +14,25 @@ export const RARITY = {
 // `dur` = durabilité max (armes/armures s'usent au combat ; à 0 l'objet casse et se
 // déséquipe -> à réparer chez le forgeron). Les accessoires n'ont pas de durabilité.
 export const ITEMS = {
-  // armes (slot 'weapon') -> attaque
-  dagger: { id: 'dagger', name: 'Dague rouillée', slot: 'weapon', icon: 'weapon_sword', rarity: 'common', price: 15, stats: { attack: 4 }, dur: 40 },
-  sword: { id: 'sword', name: 'Épée', slot: 'weapon', icon: 'weapon_sword', rarity: 'common', price: 40, stats: { attack: 8 }, dur: 50 },
-  katana: { id: 'katana', name: 'Katana', slot: 'weapon', icon: 'weapon_katana', rarity: 'rare', price: 90, stats: { attack: 12 }, dur: 70 },
-  axe: { id: 'axe', name: 'Hache de guerre', slot: 'weapon', icon: 'weapon_axe', rarity: 'rare', price: 120, stats: { attack: 16 }, dur: 80 },
-  greatsword: { id: 'greatsword', name: 'Lame légendaire', slot: 'weapon', icon: 'weapon_bigsword', rarity: 'epic', price: 260, stats: { attack: 24 }, dur: 110 },
+  // ARMES (slot 'weapon') -> +Attaque. `classes` = classes autorisées à l'équiper (restriction du brief §5).
+  // L'icône `wpn_*` sert AUSSI de sprite qui swingue à l'attaque (cf. showWeaponSwing).
+  // Guerrier (épées) :
+  dagger: { id: 'dagger', name: 'Dague', slot: 'weapon', classes: ['warrior'], icon: 'wpn_dagger', rarity: 'common', price: 15, stats: { attack: 5 }, dur: 40 },
+  sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'common', price: 40, stats: { attack: 8 }, dur: 50 },
+  katana: { id: 'katana', name: 'Katana', slot: 'weapon', classes: ['warrior'], icon: 'wpn_katana', rarity: 'rare', price: 90, stats: { attack: 14 }, dur: 70 },
+  rapier: { id: 'rapier', name: 'Rapière du duelliste', slot: 'weapon', classes: ['warrior'], icon: 'wpn_rapier', rarity: 'epic', price: 260, stats: { attack: 22 }, dur: 110 },
+  // Tank (masses / lames lourdes) :
+  club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'wpn_club', rarity: 'common', price: 35, stats: { attack: 6 }, dur: 60 },
+  warhammer: { id: 'warhammer', name: 'Marteau de guerre', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'rare', price: 100, stats: { attack: 12 }, dur: 90 },
+  greatblade: { id: 'greatblade', name: 'Lame colossale', slot: 'weapon', classes: ['tank'], icon: 'wpn_bigsword', rarity: 'epic', price: 260, stats: { attack: 20 }, dur: 120 },
+  // Mage (baguettes / grimoires) :
+  wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'wpn_wand', rarity: 'common', price: 40, stats: { attack: 8 }, dur: 40 },
+  grimoire: { id: 'grimoire', name: 'Grimoire interdit', slot: 'weapon', classes: ['mage'], icon: 'wpn_book', rarity: 'rare', price: 100, stats: { attack: 14 }, dur: 60 },
+  archstaff: { id: 'archstaff', name: "Bâton de l'archimage", slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'epic', price: 260, stats: { attack: 22 }, dur: 80 },
+  // Soigneur (bâtons de soin) :
+  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'wpn_stick', rarity: 'common', price: 35, stats: { attack: 5 }, dur: 40 },
+  healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'wpn_wand', rarity: 'rare', price: 90, stats: { attack: 9 }, dur: 60 },
+  relic: { id: 'relic', name: 'Relique sacrée', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', rarity: 'epic', price: 240, stats: { attack: 14 }, dur: 80 },
 
   // armures (slot 'armor') -> PV / défense
   leather: { id: 'leather', name: 'Tunique de cuir', slot: 'armor', icon: 'eq_armor', rarity: 'common', price: 30, stats: { hp: 20 }, dur: 50 },
@@ -45,6 +58,21 @@ export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', accessory: 'Access
 
 // abréviations FR des stats (pour l'affichage des bonus)
 export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV' }
+
+const CLASS_FR = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank', healer: 'Soigneur' }
+// arme de DÉPART par classe (équipée à la création du perso)
+export const STARTER_WEAPON = { warrior: 'sword', tank: 'club', mage: 'wand', healer: 'healstick' }
+
+/** true si la classe `classKey` peut équiper cet objet (pas de champ `classes` = universel). */
+export function canEquip(item, classKey) {
+  return !item.classes || item.classes.includes(classKey)
+}
+
+/** Mention de restriction de classe, ex. "Réservé : Guerrier" (chaîne vide si universel). */
+export function classRestrictionLabel(item) {
+  if (!item.classes) return ''
+  return 'Réservé : ' + item.classes.map((c) => CLASS_FR[c] ?? c).join('/')
+}
 
 /** Formate les bonus d'un objet, ex. "+8 ATQ" ou "+30 PV, +5 DEF". */
 export function describeStats(stats) {
@@ -99,6 +127,8 @@ export function describeItem(item) {
     const broken = (item.durability ?? item.dur) <= 0
     txt += `\nDurabilité ${item.durability ?? item.dur}/${item.dur}${broken ? ' (CASSÉ)' : ''}`
   }
+  const restr = classRestrictionLabel(item)
+  if (restr) txt += `\n${restr}`
   return txt
 }
 

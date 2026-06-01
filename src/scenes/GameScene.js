@@ -2250,7 +2250,10 @@ export default class GameScene extends Phaser.Scene {
     const cy = p.y + dir[1] * 14
     const RANGE = 20 // rayon de la zone de frappe (généreux)
 
-    this.showSlash(p.x, p.y, p.facing)
+    // arme équipée -> son sprite fait un MOUVEMENT DE COUP (swing) ; sinon simple arc blanc
+    const wIcon = p.equipped?.weapon?.icon
+    if (wIcon && this.textures.exists(wIcon)) this.showWeaponSwing(p.x, p.y, p.facing, wIcon)
+    else this.showSlash(p.x, p.y, p.facing)
 
     let hitAny = false
     this.monsters.getChildren().forEach((mon) => {
@@ -2553,6 +2556,24 @@ export default class GameScene extends Phaser.Scene {
     g.arc(x, y, 16, base - 0.7, base + 0.7)
     g.strokePath()
     this.tweens.add({ targets: g, alpha: 0, duration: 160, onComplete: () => g.destroy() })
+  }
+
+  /** Le sprite de l'arme équipée fait un MOUVEMENT DE COUP : il décrit un arc autour du héros dans
+   *  la direction visée (la lame reste orientée vers l'extérieur), puis disparaît. Marche pour
+   *  n'importe quelle icône d'arme -> toutes les classes/armes. */
+  showWeaponSwing(px, py, facing, iconKey) {
+    const center = { right: 0, down: 90, left: 180, up: -90 }[facing] ?? 0
+    const SWING = 80 // amplitude de l'arc (degrés)
+    const r = 15 // distance de la lame au héros
+    const w = this.add.image(px, py, iconKey).setDepth(py + 51).setScale(1.5)
+    const st = { a: center - SWING / 2 }
+    const place = () => {
+      const rad = Phaser.Math.DegToRad(st.a)
+      w.setPosition(px + Math.cos(rad) * r, py + Math.sin(rad) * r)
+      w.setRotation(rad + Phaser.Math.DegToRad(90)) // sprite d'arme VERTICAL (pointe en haut) -> aligné sur l'arc
+    }
+    place()
+    this.tweens.add({ targets: st, a: center + SWING / 2, duration: 150, ease: 'Quad.easeInOut', onUpdate: place, onComplete: () => w.destroy() })
   }
 
   onMonsterKilled(mon) {

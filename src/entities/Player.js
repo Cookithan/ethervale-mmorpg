@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS, effectiveStats, cloneItem } from '../data/items.js'
+import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON } from '../data/items.js'
 import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
 
 const SPEED = 65 // vitesse de déplacement de base (px/s) — modulée par la classe (speedMul)
@@ -69,10 +69,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.nextSpellAt = 0 // fin du cooldown du sort de classe
     this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -50 % dégâts reçus
 
-    // équipement (3 slots) + sac. Quelques objets de départ pour tester.
-    this.equipped = { weapon: null, armor: null, accessory: null }
-    // objets de départ CLONÉS (durabilité/amélioration propres, ne mutent pas le catalogue)
-    this.inventory = [cloneItem(ITEMS.sword), cloneItem(ITEMS.leather), cloneItem(ITEMS.amulet)]
+    // équipement (3 slots) + sac. ARME DE DÉPART selon la classe (équipée d'office) + tunique équipée.
+    const starterId = STARTER_WEAPON[this.className] ?? 'sword'
+    this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: cloneItem(ITEMS.leather), accessory: null }
+    this.inventory = [cloneItem(ITEMS.amulet)]
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
 
     this.hp = this.baseMaxHp
@@ -165,6 +165,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
    *  Renvoie false si l'objet est CASSÉ (durabilité 0) -> à réparer chez le forgeron. */
   equip(item) {
     if (item.durability != null && item.durability <= 0) return false // cassé
+    if (item.classes && !item.classes.includes(this.className)) return false // réservé à une autre classe
     const i = this.inventory.indexOf(item)
     if (i === -1) return false
     this.inventory.splice(i, 1)

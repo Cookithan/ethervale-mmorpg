@@ -74,9 +74,13 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('drop_heart', 'assets/items/heart.png')
     this.load.image('drop_gem', 'assets/items/gem.png')
 
-    // icônes d'équipement (armes / armure / accessoires) — pack Ninja Adventure
-    for (const key of ['weapon_sword', 'weapon_katana', 'weapon_axe', 'weapon_bigsword', 'eq_armor', 'eq_amulet', 'eq_ring']) {
+    // icônes d'équipement (armure / accessoires) — pack Ninja Adventure
+    for (const key of ['eq_armor', 'eq_amulet', 'eq_ring']) {
       this.load.image(key, `assets/items/${key}.png`)
+    }
+    // sprites d'ARMES (Items/Weapons) : servent d'icône d'inventaire ET de sprite qui swingue à l'attaque
+    for (const key of ['wpn_sword', 'wpn_katana', 'wpn_rapier', 'wpn_dagger', 'wpn_club', 'wpn_hammer', 'wpn_bigsword', 'wpn_wand', 'wpn_book', 'wpn_stick', 'wpn_bone']) {
+      this.load.image(key, `assets/weapons/${key}.png`)
     }
 
     // FX animés (effets de sorts, dossier FX du pack)
