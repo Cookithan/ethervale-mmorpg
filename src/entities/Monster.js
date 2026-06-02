@@ -83,6 +83,27 @@ export const MONSTER_TYPES = {
     tier: 'epic', loot: { gold: [8, 16] }, name: 'Seigneur de flamme',
   },
 
+  democyclop2: {
+    key: 'boss_democyclop2_idle', rig: 'democyclop2', face: 'face_democyclop2',
+    hp: 85, speed: 26, damage: 17, xp: 36, aggro: 115, scale: 2.2, body: { w: 26, h: 34 },
+    tier: 'epic', loot: { gold: [7, 14] }, name: 'Cyclope ancien',
+  },
+  giantbamboo: {
+    key: 'boss_giantbamboo_idle', rig: 'giantbamboo', face: 'face_giantbamboo',
+    hp: 80, speed: 24, damage: 16, xp: 34, aggro: 110, scale: 1.8, body: { w: 28, h: 40 },
+    tier: 'epic', loot: { gold: [6, 13] }, name: 'Colosse de bambou',
+  },
+  giantslime: {
+    key: 'boss_giantslime_idle', rig: 'giantslime', face: 'face_giantslime',
+    hp: 78, speed: 22, damage: 15, xp: 34, aggro: 105, scale: 1.8, body: { w: 34, h: 26 },
+    tier: 'epic', loot: { gold: [6, 13] }, name: 'Gelée polaire',
+  },
+  giantspirit: {
+    key: 'boss_giantspirit_idle', rig: 'giantspirit', face: 'face_giantspirit',
+    hp: 82, speed: 30, damage: 18, xp: 38, aggro: 120, scale: 2.0, body: { w: 22, h: 30 },
+    tier: 'epic', loot: { gold: [8, 15] }, name: 'Âme damnée',
+  },
+
   // --- BOSS DE RAID SEGMENTÉ (tête + chaîne de corps qui ondule) ---
   dragonblue: {
     key: 'boss_dragon_head', dragon: true, raid: true, face: 'face_dragon',

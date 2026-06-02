@@ -135,11 +135,24 @@ const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka',
 // type = monstre emblématique du biome ; dir = direction du repaire depuis le centre ; dist = tuiles.
 // repaires de boss : direction + distance depuis le centre ; findBossTile ajuste sur une
 // tuile valide du bon biome. Forêt = ceinture Nord/Sud, neige = grand Nord, désert = grand Sud.
+// PLUSIEURS boss par zone (repaires multiples, cf. computeBossLairs). 1er de chaque liste = souvent le raid.
 const BIOME_BOSSES = {
-  forest: { type: 'samurai', name: 'Gankai, le Samouraï Sylvestre' }, // BOSS DE RAID (intuable solo)
-  desert: { type: 'democyclop', name: 'Gorehk, le Cyclope des Sables' }, // boss SOLO dédié (sprite "rig", tuable seul)
-  snow: { type: 'tengublue', name: 'Raijin, le Tengu des Glaces' }, // BOSS DE RAID (intuable solo)
-  cursed: { type: 'giantflam', name: 'Dargoth, Seigneur Maudit' }, // sprite dédié ; sur l'ÎLE MAUDITE (verrouillée) ; futur DragonBlue en RAID
+  forest: [
+    { type: 'samurai', name: 'Gankai, le Samouraï Sylvestre' }, // RAID (intuable solo)
+    { type: 'giantbamboo', name: 'Sylvas, le Colosse de Bambou' }, // solo
+  ],
+  desert: [
+    { type: 'democyclop', name: 'Gorehk, le Cyclope des Sables' }, // solo
+    { type: 'democyclop2', name: 'Vorrn, le Cyclope Ancien' }, // solo
+  ],
+  snow: [
+    { type: 'tengublue', name: 'Raijin, le Tengu des Glaces' }, // RAID (intuable solo)
+    { type: 'giantslime', name: 'Givralk, la Gelée Polaire' }, // solo
+  ],
+  cursed: [
+    { type: 'giantflam', name: 'Dargoth, Seigneur Maudit' }, // solo (île maudite verrouillée)
+    { type: 'giantspirit', name: 'Nyl, l’Âme Damnée' }, // solo
+  ],
 }
 // ÎLE MAUDITE (end-game) : GRANDE île détachée loin au SUD-OUEST, au-delà des mers. Biome `cursed` +
 // boss Dargoth. Entourée d'océan, AUCUN gué -> VERROUILLÉE tant que la nage n'existe pas. Placée hors
@@ -247,7 +260,7 @@ export default class GameScene extends Phaser.Scene {
     // les sentiers). Calculés tôt (avant chemins/rivières) car les sentiers les relient.
     this.computeBossLairs()
     // points d'intérêt reliés par les sentiers organiques : village + repaires de boss
-    this.pois = [{ tx: this.cx, ty: this.cy }, ...Object.values(this.bossLairs)]
+    this.pois = [{ tx: this.cx, ty: this.cy }, ...Object.values(this.bossLairs).flat()]
     // 15 PNJ dispersés sur la map (calculés tôt -> les petits chemins s'y greffent)
     this.computeWildNpcs()
 
@@ -660,9 +673,9 @@ export default class GameScene extends Phaser.Scene {
     // RÉSEAU = ÉTOILE + ANNEAU.
     // Étoile : village -> chaque repaire de boss (une route directe par zone).
     const village = { x: this.cx, y: this.cy }
-    const desert = this.bossLairs?.desert
-    const snow = this.bossLairs?.snow
-    const forest = this.bossLairs?.forest
+    const desert = this.bossLairs?.desert?.[0] // 1er repaire de chaque zone (bossLairs = tableau par biome)
+    const snow = this.bossLairs?.snow?.[0]
+    const forest = this.bossLairs?.forest?.[0]
     if (desert) this.routePath(carve, village, { x: desert.tx, y: desert.ty })
     if (snow) this.routePath(carve, village, { x: snow.tx, y: snow.ty })
     if (forest) this.routePath(carve, village, { x: forest.tx, y: forest.ty })
@@ -1797,37 +1810,57 @@ export default class GameScene extends Phaser.Scene {
    *  de côte). Loin du spawn = exigence. Calculé tôt (avant les chemins) avec biome + océan. */
   computeBossLairs() {
     this.bossLairs = {}
-    const dirScore = {
-      desert: (tx, ty) => ty, // le plus au SUD
-      snow: (tx, ty) => -ty, // le plus au NORD
-      forest: (tx, ty) => tx, // le plus à l'EST (Gorthak à l'est de la forêt)
+    this.bossDefs = BIOME_BOSSES // exposé pour l'UI (noms des boss sur la carte du monde)
+    // marge de TERRE autour (≈5 tuiles dans toutes les directions) -> l'arène ne tombe pas dans l'eau
+    const inland = (tx, ty) => {
+      for (const [dx, dy] of [[-5, 0], [5, 0], [0, -5], [0, 5], [-4, -4], [4, -4], [-4, 4], [4, 4]]) {
+        if (this.isOcean(tx + dx, ty + dy)) return false
+      }
+      return true
     }
-    const inland = (tx, ty) =>
-      !this.isOcean(tx - 3, ty) && !this.isOcean(tx + 3, ty) && !this.isOcean(tx, ty - 3) && !this.isOcean(tx, ty + 3)
-    const best = {} // meilleur candidat AVEC terre ferme tout autour (idéal)
-    const bestAny = {} // repli : meilleur candidat même sans clairance (pour ne jamais perdre un boss)
-    for (let ty = 8; ty < MAP_H - 8; ty++) {
-      for (let tx = 8; tx < MAP_W - 8; tx++) {
+    // candidats de repaire par biome : terre ferme, PAS collé au village (mais pas forcément au plus loin)
+    const cands = {}
+    for (let ty = 8; ty < MAP_H - 8; ty += 2) {
+      for (let tx = 8; tx < MAP_W - 8; tx += 2) {
         if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
         const b = this.biomeAt(tx, ty)
-        const sc = dirScore[b]
-        if (!sc || !inland(tx, ty)) continue
-        const s = sc(tx, ty)
-        if (!bestAny[b] || s > bestAny[b].s) bestAny[b] = { tx, ty, s }
-        // le repaire doit avoir assez de TERRE FERME autour (toute l'arène/clairière hors de l'eau).
-        // On ne teste la clairance (coûteux) que si ce candidat améliore le score -> très peu d'appels.
-        if (!best[b] || s > best[b].s) {
-          if (this.hasLandClearance(tx, ty, BOSS_CLEAR_TILES)) best[b] = { tx, ty, s }
-        }
+        if (!BIOME_BOSSES[b] || b === 'cursed') continue // cursed = île, géré à part
+        if (Math.hypot(tx - this.cx, ty - this.cy) < 36) continue // pas à côté du village
+        if (!inland(tx, ty)) continue
+        ;(cands[b] || (cands[b] = [])).push({ tx, ty })
       }
     }
     for (const b of Object.keys(BIOME_BOSSES)) {
-      const pick = best[b] ?? bestAny[b] // idéal sinon repli
-      if (pick) this.bossLairs[b] = { tx: pick.tx, ty: pick.ty }
+      if (b === 'cursed') continue
+      const need = BIOME_BOSSES[b].length
+      const list = cands[b] || []
+      if (!list.length) { this.bossLairs[b] = []; continue }
+      // ÉTALEMENT (farthest-point sampling) : 1er repaire à mi-distance du village, puis chaque suivant
+      // = le candidat le PLUS LOIN de tous les repaires déjà posés -> boss dispersés dans toute la zone.
+      list.sort((a, z) => Math.hypot(a.tx - this.cx, a.ty - this.cy) - Math.hypot(z.tx - this.cx, z.ty - this.cy))
+      const picks = [list[Math.floor(list.length / 2)]]
+      while (picks.length < need) {
+        let bestC = null
+        let bestMin = -1
+        for (const c of list) {
+          let m = Infinity
+          for (const p of picks) m = Math.min(m, Math.hypot(p.tx - c.tx, p.ty - c.ty))
+          if (m > bestMin) { bestMin = m; bestC = c }
+        }
+        if (!bestC) break
+        picks.push(bestC)
+      }
+      this.bossLairs[b] = picks.map((p) => ({ tx: p.tx, ty: p.ty }))
     }
-    // cursed = boss Dargoth sur l'ÎLE MAUDITE (la boucle ci-dessus saute les îles -> on fixe à la main
-    // le centre de l'île ; findBossTile y trouvera une tuile cursed valide).
-    this.bossLairs.cursed = { tx: this.icx + CURSED_ISLE.ox, ty: this.icy + CURSED_ISLE.oy }
+    // CURSED = ÎLE MAUDITE (la boucle saute les îles) : repaires disposés autour du centre de l'île.
+    const ccx = this.icx + CURSED_ISLE.ox
+    const ccy = this.icy + CURSED_ISLE.oy
+    const cn = BIOME_BOSSES.cursed.length
+    this.bossLairs.cursed = []
+    for (let i = 0; i < cn; i++) {
+      const a = (i / cn) * Math.PI * 2
+      this.bossLairs.cursed.push({ tx: Math.round(ccx + Math.cos(a) * 11), ty: Math.round(ccy + Math.sin(a) * 11) })
+    }
   }
 
   /** Tuile de TERRE du bon biome proche de (tx,ty), en spirale (test océan/île/biome uniquement). */
@@ -1877,7 +1910,10 @@ export default class GameScene extends Phaser.Scene {
 
   spawnBosses() {
     this.bosses = []
-    for (const biome of Object.keys(BIOME_BOSSES)) this.spawnBoss(biome)
+    for (const biome of Object.keys(BIOME_BOSSES)) {
+      const list = BIOME_BOSSES[biome]
+      for (let i = 0; i < list.length; i++) this.spawnBoss(biome, i)
+    }
     this.spawnSeaDragon() // Dragon des Abysses : rôde dans l'océan autour de l'île (ambiance, pas un boss classique)
   }
 
@@ -1922,21 +1958,21 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  /** (Re)crée le boss d'un biome à son repaire (au fond de la zone), re-calé sur tuile libre. */
-  spawnBoss(biome) {
-    const cfg = BIOME_BOSSES[biome]
-    const lair = this.bossLairs?.[biome]
+  /** (Re)crée le boss `index` d'un biome à SON repaire (un repaire par boss), re-calé sur tuile libre. */
+  spawnBoss(biome, index = 0) {
+    const cfg = BIOME_BOSSES[biome]?.[index]
+    const lair = this.bossLairs?.[biome]?.[index]
     if (!cfg || !lair) return null
     const tile = this.findBossTile(lair.tx, lair.ty, biome) || lair
     if (!tile) return null
     const level = 7 // boss = niveau de scaling élevé (PV "comme avant", pas un mob) ; affiché plafonné à 5
     const boss = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, cfg.type, { level, boss: true, name: cfg.name })
     boss.bossBiome = biome
+    boss.bossIndex = index // pour le respawn ciblé
     boss.homeX = tile.tx * TILE + 8 // ancre de patrouille = son repaire
     boss.homeY = tile.ty * TILE + 8
     boss.arenaR = cfg.arenaR ?? ARENA_RADIUS // rayon de l'arène scellée (réglable par boss)
-    // centre de l'arène = centre du REPAIRE (lair), = centre de la clairière dégagée d'arbres.
-    // Fixe (pas le sprite qui rôde) -> le joueur est garanti DANS l'arène au moment du verrouillage.
+    // centre de l'arène = centre du REPAIRE (lair) = centre de la clairière dégagée d'arbres.
     boss.arenaCx = lair.tx * TILE + 8
     boss.arenaCy = lair.ty * TILE + 8
     this.monsters.add(boss)
@@ -2052,8 +2088,9 @@ export default class GameScene extends Phaser.Scene {
     const lairs = this.bossLairs
     if (!lairs) return false
     for (const k in lairs) {
-      const l = lairs[k]
-      if (this.dist(tx, ty, l.tx, l.ty) <= BOSS_CLEAR_TILES) return true
+      for (const l of lairs[k]) {
+        if (this.dist(tx, ty, l.tx, l.ty) <= BOSS_CLEAR_TILES) return true
+      }
     }
     return false
   }
@@ -2982,8 +3019,9 @@ export default class GameScene extends Phaser.Scene {
     // annonce + respawn long (boss de monde : ~8-10 min)
     this.scene.get('UIScene')?.showToast?.(`⚔ ${mon.displayName} vaincu !`, '#ffd86b')
     const biome = mon.bossBiome
+    const index = mon.bossIndex ?? 0
     this.time.delayedCall(Phaser.Math.Between(480000, 600000), () => {
-      if (!this.gameOver) this.spawnBoss(biome)
+      if (!this.gameOver) this.spawnBoss(biome, index)
     })
   }
 

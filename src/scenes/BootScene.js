@@ -90,6 +90,17 @@ export default class BootScene extends Phaser.Scene {
     // boss maudit : Seigneur de flamme (frames 50×50 : Idle 5, Hit 3 — PAS de walk)
     this.load.spritesheet('boss_giantflam_idle', 'assets/boss/giantflam_idle.png', { frameWidth: 50, frameHeight: 50 })
     this.load.spritesheet('boss_giantflam_hit', 'assets/boss/giantflam_hit.png', { frameWidth: 50, frameHeight: 50 })
+    // lot 1 (2e boss/zone) — frames mesurés par analyse de colonnes alpha
+    this.load.spritesheet('boss_democyclop2_idle', 'assets/boss/democyclop2_idle.png', { frameWidth: 50, frameHeight: 50 })
+    this.load.spritesheet('boss_democyclop2_walk', 'assets/boss/democyclop2_walk.png', { frameWidth: 50, frameHeight: 50 })
+    this.load.spritesheet('boss_democyclop2_hit', 'assets/boss/democyclop2_hit.png', { frameWidth: 50, frameHeight: 50 })
+    this.load.spritesheet('boss_giantbamboo_idle', 'assets/boss/giantbamboo_idle.png', { frameWidth: 62, frameHeight: 62 })
+    this.load.spritesheet('boss_giantbamboo_walk', 'assets/boss/giantbamboo_walk.png', { frameWidth: 62, frameHeight: 62 })
+    this.load.spritesheet('boss_giantbamboo_hit', 'assets/boss/giantbamboo_hit.png', { frameWidth: 62, frameHeight: 62 })
+    this.load.spritesheet('boss_giantslime_idle', 'assets/boss/giantslime_idle.png', { frameWidth: 62, frameHeight: 52 })
+    this.load.spritesheet('boss_giantslime_hit', 'assets/boss/giantslime_hit.png', { frameWidth: 62, frameHeight: 52 })
+    this.load.spritesheet('boss_giantspirit_idle', 'assets/boss/giantspirit_idle.png', { frameWidth: 50, frameHeight: 50 })
+    this.load.spritesheet('boss_giantspirit_hit', 'assets/boss/giantspirit_hit.png', { frameWidth: 50, frameHeight: 50 })
     // boss RAID île maudite : Dragon BLEU SEGMENTÉ (images uniques assemblées en chaîne par le code)
     this.load.image('boss_dragon_head', 'assets/boss/dragon_head.png')
     this.load.image('boss_dragon_body1', 'assets/boss/dragon_body1.png')
@@ -531,6 +542,10 @@ export default class BootScene extends Phaser.Scene {
       samurai: { idle: 6, walk: 6, hit: 4 },
       democyclop: { idle: 5, walk: 6, hit: 3 },
       giantflam: { idle: 5, hit: 3 }, // pas de walk -> playRig retombe sur idle
+      democyclop2: { idle: 5, walk: 6, hit: 3 },
+      giantbamboo: { idle: 6, walk: 12, hit: 4 },
+      giantslime: { idle: 5, hit: 5 }, // pas de walk
+      giantspirit: { idle: 5, hit: 3 }, // pas de walk
     }
     for (const [rig, states] of Object.entries(rigs)) {
       for (const [state, count] of Object.entries(states)) {

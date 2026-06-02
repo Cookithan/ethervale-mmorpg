@@ -991,13 +991,15 @@ export default class UIScene extends Phaser.Scene {
     reg(this.add.star(vx, vy, 5, 3, 6, 0xffe066).setDepth(303).setStrokeStyle(1, 0x5a4a10))
     reg(this.add.text(vx, vy - 10, 'Village', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
 
-    // marqueurs des REPAIRES DE BOSS (loin du spawn, au fond des zones)
-    const bossNames = { forest: 'Gorthak', desert: 'Sslyth', snow: 'Brakka', cursed: 'Dargoth' }
-    for (const [biome, lair] of Object.entries(g.bossLairs ?? {})) {
-      const bx = ox + lair.tx * cell
-      const by = oy + lair.ty * cell
-      reg(this.add.star(bx, by, 4, 3, 7, 0xff4444).setDepth(303).setStrokeStyle(1.5, 0x3a0000))
-      reg(this.add.text(bx, by - 9, `☠ ${bossNames[biome] ?? 'Boss'}`, { fontFamily: 'monospace', fontSize: '10px', color: '#ff8a8a', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
+    // marqueurs des REPAIRES DE BOSS (plusieurs par zone) : un ☠ par repaire, nom court du boss
+    for (const [biome, lairs] of Object.entries(g.bossLairs ?? {})) {
+      lairs.forEach((lair, i) => {
+        const bx = ox + lair.tx * cell
+        const by = oy + lair.ty * cell
+        const name = (g.bossDefs?.[biome]?.[i]?.name ?? 'Boss').split(',')[0] // "Gankai, le ..." -> "Gankai"
+        reg(this.add.star(bx, by, 4, 3, 7, 0xff4444).setDepth(303).setStrokeStyle(1.5, 0x3a0000))
+        reg(this.add.text(bx, by - 9, `☠ ${name}`, { fontFamily: 'monospace', fontSize: '10px', color: '#ff8a8a', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
+      })
     }
 
     // PNJ dispersés (petits points clairs)
