@@ -68,6 +68,10 @@ export const MONSTER_TYPES = {
     key: 'boss_samurai_idle', rig: 'samurai', raid: true, face: 'face_samurai',
     hp: 260, speed: 30, damage: 20, xp: 0, aggro: 90, scale: 1.5, body: { w: 40, h: 28 },
     tier: 'epic', loot: { gold: [0, 0] }, name: 'Samouraï Sylvestre',
+    // CHARGE TÉLÉGRAPHIÉE : zone au sol pendant `windup` ms (anim charge), puis dash à `speed` px/s
+    // pendant `duration` ms le long de l'angle verrouillé ; touche dans `hitRadius` px de l'axe (×`dmgMul`).
+    // Esquive : se décaler hors de l'axe pendant le windup (long + bande étroite -> dodge confortable).
+    charge: { range: 300, windup: 850, speed: 430, duration: 400, dmgMul: 1.7, cooldown: 2600, hitRadius: 28, color: 0x4aa3ff, chargeOriginY: 0.75 },
   },
 
   // --- BOSS SOLO à sprite dédié (rig, mais PAS raid -> tuable seul) ---
@@ -107,6 +111,7 @@ export const MONSTER_TYPES = {
     key: 'boss_redsamurai_idle', rig: 'redsamurai', face: 'face_redsamurai',
     hp: 88, speed: 32, damage: 19, xp: 38, aggro: 95, scale: 1.5, body: { w: 40, h: 28 },
     tier: 'epic', loot: { gold: [8, 15] }, name: 'Samouraï Rouge',
+    charge: { range: 300, windup: 1000, speed: 430, duration: 400, dmgMul: 1.7, cooldown: 2800, hitRadius: 28, color: 0xff3030, chargeOriginY: 0.75 },
   },
   tengured: {
     key: 'boss_tengured_idle', rig: 'tengured', face: 'face_tengured',
@@ -133,11 +138,13 @@ export const MONSTER_TYPES = {
     key: 'boss_giantfrog_idle', rig: 'giantfrog', face: 'face_giantfrog',
     hp: 76, speed: 30, damage: 16, xp: 34, aggro: 110, scale: 2.0, body: { w: 26, h: 22 },
     tier: 'epic', loot: { gold: [6, 13] }, name: 'Crapaud colossal',
+    charge: { range: 280, windup: 950, speed: 420, duration: 380, dmgMul: 1.6, cooldown: 2900, hitRadius: 24, color: 0x7bd86a },
   },
   giantracoon: {
     key: 'boss_giantracoon_idle', rig: 'giantracoon', face: 'face_giantracoon',
     hp: 82, speed: 34, damage: 17, xp: 36, aggro: 100, scale: 1.7, body: { w: 30, h: 30 },
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Raton géant',
+    charge: { range: 280, windup: 900, speed: 460, duration: 360, dmgMul: 1.5, cooldown: 2700, hitRadius: 24, color: 0xe0a24a },
   },
   giantbamboo2: {
     key: 'boss_giantbamboo2_idle', rig: 'giantbamboo2', face: 'face_giantbamboo2',
@@ -158,6 +165,7 @@ const LEASH_RANGE = 200 // distance parcourue depuis l'endroit où elle t'a rep�
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
 const PATROL_RADIUS = 80 // rayon autour duquel un BOSS rôde/garde son repaire avant d'être provoqué (px)
 const BOSS_GUARD_LEASH = 220 // tant que le combat n'a PAS commencé, le boss ne poursuit pas au-delà (revient au repaire)
+const BOSS_WAKE_DELAY = 1000 // au réveil (1re attaque reçue), le boss patiente avant de mordre/charger -> laisse le temps de réagir
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
 // (le scaling de niveau est désormais exponentiel ×1.5/niv, calculé directement dans le constructeur)
@@ -241,6 +249,12 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.rigShootUntil = 0 // boss à distance : fenêtre du télégraphe d'anim "shoot" (immobile pendant)
     this.shootFireAt = 0 // instant où le projectile part réellement (vers la fin du télégraphe)
     this.nextShootAt = 0 // cooldown entre deux tirs
+    this.attackPhase = 'idle' // charge télégraphiée : idle | telegraph | dash | recover
+    this.attackUntil = 0 // fin de la phase d'attaque courante
+    this.nextAttackAt = 0 // cooldown avant la prochaine charge
+    this.attackAngle = 0 // direction verrouillée de la charge (posée au début du télégraphe)
+    this.charging = false // en plein dash (dégâts majorés au contact)
+    this.chargeHitDone = false // un seul gros coup par dash
     if (this.dragon) this.setupDragon()
     else if (this.rig) this.playRig('idle')
     else this.anims.play(`mon-${typeKey}-down`, true)
@@ -308,6 +322,17 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.leashY = this.y
   }
 
+  /** Réveille un BOSS (1re attaque reçue) : il s'engage définitivement (combatEngaged -> arène + musique),
+   *  mais PATIENTE BOSS_WAKE_DELAY avant de mordre/charger -> le joueur a le temps de se replacer après
+   *  son coup/dash. Appelé une seule fois (transition endormi -> réveillé). */
+  wake(now) {
+    if (this.combatEngaged) return
+    this.combatEngaged = true
+    this.engage()
+    this.nextBiteAt = now + BOSS_WAKE_DELAY
+    this.nextAttackAt = now + BOSS_WAKE_DELAY
+  }
+
   /** Joue l'anim d'un boss à rig (idle/walk/hit) sans la relancer si déjà en cours. */
   playRig(state) {
     if (this.rigState === state) return
@@ -330,6 +355,68 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.sleepText.setPosition(this.x, this.y - this.barOffsetY - 6 + Math.sin(time / 400) * 2)
     this.sleepText.setAlpha(0.55 + 0.45 * (0.5 + 0.5 * Math.sin(time / 480)))
     this.sleepText.setVisible(true)
+  }
+
+  /** CHARGE TÉLÉGRAPHIÉE. Renvoie true tant qu'une attaque occupe le boss (télégraphe/dash/récup) ->
+   *  l'appelant saute alors la nav normale. Cycle : idle -> telegraph (immobile, zone au sol) ->
+   *  dash (ruée le long de l'angle verrouillé, gros coup au contact) -> recover (brève pause). */
+  updateBossCharge(time, player, dx, dy, dist) {
+    const cfg = this.def.charge
+    if (this.attackPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) {
+        this.attackPhase = 'dash'
+        this.attackUntil = time + cfg.duration
+        this.charging = true
+        this.chargeHitDone = false
+        this.setVelocity(Math.cos(this.attackAngle) * cfg.speed, Math.sin(this.attackAngle) * cfg.speed)
+      }
+      return true
+    }
+    if (this.attackPhase === 'dash') {
+      // pendant la charge, le collider joueur↔boss est désactivé (le boss fonce DROIT à travers) -> les
+      // dégâts du dash se font ICI par test de distance (un seul gros coup, ×dmgMul). Esquive = sortir de l'axe.
+      if (!this.chargeHitDone) {
+        const reach = cfg.hitRadius ?? (Math.max(this.body.halfWidth, this.body.halfHeight) + 14)
+        if (dist <= reach && player.takeDamage(Math.round(this.damage * (cfg.dmgMul ?? 1.5)), time)) {
+          this.chargeHitDone = true
+          this.scene.onBossChargeHit?.(this)
+        }
+      }
+      if (time >= this.attackUntil) {
+        this.attackPhase = 'recover'
+        this.attackUntil = time + 360
+        this.charging = false
+        this.setVelocity(0, 0)
+      }
+      return true
+    }
+    if (this.attackPhase === 'recover') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) {
+        this.attackPhase = 'idle'
+        this.setOrigin(0.5, 0.5) // restaure l'origine (le rig charge l'avait calée plus bas)
+        this.rigState = null // force le rejeu de l'anim idle/walk au prochain updateFacing
+      }
+      return true
+    }
+    // idle : déclenche une charge si le joueur est à portée et le cooldown est écoulé
+    if (time >= this.nextAttackAt && dist <= cfg.range) {
+      this.attackPhase = 'telegraph'
+      this.attackUntil = time + cfg.windup
+      this.attackAngle = Math.atan2(dy, dx)
+      this.nextAttackAt = time + cfg.windup + cfg.duration + cfg.cooldown // prochaine décision après tout le cycle
+      this.setVelocity(0, 0)
+      // anim de ruée (boucle) ; origine éventuellement recalée (frame de charge plus grande que l'idle,
+      // ex. samouraï 96×96 vs 96×48 -> chargeOriginY pour aligner les pieds ; frog/racoon = même taille -> 0.5)
+      this.setOrigin(0.5, cfg.chargeOriginY ?? 0.5)
+      this.rigState = 'charge'
+      this.anims.play(`boss-${this.rig}-charge`, true)
+      if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0)
+      this.scene.bossChargeTelegraph?.(this, this.attackAngle, cfg) // zone de danger au sol
+      return true
+    }
+    return false
   }
 
   /** Crée la chaîne de segments + les ailes du dragon. La tête (=`this`) reste l'entité de combat. */
@@ -421,8 +508,9 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       if (this.baseTint !== null) this.setTint(this.baseTint) // re-applique l'or des élites
     })
     this.showHpBar()
-    // boss à rig : joue l'anim "hit" (verrouille l'état le temps de l'anim) -> réaction visible aux coups
-    if (this.rig && this.hp > 0 && this.scene.anims.exists(`boss-${this.rig}-hit`)) {
+    // boss à rig : joue l'anim "hit" (verrouille l'état le temps de l'anim) -> réaction visible aux coups.
+    // PAS pendant une charge (telegraph/dash/recover) : on ne veut pas casser la lecture de la ruée.
+    if (this.rig && this.hp > 0 && this.attackPhase === 'idle' && this.scene.anims.exists(`boss-${this.rig}-hit`)) {
       this.rigState = null // force le rejeu même si on était déjà sur un autre état
       this.anims.play(`boss-${this.rig}-hit`)
       this.rigState = 'hit'
@@ -511,6 +599,15 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     const spd = def.speed * SPEED_SCALE
     let aimX
     let aimY
+
+    // CHARGE TÉLÉGRAPHIÉE (boss avec def.charge, une fois réveillé) : si une attaque est en cours, elle
+    // pilote la vélocité/anim -> on saute la nav + le facing normaux pour cette frame.
+    if (this.combatEngaged && def.charge && this.updateBossCharge(time, player, dx, dy, dist)) {
+      if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.updateHpBar(time)
+      return
+    }
 
     // biome courant du monstre (sert à la zone sûre prairie ET au verrou de biome ci-dessous)
     const curBiome = this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16))
@@ -661,11 +758,14 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  /** Tente de mordre le joueur au contact. Renvoie true si un coup a porté. */
+  /** Tente de mordre le joueur au contact. Renvoie true si un coup a porté. Pendant une charge (dash),
+   *  les dégâts sont majorés (×dmgMul). */
   tryBite(player, now) {
     if (this.isBoss && !this.combatEngaged) return false // boss endormi : ne mord pas tant qu'on ne l'a pas réveillé
+    if (this.def.charge) return false // boss à CHARGE : ne blesse QUE par son dash (test de distance) -> mêlée sûre entre 2 charges
     if (now < this.nextBiteAt) return false
-    if (player.takeDamage(this.damage, now)) {
+    const dmg = this.charging ? Math.round(this.damage * (this.def.charge?.dmgMul ?? 1.5)) : this.damage
+    if (player.takeDamage(dmg, now)) {
       this.nextBiteAt = now + TOUCH_COOLDOWN
       return true
     }

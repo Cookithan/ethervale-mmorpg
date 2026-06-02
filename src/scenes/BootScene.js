@@ -83,6 +83,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('boss_samurai_idle', 'assets/boss/samurai_idle.png', { frameWidth: 96, frameHeight: 48 })
     this.load.spritesheet('boss_samurai_walk', 'assets/boss/samurai_walk.png', { frameWidth: 96, frameHeight: 48 })
     this.load.spritesheet('boss_samurai_hit', 'assets/boss/samurai_hit.png', { frameWidth: 96, frameHeight: 48 })
+    this.load.spritesheet('boss_samurai_charge', 'assets/boss/samurai_charge.png', { frameWidth: 96, frameHeight: 96 }) // charge telegraphiee (96x96)
     // boss solo désert : Cyclope démon (frames 50×50 : Idle 5, Walk 6, Hit 3)
     this.load.spritesheet('boss_democyclop_idle', 'assets/boss/democyclop_idle.png', { frameWidth: 50, frameHeight: 50 })
     this.load.spritesheet('boss_democyclop_walk', 'assets/boss/democyclop_walk.png', { frameWidth: 50, frameHeight: 50 })
@@ -105,6 +106,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('boss_redsamurai_idle', 'assets/boss/redsamurai_idle.png', { frameWidth: 96, frameHeight: 48 })
     this.load.spritesheet('boss_redsamurai_walk', 'assets/boss/redsamurai_walk.png', { frameWidth: 96, frameHeight: 48 })
     this.load.spritesheet('boss_redsamurai_hit', 'assets/boss/redsamurai_hit.png', { frameWidth: 96, frameHeight: 48 })
+    this.load.spritesheet('boss_redsamurai_charge', 'assets/boss/redsamurai_charge.png', { frameWidth: 96, frameHeight: 96 })
     this.load.spritesheet('boss_tengured_idle', 'assets/boss/tengured_idle.png', { frameWidth: 82, frameHeight: 82 })
     this.load.spritesheet('boss_tengured_walk', 'assets/boss/tengured_walk.png', { frameWidth: 82, frameHeight: 82 })
     this.load.spritesheet('boss_tengured_hit', 'assets/boss/tengured_hit.png', { frameWidth: 82, frameHeight: 82 })
@@ -118,7 +120,9 @@ export default class BootScene extends Phaser.Scene {
     // variantes solo (forêt) : Grenouille (idle+hit), Raton (idle only), Bambou ancien (idle+walk+hit)
     this.load.spritesheet('boss_giantfrog_idle', 'assets/boss/giantfrog_idle.png', { frameWidth: 40, frameHeight: 40 })
     this.load.spritesheet('boss_giantfrog_hit', 'assets/boss/giantfrog_hit.png', { frameWidth: 40, frameHeight: 40 })
+    this.load.spritesheet('boss_giantfrog_charge', 'assets/boss/giantfrog_charge.png', { frameWidth: 40, frameHeight: 40 })
     this.load.spritesheet('boss_giantracoon_idle', 'assets/boss/giantracoon_idle.png', { frameWidth: 60, frameHeight: 60 })
+    this.load.spritesheet('boss_giantracoon_charge', 'assets/boss/giantracoon_charge.png', { frameWidth: 60, frameHeight: 60 })
     this.load.spritesheet('boss_giantbamboo2_idle', 'assets/boss/giantbamboo2_idle.png', { frameWidth: 62, frameHeight: 62 })
     this.load.spritesheet('boss_giantbamboo2_walk', 'assets/boss/giantbamboo2_walk.png', { frameWidth: 62, frameHeight: 62 })
     this.load.spritesheet('boss_giantbamboo2_hit', 'assets/boss/giantbamboo2_hit.png', { frameWidth: 62, frameHeight: 62 })
@@ -560,19 +564,19 @@ export default class BootScene extends Phaser.Scene {
   createBossAnimations() {
     const rigs = {
       tengublue: { idle: 6, walk: 10, hit: 8 },
-      samurai: { idle: 6, walk: 6, hit: 4 },
+      samurai: { idle: 6, walk: 6, hit: 4, charge: 3 }, // charge = pose de ruée (boucle pendant télégraphe+dash)
       democyclop: { idle: 5, walk: 6, hit: 3 },
       giantflam: { idle: 5, hit: 3 }, // pas de walk -> playRig retombe sur idle
       democyclop2: { idle: 5, walk: 6, hit: 3 },
       giantbamboo: { idle: 6, walk: 12, hit: 4 },
       giantslime: { idle: 5, hit: 5 }, // pas de walk
       giantspirit: { idle: 5, hit: 3 }, // pas de walk
-      redsamurai: { idle: 6, walk: 6, hit: 4 },
+      redsamurai: { idle: 6, walk: 6, hit: 4, charge: 3 },
       tengured: { idle: 6, walk: 10, hit: 8 },
       giantslime2: { idle: 5, hit: 5 }, // pas de walk
       squidred: { idle: 4, walk: 4, hit: 4, shoot: 5 }, // shoot = télégraphe (joué une fois) avant chaque tir
-      giantfrog: { idle: 5, hit: 3 }, // pas de walk
-      giantracoon: { idle: 6 }, // idle seul (pas de hit ni walk -> takeDamage tolère l'absence de "hit")
+      giantfrog: { idle: 5, hit: 3, charge: 7 }, // pas de walk
+      giantracoon: { idle: 6, charge: 2 }, // idle seul (pas de hit ni walk -> takeDamage tolère l'absence de "hit")
       giantbamboo2: { idle: 6, walk: 12, hit: 4 },
     }
     for (const [rig, states] of Object.entries(rigs)) {
@@ -582,8 +586,8 @@ export default class BootScene extends Phaser.Scene {
         this.anims.create({
           key,
           frames: this.anims.generateFrameNumbers(`boss_${rig}_${state}`, { start: 0, end: count - 1 }),
-          frameRate: state === 'hit' ? 14 : state === 'shoot' ? 12 : state === 'walk' ? 10 : 6,
-          repeat: (state === 'hit' || state === 'shoot') ? 0 : -1, // hit/shoot = une fois, idle/walk = boucle
+          frameRate: state === 'hit' ? 14 : state === 'shoot' ? 12 : state === 'charge' ? 11 : state === 'walk' ? 10 : 6,
+          repeat: (state === 'hit' || state === 'shoot') ? 0 : -1, // hit/shoot = une fois, idle/walk/charge = boucle
         })
       }
     }

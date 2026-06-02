@@ -2044,9 +2044,23 @@ export default class GameScene extends Phaser.Scene {
     boss.arenaCx = lair.tx * TILE + 8
     boss.arenaCy = lair.ty * TILE + 8
     this.monsters.add(boss)
-    if (!boss.dragon) this.physics.add.collider(this.player, boss) // tout boss = mur : on ne le traverse pas
+    if (!boss.dragon) this.makeBossSolid(boss) // mur infranchissable + dégâts de contact (cf. méthode)
     this.bosses.push(boss)
     return boss
+  }
+
+  /** Rend un boss SOLIDE : immovable (fixé APRÈS l'ajout au groupe, sinon Arcade peut le réinitialiser ->
+   *  boss poussable) + collider joueur portant les dégâts de contact. Le collider est IGNORÉ quand le
+   *  Guerrier dash (il traverse pour esquiver) OU quand le boss lui-même charge (il fonce DROIT à travers
+   *  le joueur ; les dégâts de la charge passent alors par le test de distance dans updateBossCharge). */
+  makeBossSolid(boss) {
+    boss.setImmovable(true)
+    if (boss.body) boss.body.pushable = false
+    this.physics.add.collider(
+      this.player, boss,
+      () => this.onBossContact(boss),
+      () => !this.player.dashing && !boss.charging,
+    )
   }
 
   /** ARÈNE DE BOSS : verrouillage par proximité + mur invisible tant que le boss vit.
@@ -2070,6 +2084,22 @@ export default class GameScene extends Phaser.Scene {
         if (vr > 0) { b.velocity.x -= vr * ux; b.velocity.y -= vr * uy }
         p.moveTarget = null // annule un clic-vers hors arène (sinon le joueur pousse le mur en boucle)
       }
+      // CONFINE AUSSI LE BOSS : sa charge (dash rapide) pourrait le faire sortir du cercle -> on garde
+      // son centre dans l'arène et on coupe sa vitesse radiale sortante (il s'arrête au mur, ne s'échappe pas).
+      const bb = a.boss.body
+      if (bb) {
+        const bmax = Math.max(20, a.r - Math.max(bb.halfWidth, bb.halfHeight)) // garde tout le CORPS dans le cercle
+        const bx = bb.center.x - a.cx
+        const by = bb.center.y - a.cy
+        const bd = Math.hypot(bx, by)
+        if (bd > bmax) {
+          const ux = bx / (bd || 1)
+          const uy = by / (bd || 1)
+          bb.position.set(a.cx + ux * bmax - bb.halfWidth, a.cy + uy * bmax - bb.halfHeight)
+          const vr = bb.velocity.x * ux + bb.velocity.y * uy
+          if (vr > 0) { bb.velocity.x -= vr * ux; bb.velocity.y -= vr * uy }
+        }
+      }
       return
     }
     // pas encore verrouillée : l'arène se scelle quand le COMBAT commence vraiment (le joueur a TAPÉ le
@@ -2084,6 +2114,17 @@ export default class GameScene extends Phaser.Scene {
 
   /** Effet visuel quand un BOSS frappe le joueur : éclat de tranche + secousse + son d'impact +
    *  bref "coup" du boss vers le joueur (lunge tween). Marche pour tous les boss (rig/dragon/mob). */
+  /** Contact joueur↔boss SOLIDE (callback du collider) : c'est ICI que se font les dégâts de contact des
+   *  boss (l'overlap général ne se déclenche pas sur un corps solide, séparé par le collider). Pendant une
+   *  charge, tryBite majore les dégâts (`charging`) -> retour visuel renforcé. */
+  onBossContact(boss) {
+    if (!boss.active || boss.hp <= 0) return
+    if (boss.tryBite(this.player, this.time.now)) {
+      if (boss.charging) this.onBossChargeHit(boss)
+      else { this.flashHurt(); this.bossAttackFx(boss) }
+    }
+  }
+
   bossAttackFx(boss) {
     const p = this.player
     const col = boss.isRaid ? 0x6fb0ff : 0xff7a3a // raid = bleu glacial, sinon orange
@@ -2092,6 +2133,46 @@ export default class GameScene extends Phaser.Scene {
     fx.once('animationcomplete', () => fx.destroy())
     this.cameras.main.shake(130, 0.006)
     Audio.sfx(SFX.hit, { vol: 0.7, detune: -200 }) // impact lourd
+  }
+
+  /** Zone de danger au sol pour une CHARGE de boss : un long rectangle dans l'axe de la ruée qui pulse
+   *  pendant le télégraphe, puis flashe et s'efface pendant le dash. Le joueur esquive en sortant de l'axe. */
+  bossChargeTelegraph(boss, angle, cfg) {
+    let len = (cfg.speed * cfg.duration) / 1000 + Math.max(boss.body.halfWidth, boss.body.halfHeight)
+    // CAPE la ligne sur le bord de l'arène (le boss y est confiné) -> elle ne dépasse jamais le cercle.
+    const ar = this.activeArena
+    if (ar && ar.boss === boss) {
+      const fx = boss.x - ar.cx
+      const fy = boss.y - ar.cy
+      const b = 2 * (fx * Math.cos(angle) + fy * Math.sin(angle))
+      const c = fx * fx + fy * fy - ar.r * ar.r
+      const disc = b * b - 4 * c
+      if (disc > 0) { const t = (-b + Math.sqrt(disc)) / 2; if (t > 0) len = Math.min(len, t) }
+    }
+    const w = (cfg.hitRadius ?? 30) * 2 // largeur affichée = bande réellement dangereuse (rayon de touche ×2)
+    const col = cfg.color ?? (boss.isRaid ? 0x8b2fd6 : 0xff3030) // couleur du dash propre au boss (bleu/rouge)
+    const zone = this.add.rectangle(boss.x, boss.y, len, w, col, 0.16).setOrigin(0, 0.5).setRotation(angle).setDepth(boss.y - 2)
+    const core = this.add.rectangle(boss.x, boss.y, len, 3, col, 0.7).setOrigin(0, 0.5).setRotation(angle).setDepth(boss.y - 1)
+    // pulse d'avertissement pendant le télégraphe
+    this.tweens.add({ targets: zone, fillAlpha: 0.42, duration: cfg.windup / 2, yoyo: true, repeat: 1, ease: 'Sine.inOut' })
+    Audio.sfx(SFX.whoosh, { vol: 0.45, detune: -500 }) // grondement de mise en garde
+    this.time.delayedCall(cfg.windup, () => {
+      if (!zone.active) return
+      zone.setFillStyle(col, 0.5) // flash à l'instant du dash
+      Audio.sfx(SFX.whoosh, { vol: 0.8, detune: 200 }) // souffle de la ruée
+      this.tweens.add({ targets: [zone, core], alpha: 0, duration: cfg.duration, onComplete: () => { zone.destroy(); core.destroy() } })
+    })
+  }
+
+  /** Gros coup d'une charge qui touche le joueur : retour visuel renforcé (par rapport à une morsure). */
+  onBossChargeHit(boss) {
+    const p = this.player
+    const fx = this.add.sprite(p.x, p.y - 4, 'fx_circslash').setDepth(p.y + 60).setScale(2.4).setTint(boss.def.charge?.color ?? (boss.isRaid ? 0x8b2fd6 : 0xff7a3a))
+    fx.play('fx-circslash')
+    fx.once('animationcomplete', () => fx.destroy())
+    this.flashHurt()
+    this.cameras.main.shake(220, 0.011)
+    Audio.sfx(SFX.hit, { vol: 0.85, detune: -350 })
   }
 
   /** Scelle l'arène autour du REPAIRE du boss (centre fixe = clairière dégagée d'arbres). */
@@ -2679,7 +2760,7 @@ export default class GameScene extends Phaser.Scene {
       mon.setVelocity(Math.cos(a) * knock, Math.sin(a) * knock)
       mon.knockbackUntil = this.time.now + 220 // l'IA ne reprend pas la main pendant le recul
     }
-    if (mon.isBoss) mon.combatEngaged = true // TAPER un boss déclenche son combat (-> scelle l'arène)
+    if (mon.isBoss) mon.wake(this.time.now) // TAPER un boss le réveille (-> arène) + délai avant sa 1re attaque
     mon.takeDamage(Math.round(amount))
   }
 
@@ -2785,6 +2866,7 @@ export default class GameScene extends Phaser.Scene {
     const dur = Math.round(200 * (p.spellPowerMul ?? 1)) // bond (allongé par le Focus) -> esquive / repositionnement
     p.invulnUntil = now + dur + 130 // i-frames = vraie esquive pendant le dash
     p.attacking = true // bloque le déplacement normal pendant le bond
+    p.dashing = true // TRAVERSE les boss solides pendant le dash (esquive + dégâts de traversée) -> processCallback du collider
     p.attackUntil = now + dur + 20
     p.setVelocity(Math.cos(ang) * SPD, Math.sin(ang) * SPD)
     p.anims.play(`${p.heroKey}-attack-` + p.facing, true)
@@ -2801,7 +2883,9 @@ export default class GameScene extends Phaser.Scene {
       repeat: Math.ceil(dur / 24),
       callback: () => {
         this.monsters.getChildren().forEach((m) => {
-          if (m.active && !hit.has(m) && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= 22) {
+          // +demi-gabarit -> on touche aussi les GROS boss en les traversant (centre éloigné)
+          const half = m.body ? (m.body.halfWidth + m.body.halfHeight) / 2 : 0
+          if (m.active && !hit.has(m) && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= 22 + half) {
             hit.add(m)
             this.hitMonster(m, dmg, p.x, p.y, 0) // dash = dégâts seuls, pas de recul (réservé au Tank)
           }
@@ -2810,6 +2894,7 @@ export default class GameScene extends Phaser.Scene {
     })
     this.time.delayedCall(dur, () => {
       p.setVelocity(0, 0)
+      p.dashing = false // fin du dash : redevient bloqué par les boss solides
       ev.remove()
       if (hit.size) this.showSlash(p.x, p.y, p.facing)
     })

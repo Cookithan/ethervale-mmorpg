@@ -90,6 +90,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.attackUntil = 0
     this.nextAttackAt = 0
     this.invulnUntil = 0
+    this.dashing = false // pendant la Charge du Guerrier : traverse les boss solides (collider ignoré)
     this.nextShootAt = 0 // cooldown du tir à distance
 
     this.moveTarget = null // {x, y} pour le click-to-move
