@@ -271,6 +271,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   /** Ajoute de l'XP, gère le(s) passage(s) de niveau (cap 10). */
   gainXp(amount) {
     if (this.level >= this.maxLevel) return
+    const startLevel = this.level
     this.xp += amount
     while (this.xp >= this.xpToNext && this.level < this.maxLevel) {
       this.xp -= this.xpToNext
@@ -283,6 +284,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.xpToNext = Math.round(80 * Math.pow(1.6, this.level - 1))
       this.scene.onLevelUp?.()
     }
+    if (this.level > startLevel) Audio.sfx('sfx_levelup', { vol: 0.7, detune: 0 }) // jingle de montée de niveau (1 fois)
     if (this.level >= this.maxLevel) this.xp = 0
   }
 

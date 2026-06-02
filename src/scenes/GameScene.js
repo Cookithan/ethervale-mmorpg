@@ -3048,6 +3048,9 @@ export default class GameScene extends Phaser.Scene {
   handleDeath() {
     this.gameOver = true
     this.activeBoss = null // cache la barre de boss
+    this.bossTrack = null
+    Audio.stopMusic(this) // coupe la musique pour laisser le jingle de défaite seul
+    Audio.sfx('sfx_gameover', { vol: 0.8, detune: 0 })
     this.releaseArena() // libère l'arène (le joueur respawn au village, pas piégé)
     this.player.setVelocity(0, 0)
     this.player.setTint(0x555555)
