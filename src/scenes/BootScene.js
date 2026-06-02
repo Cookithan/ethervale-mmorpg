@@ -56,6 +56,17 @@ export default class BootScene extends Phaser.Scene {
       })
     }
 
+    // BOSS DE RAID (vrais sprites dédiés du pack, mono-orientation = face caméra, flipX pour gauche/droite).
+    // Chaque anim a sa propre feuille car les frames diffèrent en taille (idle/hit vs walk).
+    // TenguBlue (Forêt) : idle/hit 68x68, walk 82x82.
+    this.load.spritesheet('boss_tengublue_idle', 'assets/boss/tengublue_idle.png', { frameWidth: 68, frameHeight: 68 })
+    this.load.spritesheet('boss_tengublue_walk', 'assets/boss/tengublue_walk.png', { frameWidth: 82, frameHeight: 82 })
+    this.load.spritesheet('boss_tengublue_hit', 'assets/boss/tengublue_hit.png', { frameWidth: 68, frameHeight: 68 })
+    // GiantBlueSamurai (Forêt) : figure large et trapue -> frames 96x48 (idle/walk 6 frames, hit 4).
+    this.load.spritesheet('boss_samurai_idle', 'assets/boss/samurai_idle.png', { frameWidth: 96, frameHeight: 48 })
+    this.load.spritesheet('boss_samurai_walk', 'assets/boss/samurai_walk.png', { frameWidth: 96, frameHeight: 48 })
+    this.load.spritesheet('boss_samurai_hit', 'assets/boss/samurai_hit.png', { frameWidth: 96, frameHeight: 48 })
+
     // logo du menu (titre "NINJA ADVENTURE" extrait de la cover du pack)
     this.load.image('title_logo', 'assets/ui/title.png')
 
@@ -466,6 +477,31 @@ export default class BootScene extends Phaser.Scene {
           }),
           frameRate: 6,
           repeat: -1,
+        })
+      }
+    }
+    this.createBossAnimations()
+  }
+
+  /**
+   * Anims des BOSS DE RAID (sprites dédiés mono-orientation). Une anim par état :
+   * idle (boucle), walk (boucle), hit (joué une fois quand le boss encaisse).
+   * `rig` = préfixe des clés (boss-<rig>-<state>), nb de frames par feuille.
+   */
+  createBossAnimations() {
+    const rigs = {
+      tengublue: { idle: 6, walk: 10, hit: 8 },
+      samurai: { idle: 6, walk: 6, hit: 4 },
+    }
+    for (const [rig, states] of Object.entries(rigs)) {
+      for (const [state, count] of Object.entries(states)) {
+        const key = `boss-${rig}-${state}`
+        if (this.anims.exists(key)) continue
+        this.anims.create({
+          key,
+          frames: this.anims.generateFrameNumbers(`boss_${rig}_${state}`, { start: 0, end: count - 1 }),
+          frameRate: state === 'hit' ? 14 : state === 'walk' ? 10 : 6,
+          repeat: state === 'hit' ? 0 : -1,
         })
       }
     }

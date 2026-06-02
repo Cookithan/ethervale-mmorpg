@@ -111,16 +111,21 @@ const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka',
 // repaires de boss : direction + distance depuis le centre ; findBossTile ajuste sur une
 // tuile valide du bon biome. Forêt = ceinture Nord/Sud, neige = grand Nord, désert = grand Sud.
 const BIOME_BOSSES = {
-  forest: { type: 'mushroom', name: 'Gorthak, Gardien de la Forêt' },
-  desert: { type: 'spider', name: 'Sslyth, Reine des Sables' },
-  snow: { type: 'bear', name: 'Brakka, Colosse des Glaces' },
-  cursed: { type: 'flam', name: 'Dargoth, Seigneur Maudit' }, // sur l'ÎLE MAUDITE (verrouillée, end-game)
+  forest: { type: 'samurai', name: 'Gankai, le Samouraï Sylvestre' }, // BOSS DE RAID (intuable solo)
+  desert: { type: 'spider', name: 'Sslyth, Reine des Sables' }, // boss SOLO normal (tuable seul)
+  snow: { type: 'tengublue', name: 'Raijin, le Tengu des Glaces' }, // BOSS DE RAID (intuable solo)
+  cursed: { type: 'flam', name: 'Dargoth, Seigneur Maudit' }, // sur l'ÎLE MAUDITE (verrouillée) ; futur DragonBlue
 }
 // ÎLE MAUDITE (end-game) : GRANDE île détachée loin au SUD-OUEST, au-delà des mers. Biome `cursed` +
 // boss Dargoth. Entourée d'océan, AUCUN gué -> VERROUILLÉE tant que la nage n'existe pas. Placée hors
 // du cadre d'accueil (centré sur le village) -> on n'en voit qu'un BOUT au dézoom = secret end-game.
 const CURSED_ISLE = { ox: -100, oy: 60, r: 28 } // [offset tuiles depuis le centre de l'île, rayon]
 const BOSS_BAR_RANGE = 240 // distance (px) à laquelle la barre de boss apparaît en haut de l'écran
+// ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
+// sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
+const ARENA_RADIUS = 160 // rayon de la zone scellée (px), centrée sur le repaire du boss
+const ARENA_TRIGGER = 110 // distance (px) au CENTRE du repaire qui déclenche le verrouillage (< rayon -> on est dedans)
+const BOSS_CLEAR_TILES = 12 // rayon (tuiles) dégagé d'arbres/rochers/props autour de chaque repaire = clairière d'arène
 
 // groupe de décor par biome (les arbres ne doivent pas déborder sur un autre groupe)
 const DECOR_GROUP = { prairie: 'green', forest: 'green', snow: 'snow', desert: 'dead', cursed: 'dead' }
@@ -380,6 +385,7 @@ export default class GameScene extends Phaser.Scene {
     this.pendingNpc = null // interlocuteur cliqué vers lequel on marche (interaction auto en arrivant)
     this.currentBiome = 'prairie' // suivi pour le bandeau de zone
     this.activeBoss = null // boss actuellement engagé (alimente la barre de boss de l'UIScene)
+    this.activeArena = null // arène de boss scellée en cours ({boss, cx, cy, r, fill, ring})
     if (!this.preview) {
       // UI dans une scène séparée (non zoomée). Évite le double-lancement au restart.
       if (!this.scene.isActive('UIScene')) this.scene.launch('UIScene')
@@ -1381,6 +1387,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.nearSpawn(tx, ty, 6)) return
       if (this.onPath(tx, ty, 2)) return // pas d'arbre sur un chemin
       if (this.onWater(tx, ty, 2)) return // pas d'arbre dans/sur une rivière
+      if (this.nearBossLair(tx, ty)) return // pas d'arbre dans la clairière d'arène d'un boss
       const b = this.biomeAt(tx, ty)
       if (b !== 'prairie' && b !== 'forest') return // arbres verts : prairie + forêt seulement
       if (!this.isDecorCore(tx, ty)) return // pas collé à une frontière (désert/neige)
@@ -1419,6 +1426,7 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 3 || ty > MAP_H - 3) return
       if (this.onPath(tx, ty, 2)) return
       if (this.onWater(tx, ty, 2)) return
+      if (this.nearBossLair(tx, ty)) return // clairière d'arène = sans arbre
       if (!this.isDecorCore(tx, ty)) return // pas d'arbre de biome collé à une frontière
       if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty, frames)
     }
@@ -1461,6 +1469,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.nearSpawn(tx, ty, 4)) return
       if (this.onPath(tx, ty, 1)) return // pas de rocher sur un chemin
       if (this.onWater(tx, ty, 1)) return // pas de rocher dans une rivière
+      if (this.nearBossLair(tx, ty)) return // clairière d'arène = sans rocher
       if (!this.reserve(tx, ty, 1, 1)) return
       const px = tx * TILE + 8
       const py = ty * TILE + 8
@@ -1499,6 +1508,7 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
       if (this.nearSpawn(tx, ty, 4)) return
       if (this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1)) return
+      if (this.nearBossLair(tx, ty)) return // clairière d'arène = sans prop solide
       if (!this.reserve(tx, ty, 1, 1)) return
       const px = tx * TILE + 8
       const py = ty * TILE + 8
@@ -1512,6 +1522,7 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 2 || ty > MAP_H - 2) return
       if (this.occupied.has(this.key(tx, ty))) return
       if (this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1)) return
+      if (this.nearBossLair(tx, ty)) return // clairière d'arène = sans flore
       this.add.image(tx * TILE + 8, ty * TILE + 8, 'nature', Phaser.Utils.Array.GetRandom(frames)).setDepth(ty * TILE + 4)
     }
 
@@ -1635,7 +1646,8 @@ export default class GameScene extends Phaser.Scene {
   spawnableTile(tx, ty) {
     return (
       tx >= 2 && ty >= 2 && tx <= MAP_W - 3 && ty <= MAP_H - 3 &&
-      !this.nearSpawn(tx, ty, 8) && !this.occupied.has(this.key(tx, ty)) && !this.onWater(tx, ty, 1)
+      !this.nearSpawn(tx, ty, 8) && !this.occupied.has(this.key(tx, ty)) && !this.onWater(tx, ty, 1) &&
+      !this.nearBossLair(tx, ty) // l'arène du boss reste vide de mobs ordinaires
     )
   }
 
@@ -1697,6 +1709,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.nearSpawn(tx, ty, 8)) continue
       if (this.occupied.has(this.key(tx, ty))) continue
       if (this.onWater(tx, ty, 1)) continue
+      if (this.nearBossLair(tx, ty)) continue // pas de mob ordinaire dans l'arène du boss
       const biome = this.biomeAt(tx, ty)
       if (biome === 'prairie') continue // prairie = zone sûre, aucun monstre
       if (!initial && biome === 'cursed' && !near) continue // pas de respawn aléatoire dans la zone verrouillée
@@ -1746,7 +1759,8 @@ export default class GameScene extends Phaser.Scene {
     }
     const inland = (tx, ty) =>
       !this.isOcean(tx - 3, ty) && !this.isOcean(tx + 3, ty) && !this.isOcean(tx, ty - 3) && !this.isOcean(tx, ty + 3)
-    const best = {}
+    const best = {} // meilleur candidat AVEC terre ferme tout autour (idéal)
+    const bestAny = {} // repli : meilleur candidat même sans clairance (pour ne jamais perdre un boss)
     for (let ty = 8; ty < MAP_H - 8; ty++) {
       for (let tx = 8; tx < MAP_W - 8; tx++) {
         if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
@@ -1754,10 +1768,18 @@ export default class GameScene extends Phaser.Scene {
         const sc = dirScore[b]
         if (!sc || !inland(tx, ty)) continue
         const s = sc(tx, ty)
-        if (!best[b] || s > best[b].s) best[b] = { tx, ty, s }
+        if (!bestAny[b] || s > bestAny[b].s) bestAny[b] = { tx, ty, s }
+        // le repaire doit avoir assez de TERRE FERME autour (toute l'arène/clairière hors de l'eau).
+        // On ne teste la clairance (coûteux) que si ce candidat améliore le score -> très peu d'appels.
+        if (!best[b] || s > best[b].s) {
+          if (this.hasLandClearance(tx, ty, BOSS_CLEAR_TILES)) best[b] = { tx, ty, s }
+        }
       }
     }
-    for (const b of Object.keys(BIOME_BOSSES)) if (best[b]) this.bossLairs[b] = { tx: best[b].tx, ty: best[b].ty }
+    for (const b of Object.keys(BIOME_BOSSES)) {
+      const pick = best[b] ?? bestAny[b] // idéal sinon repli
+      if (pick) this.bossLairs[b] = { tx: pick.tx, ty: pick.ty }
+    }
     // cursed = boss Dargoth sur l'ÎLE MAUDITE (la boucle ci-dessus saute les îles -> on fixe à la main
     // le centre de l'île ; findBossTile y trouvera une tuile cursed valide).
     this.bossLairs.cursed = { tx: this.icx + CURSED_ISLE.ox, ty: this.icy + CURSED_ISLE.oy }
@@ -1825,9 +1847,73 @@ export default class GameScene extends Phaser.Scene {
     boss.bossBiome = biome
     boss.homeX = tile.tx * TILE + 8 // ancre de patrouille = son repaire
     boss.homeY = tile.ty * TILE + 8
+    boss.arenaR = cfg.arenaR ?? ARENA_RADIUS // rayon de l'arène scellée (réglable par boss)
+    // centre de l'arène = centre du REPAIRE (lair), = centre de la clairière dégagée d'arbres.
+    // Fixe (pas le sprite qui rôde) -> le joueur est garanti DANS l'arène au moment du verrouillage.
+    boss.arenaCx = lair.tx * TILE + 8
+    boss.arenaCy = lair.ty * TILE + 8
     this.monsters.add(boss)
     this.bosses.push(boss)
     return boss
+  }
+
+  /** ARÈNE DE BOSS : verrouillage par proximité + mur invisible tant que le boss vit.
+   *  Appelée chaque frame APRÈS player.update (la vélocité du joueur est déjà posée). */
+  updateArena() {
+    const p = this.player
+    if (this.activeArena) {
+      const a = this.activeArena
+      if (!a.boss.active || a.boss.hp <= 0) { this.releaseArena(); return } // boss mort -> ouverture
+      // MUR INVISIBLE : on confine le CORPS du joueur dans le cercle (centre du body = source de vérité
+      // avant le step physique). On supprime seulement la vitesse RADIALE sortante (glisse le long du mur).
+      const b = p.body
+      const dx = b.center.x - a.cx
+      const dy = b.center.y - a.cy
+      const d = Math.hypot(dx, dy)
+      if (d > a.r) {
+        const ux = dx / (d || 1)
+        const uy = dy / (d || 1)
+        b.position.set(a.cx + ux * a.r - b.halfWidth, a.cy + uy * a.r - b.halfHeight)
+        const vr = b.velocity.x * ux + b.velocity.y * uy
+        if (vr > 0) { b.velocity.x -= vr * ux; b.velocity.y -= vr * uy }
+        p.moveTarget = null // annule un clic-vers hors arène (sinon le joueur pousse le mur en boucle)
+      }
+      return
+    }
+    // pas encore verrouillée : s'approcher TROP PRÈS du repaire d'un boss vivant scelle l'arène
+    for (const b of this.bosses || []) {
+      const cx = b.arenaCx ?? b.x
+      const cy = b.arenaCy ?? b.y
+      if (b.active && b.hp > 0 && this.dist(p.x, p.y, cx, cy) < ARENA_TRIGGER) {
+        this.lockArena(b)
+        break
+      }
+    }
+  }
+
+  /** Scelle l'arène autour du REPAIRE du boss (centre fixe = clairière dégagée d'arbres). */
+  lockArena(boss) {
+    boss.engage() // le boss s'engage définitivement
+    const r = boss.arenaR ?? ARENA_RADIUS
+    const cx = boss.arenaCx ?? boss.x
+    const cy = boss.arenaCy ?? boss.y
+    const col = boss.isRaid ? 0x8b2fd6 : 0xd23a3a // raid = violet, boss solo = rouge
+    const fill = this.add.circle(cx, cy, r, col, 0.07).setDepth(1) // sol scellé teinté
+    const ring = this.add.circle(cx, cy, r, col, 0).setStrokeStyle(3, col, 0.9).setDepth(900000) // bord toujours visible
+    this.tweens.add({ targets: [fill, ring], alpha: 0.45, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    this.activeArena = { boss, cx, cy, r, fill, ring }
+    const msg = boss.isRaid ? '☠ Arène scellée — aucune fuite possible !' : '⚔ Arène scellée !'
+    this.scene.get('UIScene')?.showToast?.(msg, boss.isRaid ? '#d6a3ff' : '#ffd86b')
+    this.cameras.main.shake(250, 0.006)
+  }
+
+  /** Libère l'arène (boss vaincu, ou mort du joueur). */
+  releaseArena() {
+    const a = this.activeArena
+    if (!a) return
+    a.fill?.destroy()
+    a.ring?.destroy()
+    this.activeArena = null
   }
 
   /** Cherche une tuile libre (bon biome, hors eau/déco/chemin) en spirale autour de (tx,ty). */
@@ -1848,6 +1934,32 @@ export default class GameScene extends Phaser.Scene {
       }
     }
     return null
+  }
+
+  /** Vrai si (tx,ty) tombe dans la CLAIRIÈRE d'arène d'un boss (rayon dégagé autour de son repaire).
+   *  Sert à interdire arbres/rochers/props là -> l'arène reste un terrain ouvert (pas de cachette / bug). */
+  nearBossLair(tx, ty) {
+    const lairs = this.bossLairs
+    if (!lairs) return false
+    for (const k in lairs) {
+      const l = lairs[k]
+      if (this.dist(tx, ty, l.tx, l.ty) <= BOSS_CLEAR_TILES) return true
+    }
+    return false
+  }
+
+  /** Vrai si AUCUN océan/île détachée dans un disque de rayon r tuiles autour de (tx,ty).
+   *  -> garantit que l'arène/clairière du boss tient ENTIÈREMENT sur la terre ferme (pas dans l'eau).
+   *  (Appelé pendant computeBossLairs, avant les rivières : seul l'océan est connu, ce qui suffit ici.) */
+  hasLandClearance(tx, ty, r) {
+    const r2 = r * r
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r2) continue
+        if (this.isOcean(tx + dx, ty + dy) || this.isIsland(tx + dx, ty + dy)) return false
+      }
+    }
+    return true
   }
 
   /** Pose un bâtiment (bloc de tuiles 'house') à (tx,ty) si l'emplacement est libre. */
@@ -2323,8 +2435,10 @@ export default class GameScene extends Phaser.Scene {
     let hitAny = false
     this.monsters.getChildren().forEach((mon) => {
       if (!mon.active) return
-      // touché si le monstre est dans le rayon autour du point devant le perso
-      if (Phaser.Math.Distance.Between(cx, cy, mon.x, mon.y) <= RANGE) {
+      // touché si la zone de frappe atteint le CORPS du monstre (pas son centre) : on ajoute son
+      // demi-gabarit -> on peut frapper les gros boss en étant à leur bord (sinon le centre est trop loin).
+      const half = mon.body ? (mon.body.halfWidth + mon.body.halfHeight) / 2 : 0
+      if (Phaser.Math.Distance.Between(cx, cy, mon.x, mon.y) <= RANGE + half) {
         hitAny = true
         this.hitMonster(mon, p.attackPower, p.x, p.y, p.meleeKnock) // dégât + recul (Tank repousse +)
       }
@@ -2726,6 +2840,7 @@ export default class GameScene extends Phaser.Scene {
     const i = this.bosses.indexOf(mon)
     if (i >= 0) this.bosses.splice(i, 1)
     if (this.activeBoss === mon) this.activeBoss = null
+    if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
 
     // butin GARANTI : 2 équipements épiques + gros tas d'or + un gros soin
     this.drops.add(new Drop(this, mon.x - 12, mon.y, 'equip', 0, this.equipmentOfTier('legendary')))
@@ -2855,6 +2970,8 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     p.setDepth(p.y)
 
+    this.updateArena() // arène de boss : verrouillage de proximité + mur invisible
+
     this.monsters.getChildren().forEach((mon) => {
       mon.update(time, p)
       mon.setDepth(mon.y)
@@ -2897,6 +3014,7 @@ export default class GameScene extends Phaser.Scene {
   handleDeath() {
     this.gameOver = true
     this.activeBoss = null // cache la barre de boss
+    this.releaseArena() // libère l'arène (le joueur respawn au village, pas piégé)
     this.player.setVelocity(0, 0)
     this.player.setTint(0x555555)
     this.physics.pause()

@@ -55,11 +55,26 @@ export const MONSTER_TYPES = {
     key: 'mon_flam', hp: 105, speed: 40, damage: 26, xp: 48, aggro: 100, scale: 1.3, name: 'Démon de feu',
     tier: 'epic', loot: { gold: [7, 14] },
   },
+
+  // --- BOSS DE RAID (intuables en solo, contenu verrouillé / multijoueur Phase 4) ---
+  // rig = sprites dédiés (mono-orientation, anims idle/walk/hit) ; raid = PV-mur + dégâts qui écrasent.
+  // key = texture initiale (idle) ; body = hitbox en px de texture (scalée ensuite par `scale`).
+  tengublue: {
+    key: 'boss_tengublue_idle', rig: 'tengublue', raid: true, face: 'face_tengublue',
+    hp: 220, speed: 34, damage: 18, xp: 0, aggro: 95, scale: 1.7, body: { w: 26, h: 32 },
+    tier: 'epic', loot: { gold: [0, 0] }, name: 'Tengu des Glaces',
+  },
+  samurai: {
+    key: 'boss_samurai_idle', rig: 'samurai', raid: true, face: 'face_samurai',
+    hp: 260, speed: 30, damage: 20, xp: 0, aggro: 90, scale: 1.5, body: { w: 40, h: 28 },
+    tier: 'epic', loot: { gold: [0, 0] }, name: 'Samouraï Sylvestre',
+  },
 }
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)
 const LEASH_RANGE = 200 // distance parcourue depuis l'endroit où elle t'a repéré avant d'abandonner (px)
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
+const PATROL_RADIUS = 80 // rayon autour duquel un BOSS rôde/garde son repaire avant d'être provoqué (px)
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
 const LEVEL_STAT_STEP = 0.5 // +50 % des PV/XP de base par niveau -> zones lointaines TRÈS coriaces (brief)
@@ -67,7 +82,11 @@ const LEVEL_DMG_STEP = 0.28 // dégâts montent plus DOUCEMENT que les PV (dur m
 const BOSS_HP_MUL = 8 // PV d'un boss = type × niveau × 8 (gros sac à PV)
 const BOSS_DMG_MUL = 1.5 // dégâts du boss (kitable car plus lent que le joueur -> on encaisse rarement)
 const BOSS_XP_MUL = 8 // XP massive
-const BOSS_SCALE_MUL = 2.2 // taille imposante
+const BOSS_SCALE_MUL = 2.2 // taille imposante (uniquement les boss = MONSTRES agrandis, PAS les sprites dédiés)
+// BOSS DE RAID (sprites dédiés `rig`) : PV-mur infranchissable en solo + dégâts qui écrasent.
+// Contenu verrouillé tant que le multijoueur (Phase 4) n'existe pas : on peut les approcher, pas les vaincre.
+const RAID_HP_MUL = 28 // × le PV déjà scalé par niveau (=> dizaines de milliers de PV)
+const RAID_DMG_MUL = 3 // chaque coup enlève une énorme part de vie -> facetank = mort
 
 /**
  * Monster — IA simple : patrouille aléatoire, puis poursuite si le joueur entre
@@ -88,14 +107,16 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.level = level
     this.elite = elite
     this.isBoss = boss
+    this.rig = def.rig ?? null // boss à sprites dédiés (anims idle/walk/hit) au lieu des anims directionnelles
+    this.isRaid = !!def.raid // boss de raid = intuable solo (PV-mur + dégâts qui écrasent)
     this.eliteName = opts.name ?? null
 
-    // stats mises à l'échelle selon le NIVEAU (+12 %/niv) et le statut ÉLITE/BOSS
+    // stats mises à l'échelle selon le NIVEAU (+12 %/niv) et le statut ÉLITE/BOSS/RAID
     const lvlMul = 1 + (level - 1) * LEVEL_STAT_STEP // PV/XP : forte montée par niveau
     const dmgLvlMul = 1 + (level - 1) * LEVEL_DMG_STEP // dégâts : montée plus douce
     this.lvlMul = lvlMul
-    const hpMul = boss ? BOSS_HP_MUL : elite ? 2.2 : 1
-    const dmgMul = boss ? BOSS_DMG_MUL : elite ? 1.6 : 1
+    const hpMul = this.isRaid ? RAID_HP_MUL : boss ? BOSS_HP_MUL : elite ? 2.2 : 1
+    const dmgMul = this.isRaid ? RAID_DMG_MUL : boss ? BOSS_DMG_MUL : elite ? 1.6 : 1
     const xpMul = boss ? BOSS_XP_MUL : elite ? 3 : 1
     this.maxHp = Math.round(def.hp * lvlMul * hpMul)
     this.hp = this.maxHp
@@ -105,15 +126,21 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.aggroRange = boss ? def.aggro + 70 : def.aggro // le boss repère de plus loin
     this.leashRange = boss ? 700 : LEASH_RANGE // ...et lâche beaucoup moins vite
 
-    // taille : boss >> élite > normal. On scale AVANT setSize (la hitbox suit la taille affichée).
-    const s = (def.scale ?? 1) * (boss ? BOSS_SCALE_MUL : elite ? 1.4 : 1)
+    // taille : les boss à sprite dédié sont DÉJÀ grands (scale ~1) ; seuls les boss = monstres
+    // agrandis prennent BOSS_SCALE_MUL.
+    const s = (def.scale ?? 1) * (this.rig ? 1 : boss ? BOSS_SCALE_MUL : elite ? 1.4 : 1)
     this.setScale(s)
     this.barOffsetY = Math.round(9 * s + 3) // barre de vie remontée pour les gros
 
     this.setCollideWorldBounds(true)
-    this.body.setSize(11, 11, true) // hitbox proportionnelle au scale, centrée
+    // hitbox : boss à rig = body dédié (en px de texture) ; sinon 11x11 proportionnel au scale.
+    if (this.rig && def.body) this.body.setSize(def.body.w, def.body.h, true)
+    else this.body.setSize(11, 11, true)
     this.facing = 'down'
-    this.anims.play(`mon-${typeKey}-down`, true)
+    this.rigState = null // état d'anim courant du rig (idle/walk/hit)
+    this.rigLockUntil = 0 // pendant l'anim "hit" on ne change pas d'état
+    if (this.rig) this.playRig('idle')
+    else this.anims.play(`mon-${typeKey}-down`, true)
 
     // teinte dorée permanente pour les élites "shiny"
     this.baseTint = elite ? 0xffd54a : null
@@ -154,17 +181,39 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // BOSS : aura menaçante au sol ; sa vie s'affiche dans la barre de boss en haut de l'écran
     // (donc on masque sa barre/étiquette au-dessus de la tête pour éviter le doublon).
     if (boss) {
-      this.aura = scene.add.ellipse(x, y + 6, 34 * s, 13 * s, 0x8a0f12, 0.32).setDepth(0)
-      scene.tweens.add({ targets: this.aura, scaleX: 1.3, scaleY: 1.3, alpha: 0.16, duration: 750, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      // largeur de l'aura calée sur la taille AFFICHÉE du boss ; raid = bleu glacial, sinon rouge sang.
+      const auraW = this.rig ? this.displayWidth * 0.7 : 34 * s
+      const auraH = this.rig ? this.displayHeight * 0.22 : 13 * s
+      const auraColor = this.isRaid ? 0x2a6bff : 0x8a0f12
+      this.auraY = this.rig ? this.displayHeight * 0.36 : 6 // pieds du boss
+      this.aura = scene.add.ellipse(x, y + this.auraY, auraW, auraH, auraColor, 0.34).setDepth(0)
+      scene.tweens.add({ targets: this.aura, scaleX: 1.3, scaleY: 1.3, alpha: 0.18, duration: 750, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
       this.hpBarBg.setVisible(false)
       this.hpBarFg.setVisible(false)
       this.infoText.setVisible(false)
     }
   }
 
+  /** Engage le combat (poursuite). Pour un BOSS, c'est définitif (aucune fuite possible). */
+  engage() {
+    if (this.aggroed) return
+    this.aggroed = true
+    this.returning = false
+    this.leashX = this.x // ancre du leash (ignorée par les boss)
+    this.leashY = this.y
+  }
+
+  /** Joue l'anim d'un boss à rig (idle/walk/hit) sans la relancer si déjà en cours. */
+  playRig(state) {
+    if (this.rigState === state) return
+    this.rigState = state
+    this.anims.play(`boss-${this.rig}-${state}`, true)
+  }
+
   /** Inflige des dégâts au monstre ; renvoie true s'il meurt. */
   takeDamage(amount) {
     this.hp -= amount
+    this.engage() // frappé = engagé (un boss ne lâchera plus jamais ; un monstre normal contre-attaque)
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(80, () => {
       if (!this.active) return
@@ -172,6 +221,13 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       if (this.baseTint !== null) this.setTint(this.baseTint) // re-applique l'or des élites
     })
     this.showHpBar()
+    // boss à rig : joue l'anim "hit" (verrouille l'état le temps de l'anim) -> réaction visible aux coups
+    if (this.rig && this.hp > 0) {
+      this.rigState = null // force le rejeu même si on était déjà sur un autre état
+      this.anims.play(`boss-${this.rig}-hit`)
+      this.rigState = 'hit'
+      this.rigLockUntil = this.scene.time.now + 8 / 14 * 1000 // durée approx de l'anim hit (8 frames @14fps)
+    }
     if (this.hp <= 0) {
       this.die()
       return true
@@ -202,7 +258,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (time < this.knockbackUntil) {
       this.body.velocity.scale(0.94)
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
-      this.aura?.setPosition(this.x, this.y + 4)
+      this.aura?.setPosition(this.x, this.y + (this.auraY ?? 4))
       this.updateHpBar(time)
       return
     }
@@ -219,8 +275,9 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     let aimX
     let aimY
 
-    // la prairie est une zone sûre : un monstre qui y pénètre abandonne et rentre
-    if (this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16)) === 'prairie') {
+    // la prairie est une zone sûre : un monstre NORMAL qui y pénètre abandonne et rentre.
+    // Les BOSS sont implacables (aucune fuite possible) -> ils ignorent la zone sûre.
+    if (!this.isBoss && this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16)) === 'prairie') {
       this.aggroed = false
       this.returning = true
     }
@@ -231,16 +288,18 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.returning) {
       if (homeDist <= HOME_RADIUS) this.returning = false // rentré : reprend la patrouille
     } else if (this.aggroed) {
-      // abandonne après avoir parcouru LEASH_RANGE depuis l'endroit où il a repéré le joueur
-      const leashDist = Math.hypot(this.leashX - this.x, this.leashY - this.y)
-      if (leashDist > this.leashRange) {
-        this.aggroed = false
-        this.returning = true // a lâché le joueur : rentre au spawn
+      // BOSS = IMPLACABLE : une fois engagé, il poursuit SANS JAMAIS lâcher (aucune fuite possible).
+      // Monstre normal : abandonne après LEASH_RANGE depuis l'endroit où il a repéré le joueur.
+      if (!this.isBoss) {
+        const leashDist = Math.hypot(this.leashX - this.x, this.leashY - this.y)
+        if (leashDist > this.leashRange) {
+          this.aggroed = false
+          this.returning = true // a lâché le joueur : rentre au spawn
+        }
       }
     } else if (dist < this.aggroRange) {
-      this.aggroed = true
-      this.leashX = this.x // pose l'ancre du leash là où il commence à poursuivre
-      this.leashY = this.y
+      // s'engage parce que le joueur est venu TROP PRÈS (l'engagement par coup reçu = takeDamage)
+      this.engage()
     }
 
     if (this.aggroed) {
@@ -258,8 +317,14 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       aimX = hx
       aimY = hy
     } else {
-      // errance normale autour du spawn
-      if (time >= this.repickAt) {
+      // errance / patrouille autour du spawn.
+      // BOSS : il RÔDE autour de son repaire. S'il s'est trop éloigné, il revient vers le centre
+      // (patrouille tethered) au lieu de dériver -> il "garde" sa zone tant qu'on ne l'a pas provoqué.
+      const tethered = this.isBoss && homeDist > PATROL_RADIUS
+      if (tethered) {
+        this.wander.set((this.homeX - this.x) / (homeDist || 1), (this.homeY - this.y) / (homeDist || 1))
+        this.repickAt = time + Phaser.Math.Between(700, 1400) // garde ce cap un moment
+      } else if (time >= this.repickAt) {
         this.repickAt = time + Phaser.Math.Between(900, 2200)
         if (Phaser.Math.Between(0, 100) < 35) {
           this.wander.set(0, 0) // pause
@@ -273,9 +338,9 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       aimY = this.wander.y
     }
 
-    this.updateFacing(aimX, aimY)
+    this.updateFacing(aimX, aimY, time)
     if (this.isBoss && this.aura) {
-      this.aura.setPosition(this.x, this.y + 4) // l'aura suit le boss
+      this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)) // l'aura suit le boss
       this.aura.setDepth(this.y - 1)
     } else {
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4) // l'étiquette suit le monstre
@@ -303,7 +368,16 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
    * entre horizontal et vertical que si une composante domine nettement l'autre
    * (évite le flip quand dx ≈ dy, typiquement collé au joueur).
    */
-  updateFacing(ax, ay) {
+  updateFacing(ax, ay, time = 0) {
+    // BOSS À RIG : sprite mono-orientation (face caméra). On gère l'état (idle/walk/hit) + flipX
+    // horizontal. Pendant l'anim "hit" (rigLockUntil) on ne touche à rien -> la réaction se voit.
+    if (this.rig) {
+      if (this.rigState === 'hit' && time < this.rigLockUntil) return
+      const moving = Math.abs(ax) > 0.3 || Math.abs(ay) > 0.3
+      this.playRig(moving ? 'walk' : 'idle')
+      if (Math.abs(ax) > 0.3) this.setFlipX(ax < 0) // regarde vers sa cible (gauche/droite)
+      return
+    }
     if (Math.abs(ax) < 0.5 && Math.abs(ay) < 0.5) return // immobile : garde l'orientation
     const horiz = this.facing === 'left' || this.facing === 'right'
     let dir = this.facing
