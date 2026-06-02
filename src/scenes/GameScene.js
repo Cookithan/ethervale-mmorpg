@@ -1931,6 +1931,9 @@ export default class GameScene extends Phaser.Scene {
     const msg = boss.isRaid ? '☠ Arène scellée — aucune fuite possible !' : '⚔ Arène scellée !'
     this.scene.get('UIScene')?.showToast?.(msg, boss.isRaid ? '#d6a3ff' : '#ffd86b')
     this.cameras.main.shake(250, 0.006)
+    // RUGISSEMENT : un cri descendu en hauteur (rate lent + detune grave) = grognement de boss.
+    // Le raid (plus gros) gronde encore plus grave/fort que le boss solo.
+    Audio.sfx('sfx_roar', boss.isRaid ? { vol: 1, rate: 0.5, detune: -700 } : { vol: 0.85, rate: 0.62, detune: -450 })
   }
 
   /** Libère l'arène (boss vaincu, ou mort du joueur). */

@@ -16,6 +16,7 @@ const SFX_KEYS = [
   'ui_accept', 'ui_move', 'ui_cancel', 'ui_coin', // sons d'interface (menus, panneaux, transactions)
   'sfx_step1', 'sfx_step2', // pas sur l'herbe (alternés pendant la marche)
   'sfx_gold', 'sfx_pickup', 'sfx_loot', // ramassage de butin (or / gemme-cœur / équipement)
+  'sfx_roar', // rugissement de boss (cri descendu en hauteur au verrouillage de l'arène)
 ]
 
 /**
