@@ -188,6 +188,16 @@ function tileNoise(x, y, salt = 0) {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
+/** Interpolation linéaire entre deux couleurs hex 0xRRGGBB (t dans [0,1]). */
+function lerpHex(a, b, t) {
+  const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255
+  const br = (b >> 16) & 255, bg = (b >> 8) & 255, bb = b & 255
+  const r = Math.round(ar + (br - ar) * t)
+  const g = Math.round(ag + (bg - ag) * t)
+  const c = Math.round(ab + (bb - ab) * t)
+  return (r << 16) | (g << 8) | c
+}
+
 // --- éléments du TilesetNature (nature.png, 24 colonnes) ---
 const TREE = { tl: 0, tr: 1, bl: 24, br: 25 } // arbre vert (forêt/prairie)
 const TREE_SNOW = { tl: 12, tr: 13, bl: 36, br: 37 } // sapin enneigé (neige)
@@ -292,6 +302,7 @@ export default class GameScene extends Phaser.Scene {
     this.painted = new Set() // cellules de sol déjà peintes (évite les superpositions)
     this.pathCells = new Set() // cellules de chemin (pour dégager arbres/rochers)
     this.paintBiomes() // sols des biomes AVANT le reste
+    this.paintGrassBiomes() // herbe Sprout : prairie/village (claire) + forêt (teintée vert sombre)
     this.buildRivers() // rivières + ponts (AVANT les chemins -> les chemins passent PAR les ponts)
     this.buildOcean() // océan autour du continent (île entourée d'eau)
     this.spawnDryLakes() // lacs asséchés (terre craquelée) dans le désert
@@ -313,10 +324,13 @@ export default class GameScene extends Phaser.Scene {
     // --- décors ---
     this.obstacles = this.physics.add.staticGroup()
     this.trees = []
+    this.destructibles = [] // obstacles (arbres de forêt) détruits par l'onde de choc à l'ouverture d'une arène
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnForest()
     this.spawnBiomeTrees()
+    this.scatterForestTrees() // chênes Mystic Woods dans la forêt
+    this.scatterForestUndergrowth() // sous-bois Ninja TOUFFU : fougères + buissons + fleurs (traversable)
     this.spawnRocks()
     this.spawnDecor()
     this.spawnBiomeProps() // props par biome (cactus, cristaux, souches, congères...)
@@ -938,6 +952,44 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Herbe Sprout Lands sur PRAIRIE + FORÊT (une seule couche, au-dessus du sol field). La forêt réutilise
+   *  les MÊMES tuiles d'herbe (variantes : pleine, pousses, touffes) mais avec un FILTRE vert sombre
+   *  (teinte multiply) en 3 nuances par TACHES (bruit) -> sous-bois riche sans quadrillage. La prairie
+   *  reste claire (sans teinte). Les chemins de terre du village (overlay, depth -9) restent par-dessus. */
+  paintGrassBiomes() {
+    const gmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
+    const gts = gmap.addTilesetImage('grass_sprout', 'grass_sprout', TILE, TILE)
+    this.grassLayer = gmap.createBlankLayer('grass', gts, 0, 0).setDepth(-9.8) // > field(-10), < overlay(-9)
+    const PRAIRIE_FILL = [56, 57, 56, 57, 56, 57, 66, 67, 68, 60] // pleine (majorité) + pousses + fleurs (rare)
+    const FOREST_FILL = [56, 57, 56, 57, 56, 57, 66, 58] // pleine (majorité) + rare pousse/touffe (peu de variation)
+    for (let ty = 0; ty < MAP_H; ty++) {
+      for (let tx = 0; tx < MAP_W; tx++) {
+        const b = this.biomeAt(tx, ty)
+        if (b !== 'prairie' && b !== 'forest') continue
+        if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
+        if (b === 'prairie') {
+          const t = this.grassLayer.putTileAt(PRAIRIE_FILL[Math.floor(tileNoise(tx, ty, 29) * PRAIRIE_FILL.length)], tx, ty)
+          // variation CLAIRE et douce (grandes taches lisses) -> la prairie respire sans mosaïque
+          if (t) t.tint = lerpHex(0xffffff, 0xdcecac, Phaser.Math.Clamp((this.noise2D(tx, ty) + 1) / 2, 0, 1))
+        } else {
+          const t = this.grassLayer.putTileAt(FOREST_FILL[Math.floor(tileNoise(tx, ty, 29) * FOREST_FILL.length)], tx, ty)
+          // TRANSITION uniquement sur les PREMIÈRES tuiles après la prairie (bande ~8 tuiles calée sur le
+          // vrai bord = clearR par angle) : clair au contact de la prairie -> vert sombre ; au-delà = sombre.
+          if (t) {
+            const dv = Math.hypot(tx - this.cx, ty - this.cy)
+            const ang = Math.atan2(ty - this.cy, tx - this.cx)
+            const clearR = 14 * (1 + 0.25 * Math.sin(ang * 2 + 1)) + this.noise2D(tx, ty) * 2 // = bord de prairie
+            const k = Phaser.Math.Clamp((dv - clearR) / 3 + this.noise2D(tx, ty) * 0.06, 0, 1) // bande courte (~3 tuiles)
+            // forêt profonde : variation PAR TUILE en 3 verts proches -> alternance fine et dense (jungle)
+            const r = tileNoise(tx, ty, 51)
+            const deep = r < 0.45 ? 0x4e6e34 : r < 0.75 ? 0x5d7f3e : 0x6f9850 // foncé / moyen / un peu moins foncé
+            t.tint = lerpHex(0xe9f4c6, deep, k) // bord clair (~prairie) -> patch de forêt
+          }
+        }
+      }
+    }
+  }
+
   /** Groupe de décor d'une tuile (green / snow / dead). */
   decorGroup(tx, ty) {
     return DECOR_GROUP[this.biomeAt(tx, ty)]
@@ -990,7 +1042,7 @@ export default class GameScene extends Phaser.Scene {
     // petit bourg dégagé autour du village (clairière irrégulière ~11 tuiles) -> le village est DANS
     // la forêt, ce n'est PAS un grand ovale concentrique
     const dv = Math.hypot(tx - this.cx, ty - this.cy)
-    const clearR = 11 * (1 + 0.25 * Math.sin(Math.atan2(ty - this.cy, tx - this.cx) * 2 + 1)) + this.noise2D(tx, ty) * 2
+    const clearR = 14 * (1 + 0.25 * Math.sin(Math.atan2(ty - this.cy, tx - this.cx) * 2 + 1)) + this.noise2D(tx, ty) * 2
     if (dv < clearR) return 'prairie'
     // zone (graine) la plus proche en distance DÉFORMÉE -> Voronoi à frontières organiques
     const wx = tx + this.noise2D(tx, ty) * ZONE_WARP
@@ -1488,7 +1540,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.onWater(tx, ty, 2)) return // pas d'arbre dans/sur une rivière
       if (this.nearBossLair(tx, ty)) return // pas d'arbre dans la clairière d'arène d'un boss
       const b = this.biomeAt(tx, ty)
-      if (b !== 'prairie' && b !== 'forest') return // arbres verts : prairie + forêt seulement
+      if (b !== 'prairie') return // arbres verts Ninja : PRAIRIE seulement (la forêt est redécorée en Sprout)
       if (!this.isDecorCore(tx, ty)) return // pas collé à une frontière (désert/neige)
       if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty)
     }
@@ -1561,6 +1613,83 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
+  /** Pré-assemble le chêne Mystic Woods (3×4 tuiles) en 2 textures : canopée 48×48 + tronc 48×16.
+   *  -> 2 images par arbre au lieu de 12 (forêt dense possible sans exploser le nombre d'objets). */
+  buildOakTextures() {
+    if (this.textures.exists('oak_canopy') || !this.textures.exists('mystic_obj')) return
+    const canopy = [80, 81, 82, 96, 97, 98, 112, 113, 114] // 3×3 feuillage (rangées 5-7)
+    const rtC = this.make.renderTexture({ width: 48, height: 48 }, false)
+    canopy.forEach((fr, i) => rtC.drawFrame('mystic_obj', fr, (i % 3) * 16, Math.floor(i / 3) * 16))
+    rtC.saveTexture('oak_canopy')
+    // TRONC OPAQUE (colonne centrale rangée 7 + racines rangée 8) : superposé À LA canopée -> reste plein
+    // quand le feuillage s'estompe (corrige "le bout du tronc devient transparent").
+    const rtT = this.make.renderTexture({ width: 48, height: 32 }, false)
+    rtT.drawFrame('mystic_obj', 113, 16, 0) // tronc (centre rangée 7)
+    rtT.drawFrame('mystic_obj', 128, 0, 16)
+    rtT.drawFrame('mystic_obj', 129, 16, 16)
+    rtT.drawFrame('mystic_obj', 130, 32, 16) // racines (rangée 8)
+    rtT.saveTexture('oak_trunk')
+    this._oakRT = [rtC, rtT] // garder les RT en vie (sinon les textures sauvegardées sont libérées)
+  }
+
+  /** Pose un CHÊNE (Mystic, 3×4) : canopée (feuillage qui s'estompe) + tronc OPAQUE superposé + collision. */
+  addOak(tx, ty) {
+    const px = tx * TILE
+    const py = ty * TILE
+    const baseY = py + 4 * TILE
+    const canopy = this.add.image(px + 24, py + 24, 'oak_canopy').setDepth(baseY) // feuillage (fade)
+    const trunk = this.add.image(px + 24, py + 48, 'oak_trunk').setDepth(baseY) // tronc opaque PAR-DESSUS (créé après)
+    const rect = this.add.rectangle(px + 24, py + 3 * TILE + 8, 2 * TILE, TILE - 4)
+    this.physics.add.existing(rect, true)
+    this.obstacles.add(rect)
+    const entry = { leaves: [canopy], bounds: new Phaser.Geom.Rectangle(px, py, 3 * TILE, 4 * TILE) }
+    this.trees.push(entry)
+    this.destructibles.push({ x: px + 24, y: py + 4 * TILE - 8, body: rect, sprites: [canopy, trunk], entry })
+  }
+
+  /** Peuple la FORÊT de chênes Mystic Woods. On NE saute PAS les arènes (les arbres y sont pulvérisés par
+   *  l'onde de choc à l'ouverture de l'arène) ; juste une petite clairière autour de chaque repaire pour
+   *  voir le boss. (La VARIÉTÉ de déco viendra d'assets Ninja, à proposer avant de coder.) */
+  scatterForestTrees() {
+    this.buildOakTextures()
+    if (!this.textures.exists('oak_canopy')) return
+    const lairs = Object.values(this.bossLairs || {}).flat()
+    const tryOak = (tx, ty) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - 4 || ty > MAP_H - 5) return
+      if (this.nearSpawn(tx, ty, 6)) return
+      if (lairs.some((l) => Math.hypot(tx - l.tx, ty - l.ty) < 4)) return
+      for (let dx = 0; dx < 3; dx++) {
+        for (let dy = 0; dy < 4; dy++) {
+          if (this.biomeAt(tx + dx, ty + dy) !== 'forest' || this.onPath(tx + dx, ty + dy, 1) || this.onWater(tx + dx, ty + dy, 1)) return
+        }
+      }
+      if (this.reserve(tx, ty, 3, 4)) this.addOak(tx, ty)
+    }
+    for (let y = 2; y < MAP_H - 5; y++) {
+      for (let x = 2; x < MAP_W - 4; x++) {
+        if (this.biomeAt(x, y) === 'forest' && Phaser.Math.Between(0, 100) < 8) tryOak(x, y)
+      }
+    }
+  }
+
+  /** Sous-bois TOUFFU de la forêt (assets Ninja `nature`, traversables) : fougères/hautes herbes + buissons
+   *  + fleurs des bois, dense entre les chênes. Pas de collision (on marche à travers). Évite les tuiles
+   *  déjà occupées (chênes), les chemins, l'eau et le village. */
+  scatterForestUndergrowth() {
+    const place = (tx, ty, pool, dyBias) => {
+      if (this.occupied.has(this.key(tx, ty)) || this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1)) return
+      this.add.image(tx * TILE + 8, ty * TILE + 8, 'nature', Phaser.Utils.Array.GetRandom(pool)).setDepth(ty * TILE + dyBias)
+    }
+    for (let y = 2; y < MAP_H - 2; y++) {
+      for (let x = 2; x < MAP_W - 2; x++) {
+        if (this.biomeAt(x, y) !== 'forest' || this.nearSpawn(x, y, 6)) continue
+        const roll = Phaser.Math.Between(0, 100)
+        if (roll < 8) place(x, y, FERNS, -4) // fougères / hautes herbes
+        else if (roll < 13) place(x, y, BUSHES, -4) // buissons
+      }
+    }
+  }
+
   /** Rochers : surtout en petits amas, un peu en isolé. */
   spawnRocks() {
     const place = (tx, ty) => {
@@ -1569,6 +1698,8 @@ export default class GameScene extends Phaser.Scene {
       if (this.onPath(tx, ty, 1)) return // pas de rocher sur un chemin
       if (this.onWater(tx, ty, 1)) return // pas de rocher dans une rivière
       if (this.nearBossLair(tx, ty)) return // clairière d'arène = sans rocher
+      const b = this.biomeAt(tx, ty)
+      if (b === 'forest' || b === 'prairie') return // forêt redécorée + village SANS rochers
       if (!this.reserve(tx, ty, 1, 1)) return
       const px = tx * TILE + 8
       const py = ty * TILE + 8
@@ -1589,12 +1720,7 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < 48; i++) {
       place(Phaser.Math.Between(2, MAP_W - 3), Phaser.Math.Between(2, MAP_H - 3))
     }
-    // pierres ISOLÉES et espacées dans la prairie (décor du village)
-    for (let c = 0; c < 14; c++) {
-      const a = Phaser.Math.FloatBetween(0, Math.PI * 2)
-      const r = Phaser.Math.FloatBetween(6, PRAIRIE_TILE_R - 2)
-      place(Math.round(this.cx + Math.cos(a) * r), Math.round(this.cy + Math.sin(a) * r))
-    }
+    // (plus de pierres dans la prairie/village : retiré à la demande)
   }
 
   /**
@@ -1634,9 +1760,8 @@ export default class GameScene extends Phaser.Scene {
           if (roll < 30) solid(tx, ty, CACTI)
           else if (roll < 60) flora(tx, ty, DESERT_SHRUBS)
           break
-        case 'forest': // souches/troncs + fougères (sous-bois)
-          if (roll < 22) solid(tx, ty, STUMPS)
-          else flora(tx, ty, FERNS)
+        // forêt : pas de props ici (arbres Mystic via scatterForestTrees ; pas de sous-bois)
+        case 'forest':
           break
         case 'snow': // congères + herbes givrées
           if (roll < 40) solid(tx, ty, SNOW_ROCKS)
@@ -1660,7 +1785,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.onPath(tx, ty, 1)) return false // pas de déco sur un chemin / pont
       if (this.plazaCells.has(this.key(tx, ty))) return false // pas de déco sur la place du village
       const b = this.biomeAt(tx, ty)
-      if (b !== 'prairie' && b !== 'forest') return false // fleurs/herbes : prairie + forêt
+      if (b !== 'prairie') return false // fleurs/herbes Ninja : PRAIRIE seulement (forêt redécorée en Sprout)
       const px = tx * TILE + 8
       const py = ty * TILE + 8
       this.add.image(px, py, 'nature', Phaser.Utils.Array.GetRandom(pool)).setDepth(py - 4)
@@ -1681,17 +1806,10 @@ export default class GameScene extends Phaser.Scene {
       if (place(tx, ty, BUSHES)) grass.add(this.key(tx, ty))
     }
 
-    // massifs de fleurs serrées (côte à côte) — les fleurs restent groupées, c'est voulu
-    for (let c = 0; c < 24; c++) {
-      const cx = Phaser.Math.Between(4, MAP_W - 4)
-      const cy = Phaser.Math.Between(4, MAP_H - 4)
-      for (let i = 0; i < Phaser.Math.Between(3, 5); i++) {
-        place(cx + Phaser.Math.Between(-1, 1), cy + Phaser.Math.Between(-1, 1), FLOWERS)
-      }
-    }
+    // (massifs de fleurs de la prairie retirés à la demande)
 
     // touffes de buissons / herbes hautes (espacées : 2 max collées)
-    for (let c = 0; c < 48; c++) {
+    for (let c = 0; c < 20; c++) {
       const cx = Phaser.Math.Between(3, MAP_W - 3)
       const cy = Phaser.Math.Between(3, MAP_H - 3)
       for (let i = 0; i < Phaser.Math.Between(3, 6); i++) {
@@ -2215,12 +2333,39 @@ export default class GameScene extends Phaser.Scene {
       if (m.isBoss || !m.active) return
       if (this.dist(m.x, m.y, cx, cy) <= r) m.despawn()
     })
+    this.shockwaveDestroy(cx, cy, r) // onde de choc : pulvérise les arbres présents dans l'arène
     const msg = boss.isRaid ? '☠ Arène scellée — aucune fuite possible !' : '⚔ Arène scellée !'
     this.scene.get('UIScene')?.showToast?.(msg, boss.isRaid ? '#d6a3ff' : '#ffd86b')
     this.cameras.main.shake(250, 0.006)
     // RUGISSEMENT : un cri descendu en hauteur (rate lent + detune grave) = grognement de boss.
     // Le raid (plus gros) gronde encore plus grave/fort que le boss solo.
     Audio.sfx('sfx_roar', boss.isRaid ? { vol: 1, rate: 0.5, detune: -700 } : { vol: 0.85, rate: 0.62, detune: -450 })
+  }
+
+  /** ONDE DE CHOC à l'ouverture d'une arène : un anneau blanc s'étend depuis le centre et PULVÉRISE tous
+   *  les obstacles destructibles (arbres) dans le rayon -> l'arène se dégage pour le combat. */
+  shockwaveDestroy(cx, cy, r) {
+    // anneau qui s'étend (proxy {v} -> setRadius/alpha ; on ne tween pas l'objet directement)
+    const wave = this.add.circle(cx, cy, 8).setStrokeStyle(5, 0xffffff, 0.9).setDepth(900001)
+    this.tweens.add({
+      targets: { v: 0 }, v: 1, duration: 480, ease: 'Cubic.out',
+      onUpdate: (tw, t) => { wave.setRadius(8 + (r - 8) * t.v); wave.setAlpha(0.9 * (1 - t.v)) },
+      onComplete: () => wave.destroy(),
+    })
+    const survivors = []
+    for (const d of this.destructibles || []) {
+      const dist = Math.hypot(d.x - cx, d.y - cy)
+      if (dist > r) { survivors.push(d); continue }
+      d.body?.destroy() // retire la collision
+      const ti = this.trees.indexOf(d.entry) // retire le feuillage du suivi (sinon le fade référence des sprites détruits)
+      if (ti >= 0) this.trees.splice(ti, 1)
+      const delay = (dist / r) * 220 // les plus proches volent en éclats en premier (front de l'onde)
+      for (const s of d.sprites) {
+        this.tweens.add({ targets: s, alpha: 0, y: s.y - 10, scaleX: 0.7, scaleY: 0.7, duration: 300, delay, onComplete: () => s.destroy() })
+      }
+    }
+    this.destructibles = survivors
+    Audio.sfx(SFX.whoosh, { vol: 0.7, detune: -300 }) // souffle de l'onde
   }
 
   /** Libère l'arène (boss vaincu, ou mort du joueur). */
@@ -2327,7 +2472,7 @@ export default class GameScene extends Phaser.Scene {
         ],
       },
       {
-        hx: cx + 5, hy: cy - 2, key: 'house_orange', tex: 'npc_woman', name: 'Mira',
+        hx: cx + 6, hy: cy - 3, key: 'house_orange', tex: 'npc_woman', name: 'Mira',
         lines: [
           'Le marchand est au centre du village. Parle-lui avec la touche E.',
           'Appuie sur C pour ouvrir ta fiche : équipe armes et armures dans ton sac.',
@@ -2336,7 +2481,7 @@ export default class GameScene extends Phaser.Scene {
         ],
       },
       {
-        hx: cx - 8, hy: cy - 2, key: 'house_long', tex: 'npc_boy', name: 'Tom',
+        hx: cx - 8, hy: cy - 3, key: 'house_long', tex: 'npc_boy', name: 'Tom',
         lines: [
           'Franchis les ponts pour sortir de la prairie et explorer le monde !',
           'À l\'est et au sud : la forêt puis le désert. Au nord : les terres gelées.',
@@ -2345,6 +2490,7 @@ export default class GameScene extends Phaser.Scene {
         ],
       },
     ]
+    this.villageFootprints = [] // emprises des maisons du village -> herbe foncée (plaza) garantie dessous
     for (const v of this.villagers) {
       // pose la maison ; si bloquée (chemin invisible/lac), repli en spirale -> garantit l'apparition
       let pos = this.placeBuilding(v.hx, v.hy, v.key)
@@ -2357,6 +2503,7 @@ export default class GameScene extends Phaser.Scene {
       const b = BUILDINGS[v.key]
       const hx = pos ? pos.tx : v.hx
       const hy = pos ? pos.ty : v.hy
+      this.villageFootprints.push({ tx: hx, ty: hy, w: b.w, h: b.h })
       v.nx = hx + b.door[0] // PNJ devant la porte (même colonne)
       v.ny = hy + b.h // une rangée sous la base de la maison réellement posée
     }
@@ -2383,22 +2530,25 @@ export default class GameScene extends Phaser.Scene {
       const [x, y] = k.split(',').map(Number)
       if (!plaza.has(this.key(x - 1, y)) && !plaza.has(this.key(x + 1, y))) plaza.delete(k)
     }
+    // étend la place SOUS chaque maison (+1 tuile de marge) -> la maison repose entièrement sur l'herbe
+    // foncée du village (sinon le haut de la maison Nord déborde sur l'herbe claire de la prairie).
+    for (const rc of this.villageFootprints || []) {
+      for (let dx = 0; dx < rc.w; dx++) {
+        for (let dy = 0; dy < rc.h; dy++) plaza.add(this.key(rc.tx + dx, rc.ty + dy))
+      }
+    }
     // chemins de terre : de chaque porte vers le centre (tracé en L, largeur 2)
     const road = new Set()
     const put = (x, y) => {
       if (x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1) road.add(this.key(x, y))
     }
+    // chemins LARGEUR 3 CENTRÉS sur la porte (v.nx = colonne de la porte) : largeur impaire -> reste
+    // pile centré sous la porte (une largeur paire redécalerait), et assez large pour un vrai chemin.
     const carveLine = (x0, y0, x1, y1) => {
       const sx = Math.sign(x1 - x0) || 1
-      for (let x = x0; x !== x1 + sx; x += sx) {
-        put(x, y0)
-        put(x, y0 + 1) // largeur 2
-      }
+      for (let x = x0; x !== x1 + sx; x += sx) { put(x, y0 - 1); put(x, y0); put(x, y0 + 1) }
       const sy = Math.sign(y1 - y0) || 1
-      for (let y = y0; y !== y1 + sy; y += sy) {
-        put(x1, y)
-        put(x1 + 1, y)
-      }
+      for (let y = y0; y !== y1 + sy; y += sy) { put(x1 - 1, y); put(x1, y); put(x1 + 1, y) }
     }
     for (const v of this.villagers) carveLine(v.nx, v.ny, cx, cy)
 
@@ -2408,6 +2558,13 @@ export default class GameScene extends Phaser.Scene {
     // la déco (fleurs/herbes) évite la place et les chemins du village
     this.plazaCells = plaza
     for (const k of road) this.pathCells.add(k)
+    // RE-MARQUE la place du village : l'ancien sol foncé est masqué par l'herbe Sprout -> on assombrit
+    // un peu la teinte de l'herbe sur la place (légère variation) pour retrouver le repère du village.
+    for (const k of plaza) {
+      const [x, y] = k.split(',').map(Number)
+      const t = this.grassLayer?.getTileAt(x, y)
+      if (t) t.tint = tileNoise(x, y, 63) < 0.5 ? 0xb0bd86 : 0xa6b47c
+    }
   }
 
   /** Animation d'idle "respiration" : léger souffle (le pack n'a pas de frames d'idle). */
