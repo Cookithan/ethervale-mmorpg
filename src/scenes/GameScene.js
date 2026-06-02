@@ -47,7 +47,7 @@ const OCEAN_BG = 0x3f8ed0 // couleur de fond (océan) : marges hors-map au dézo
 
 // --- sol (TilesetField / field.png, 5 colonnes) ---
 const GRASS = 21 // herbe verte claire = sol de base
-const WATER_TINT = 0x5f7fc0 // teinte MULTIPLY de l'eau (Sprout teal -> bleu océan profond ; ↓ = plus sombre)
+const WATER_TINT = 0x5f7fc0 // teinte MULTIPLY de l'eau Sprout -> bleu océan FONCÉ
 // blobs autotile : 3x3 (coins/bords transparents) + fills pleins pour la variété
 const BLOB = {
   darkGrass: {
@@ -260,9 +260,12 @@ export default class GameScene extends Phaser.Scene {
     this.mapW = MAP_W // exposés pour l'UI (carte du monde / minimap)
     this.mapH = MAP_H
     this.tile = TILE
-    // centre de l'ÎLE + du climat = centre géométrique de la grille (océan équilibré tout autour)
-    this.icx = Math.floor(MAP_W / 2)
-    this.icy = Math.floor(MAP_H / 2)
+    // centre de l'ÎLE gardé à l'ANCIEN emplacement (map d'avant = 360×220 -> 180,110) pour préserver
+    // EXACTEMENT le contour d'avant l'agrandissement : le bruit de côte (rawOcean) dépend des coordonnées
+    // ABSOLUES, donc recentrer l'île ailleurs changerait la forme. -> île décalée vers le haut-gauche de
+    // la grande grille (plus d'océan à droite/en bas), mais contour identique à avant.
+    this.icx = 180
+    this.icy = 110
     // centre du VILLAGE (et de la ceinture de forêt + des niveaux de mobs) = DÉCALÉ du centre de
     // l'île -> le village n'est plus au centre géométrique du continent (casse la symétrie circulaire).
     this.cx = this.icx + VILLAGE_OFF_X
@@ -307,11 +310,9 @@ export default class GameScene extends Phaser.Scene {
     this.buildOcean() // océan autour du continent (île entourée d'eau)
     this.spawnDryLakes() // lacs asséchés (terre craquelée) dans le désert
     this.paintPaths() // chemins (routés par les ponts pour franchir les rivières)
-    // eau ANIMÉE : on cycle les 4 frames Sprout sur les tuiles d'eau VISIBLES (océan/rivières/lacs)
+    // eau ANIMÉE Sprout (cycle des 4 frames sur les tuiles VISIBLES) + teinte bleu foncé
     this.waterFrame = 0
     this.time.addEvent({ delay: 170, loop: true, callback: this.animateWater, callbackScope: this })
-    // "film" bleu foncé : teinte MULTIPLY sur chaque tuile d'eau -> teal Sprout assombri en bleu océan
-    // (la teinte persiste quand on change la frame d'anim). Une seule passe (forme d'eau figée).
     this.waterLayer.forEachTile((t) => { if (t.index >= 0) t.tint = WATER_TINT })
 
     // --- physique / héros ---
@@ -402,9 +403,11 @@ export default class GameScene extends Phaser.Scene {
       const vY = this.cy * TILE
       const closeZoom = 2.8
       // zoom dézoomé qui cadre toute l'île (basé sur la taille de l'île, pas la grille -> pas trop loin)
+      // facteur 1.0 (au lieu de 1.2) -> dézoom MOINS large : on cadre l'île sans révéler les bords de la
+      // grille (l'île est décalée près du haut-gauche, donc un dézoom trop large montrait la limite de map).
       const wideZoom = Math.min(
-        this.scale.width / (2 * ISLAND_RX * TILE * 1.2),
-        this.scale.height / (2 * ISLAND_RY * TILE * 1.2),
+        this.scale.width / (2 * ISLAND_RX * TILE * 1.0),
+        this.scale.height / (2 * ISLAND_RY * TILE * 1.0),
       )
       cam.setZoom(closeZoom)
       cam.centerOn(vX, vY)
@@ -1153,9 +1156,8 @@ export default class GameScene extends Phaser.Scene {
     this.oceanMask = mask
   }
 
-  /** Anime l'eau : avance d'une frame (0→3) et applique la frame courante à toutes les tuiles d'eau
-   *  DANS LA VUE caméra (les 4 frames du tileset Sprout sont les images d'animation, pas des variantes).
-   *  Vue seule -> coût négligeable même sur un grand océan ; l'eau hors-champ se remet à jour en arrivant. */
+  /** Anime l'eau : cycle la frame (0→3) sur les tuiles d'eau DANS LA VUE caméra (les 4 frames Sprout sont
+   *  les images d'animation). Vue seule -> coût négligeable même sur un grand océan. */
   animateWater() {
     if (!this.waterLayer || this.gameOver) return
     this.waterFrame = (this.waterFrame + 1) % 4
@@ -1165,7 +1167,7 @@ export default class GameScene extends Phaser.Scene {
     for (const t of tiles) if (t && t.index >= 0) t.index = f
   }
 
-  /** Pose l'eau de l'OCÉAN (tuiles d'eau animée) sur le pourtour, avec collision. À appeler
+  /** Pose l'eau de l'OCÉAN (tuiles d'eau Sprout) sur le pourtour, avec collision. À appeler
    *  après buildRivers (qui a créé this.waterLayer / this.waterCells). */
   buildOcean() {
     for (let ty = 0; ty < MAP_H; ty++) {

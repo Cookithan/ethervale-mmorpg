@@ -46,6 +46,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('field', 'assets/tiles/field.png')
     // eau ANIMÉE (Sprout Lands, 4 frames de 16px) -> océan/rivières/lacs qui ondulent
     this.load.image('water_sprout', 'assets/tiles/water_sprout.png')
+    // eau ANIMÉE (Sprout Lands, 4 frames de 16px) -> océan/rivières/lacs qui ondulent
     // herbe douce (Sprout Lands) -> sol PRAIRIE/village (clair) ET forêt (réutilisé, teinté vert sombre)
     this.load.image('grass_sprout', 'assets/tiles/grass_sprout.png')
     // objets Mystic Woods (16 col) : ARBRES de forêt (chêne), libres dans la version free
