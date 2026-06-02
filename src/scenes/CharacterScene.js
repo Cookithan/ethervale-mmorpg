@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { CLASSES, CLASS_LIST } from '../data/classes.js'
+import { Audio } from '../data/sound.js'
 
 const GOLD = 0xc8a24a
 const DIM = 0x49617f
@@ -76,6 +77,8 @@ export default class CharacterScene extends Phaser.Scene {
     const gapX = Math.min(cardW + 16, Math.floor((cw - 14) / n))
     const cy = ch / 2 + 6
     const inner = cardW - 18
+    this.classCells = [] // cartes de classe (pour la surbrillance + navigation clavier)
+    this.classWarm = WARM
     CLASS_LIST.forEach((c, i) => {
       const x = cw / 2 + (i - (n - 1) / 2) * gapX
       const top = cy - cardH / 2
@@ -102,17 +105,43 @@ export default class CharacterScene extends Phaser.Scene {
       // sort (nom + effet)
       items.push(this.add.text(x, fy + 172, `✦ ${c.spell.name}`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#9fd0ff' }).setOrigin(0.5, 0))
       items.push(this.add.text(x, fy + 192, c.spell.desc ?? '', { fontFamily: 'monospace', fontSize: '11px', color: '#d7e6f5', align: 'center', wordWrap: { width: inner } }).setOrigin(0.5, 0))
-      box.on('pointerover', () => box.setStrokeStyle(3, 0xffd27a))
-      box.on('pointerout', () => box.setStrokeStyle(2, WARM))
-      box.on('pointerdown', () => {
-        this.classKey = c.key
-        this.heroIndex = 0
-        this.showHeroStep()
-      })
+      box.on('pointerover', () => this.focusClass(i)) // survol = focus (joue le son de défilement)
+      box.on('pointerdown', () => this.pickClass(i))
+      this.classCells.push(box)
       S.add(items)
     })
 
-    this.button(S, cw / 2, ch - 34, 150, 'Retour', () => this.scene.start('MenuScene'))
+    this.classFocus = 0
+    this.highlightClass() // surbrillance initiale (repère pour la navigation clavier ←/→)
+    this.button(S, cw / 2, ch - 34, 150, 'Retour', () => {
+      Audio.sfx('ui_cancel', { detune: 0 })
+      this.scene.start('MenuScene')
+    })
+  }
+
+  /** Met en surbrillance la carte de classe focalisée (this.classFocus). */
+  highlightClass() {
+    if (!this.classCells) return
+    this.classCells.forEach((b, i) => b.setStrokeStyle(i === this.classFocus ? 3 : 2, i === this.classFocus ? 0xffd27a : this.classWarm))
+  }
+
+  /** Change la classe focalisée (clavier ←/→ ou survol) + son de défilement. */
+  focusClass(i) {
+    const n = this.classCells.length
+    const idx = ((i % n) + n) % n
+    if (idx === this.classFocus) return
+    this.classFocus = idx
+    this.highlightClass()
+    Audio.sfx('ui_move', { detune: 0 })
+  }
+
+  /** Valide la classe focalisée -> étape apparence. */
+  pickClass(i) {
+    if (i != null) this.classFocus = i
+    Audio.sfx('ui_accept', { detune: 0 })
+    this.classKey = CLASS_LIST[this.classFocus].key
+    this.heroIndex = 0
+    this.showHeroStep()
   }
 
   // ---------------- Étape 2 : l'apparence ----------------
@@ -147,9 +176,10 @@ export default class CharacterScene extends Phaser.Scene {
         spr.setScale(4.5)
         S.add([box, spr, name])
       }
+      box.on('pointerover', () => this.setHero(i)) // survol = sélection (son de défilement)
       box.on('pointerdown', () => {
-        this.heroIndex = i
-        this.refreshHeroes()
+        this.setHero(i)
+        Audio.sfx('ui_accept', { detune: 0 })
       })
       this.heroCells.push(box)
     })
@@ -180,7 +210,11 @@ export default class CharacterScene extends Phaser.Scene {
     this.nameHint = this.add.text(cw / 2, ny + 30, 'Ce nom s’affichera au-dessus de ton personnage (toi et les autres joueurs).', { fontFamily: 'monospace', fontSize: '9px', color: '#6b8caa' }).setOrigin(0.5)
     S.add(this.nameHint)
 
-    this.button(S, cw / 2 - 90, ch - 40, 150, 'Retour', () => this.showClassStep())
+    this.button(S, cw / 2 - 90, ch - 40, 150, 'Retour', () => {
+      Audio.sfx('ui_cancel', { detune: 0 })
+      this.classKey = null
+      this.showClassStep()
+    })
     this.startBtn = this.button(S, cw / 2 + 90, ch - 40, 150, 'Commencer', () => this.start())
 
     this.refreshHeroes()
@@ -215,8 +249,33 @@ export default class CharacterScene extends Phaser.Scene {
     this.heroCells.forEach((b, i) => b.setStrokeStyle(3, i === this.heroIndex ? GOLD : DIM))
   }
 
+  /** Change l'apparence sélectionnée (clavier ←/→ ou survol/clic) + son de défilement. */
+  setHero(i) {
+    const n = this.heroCells.length
+    const idx = ((i % n) + n) % n
+    if (idx === this.heroIndex) return
+    this.heroIndex = idx
+    this.refreshHeroes()
+    Audio.sfx('ui_move', { detune: 0 })
+  }
+
   onKey(e) {
-    if (this.classKey == null) return // saisie du nom seulement à l'étape 2
+    // --- étape 1 (choix de la classe) : navigation au clavier ←/→ + Entrée pour valider ---
+    if (this.classKey == null) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') this.focusClass(this.classFocus - 1)
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') this.focusClass(this.classFocus + 1)
+      else if (e.key === 'Enter' || e.key === ' ') this.pickClass()
+      return
+    }
+    // --- étape 2 (apparence + pseudo) : ←/→ change l'apparence, le reste tape le nom ---
+    if (e.key === 'ArrowLeft') {
+      this.setHero(this.heroIndex - 1)
+      return
+    }
+    if (e.key === 'ArrowRight') {
+      this.setHero(this.heroIndex + 1)
+      return
+    }
     if (e.key === 'Backspace') this.heroName = this.heroName.slice(0, -1)
     else if (e.key === 'Enter') {
       this.start()
@@ -230,9 +289,11 @@ export default class CharacterScene extends Phaser.Scene {
   start() {
     if (this.classKey == null) return
     if (!this.nameValid()) {
+      Audio.sfx('ui_cancel', { detune: 0 })
       this.warnName() // pseudo obligatoire
       return
     }
+    Audio.sfx('ui_accept', { detune: 0 })
     const character = {
       hero: CLASSES[this.classKey].heroes[this.heroIndex].key,
       name: this.heroName.trim(),

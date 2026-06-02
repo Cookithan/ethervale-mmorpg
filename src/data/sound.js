@@ -31,6 +31,9 @@ class AudioManager {
     this.settings = { ...DEFAULTS }
     this.curKey = null // clé de la musique VOULUE (peut différer de l'instance si verrouillé)
     this.curMusic = null // instance Phaser.Sound en cours
+    this.amb = null // calque d'ambiance en boucle (ex. vent près de la côte)
+    this.ambKey = null
+    this.ambLevel = 0 // intensité voulue 0..1 (volume réel = ambLevel * sfx)
     this._load()
   }
 
@@ -83,7 +86,37 @@ class AudioManager {
 
   setSfxVol(v) {
     this.settings.sfx = clamp01(v)
+    if (this.amb) this.amb.setVolume(this.ambLevel * this.settings.sfx) // l'ambiance suit le volume Effets
     this._save()
+  }
+
+  // --- ambiance (calque en boucle par-dessus la musique) ---
+  /** Démarre/maintient un son d'ambiance en boucle (idempotent par clé). Volume piloté par setAmbientLevel. */
+  startAmbient(key) {
+    if (!this.game || !key) return
+    if (this.ambKey === key && this.amb && this.amb.isPlaying) return
+    if (this.amb) this.amb.destroy()
+    this.ambKey = key
+    this.amb = null
+    if (!this.game.cache.audio.exists(key)) return
+    this.amb = this.game.sound.add(key, { loop: true, volume: 0 })
+    this.amb.play()
+    this.amb.setVolume(this.ambLevel * this.settings.sfx)
+  }
+
+  /** Intensité de l'ambiance (0..1) ; le volume réel est mis à l'échelle par le volume Effets. */
+  setAmbientLevel(level) {
+    this.ambLevel = clamp01(level)
+    if (this.amb) this.amb.setVolume(this.ambLevel * this.settings.sfx)
+  }
+
+  stopAmbient() {
+    this.ambKey = null
+    this.ambLevel = 0
+    if (this.amb) {
+      this.amb.destroy()
+      this.amb = null
+    }
   }
 
   // --- bruitages ---
@@ -103,6 +136,9 @@ class AudioManager {
     if (!this.game || !key) return
     if (this.curKey === key && this.curMusic && this.curMusic.isPlaying) return
     this.curKey = key
+    // autoplay verrouillé : on ne crée RIEN maintenant (sinon double instance + "redémarrage" au
+    // 1er clic). On mémorise juste la clé ; le handler 'unlocked' (init) lancera la musique une fois.
+    if (this.game.sound.locked) return
     this._startMusic(key, scene)
   }
 

@@ -408,6 +408,12 @@ export default class GameScene extends Phaser.Scene {
       // sauvegarde automatique périodique (toutes les 30 s)
       this.time.addEvent({ delay: 30000, loop: true, callback: () => this.saveGame() })
       Audio.playMusic(this, MUSIC_BY_BIOME[this.currentBiome] || 'mus_village') // musique de la zone de départ
+      Audio.setAmbientLevel(0)
+      Audio.startAmbient('amb_wind') // calque de vent (volume piloté par la proximité de la côte)
+      this.ambLevel = 0 // intensité lissée de l'ambiance vent
+      this.ambTarget = 0
+      this.ambCheckAt = 0 // throttle du calcul de proximité côte
+      this.events.once('shutdown', () => Audio.stopAmbient()) // coupe le vent en quittant la scène (menu)
     } else {
       this.setupPreview() // village vivant en fond de l'écran d'accueil
     }
@@ -3030,6 +3036,15 @@ export default class GameScene extends Phaser.Scene {
       Audio.playMusic(this, MUSIC_BY_BIOME[biome] || 'mus_village')
     }
 
+    // ambiance : vent qui monte près de la côte. On (re)calcule la proximité de l'océan
+    // périodiquement (throttle) et on lisse le volume frame par frame -> fondu doux.
+    if (time >= this.ambCheckAt) {
+      this.ambCheckAt = time + 250
+      this.ambTarget = this.coastProximity(Math.floor(p.x / TILE), Math.floor(p.y / TILE))
+    }
+    this.ambLevel = Phaser.Math.Linear(this.ambLevel, this.ambTarget || 0, 0.06)
+    Audio.setAmbientLevel(this.ambLevel) // volume max du vent au bord de l'eau (plein effet)
+
     this.updateNpcs(time) // villageois qui se baladent
 
     // indice "Parler (E)" du marchand quand on est proche (les villageois parlent tout seuls)
@@ -3045,12 +3060,30 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Proximité de l'océan (0 = aucune eau à portée, 1 = pieds dans l'eau) : cherche la tuile d'océan
+   *  la plus proche dans un rayon de COAST_REACH tuiles autour de (tx,ty). Throttlé par l'appelant. */
+  coastProximity(tx, ty) {
+    const COAST_REACH = 14
+    let best = Infinity
+    for (let dy = -COAST_REACH; dy <= COAST_REACH; dy++) {
+      for (let dx = -COAST_REACH; dx <= COAST_REACH; dx++) {
+        if (this.isOcean(tx + dx, ty + dy)) {
+          const d = Math.hypot(dx, dy)
+          if (d < best) best = d
+        }
+      }
+    }
+    if (best === Infinity || best > COAST_REACH) return 0
+    return Math.pow(1 - best / COAST_REACH, 0.6) // courbe douce : audible plus tôt en approchant (proche ~1)
+  }
+
   handleDeath() {
     this.gameOver = true
     this.activeBoss = null // cache la barre de boss
     this.bossTrack = null
-    Audio.stopMusic(this) // coupe la musique pour laisser le jingle de défaite seul
-    Audio.sfx('sfx_gameover', { vol: 0.8, detune: 0 })
+    Audio.stopMusic() // coupure IMMÉDIATE (pas de fondu) pour laisser le jingle de défaite seul
+    Audio.stopAmbient() // coupe aussi le vent pendant le game over
+    Audio.sfx('sfx_gameover', { vol: 0.9, detune: 0 })
     this.releaseArena() // libère l'arène (le joueur respawn au village, pas piégé)
     this.player.setVelocity(0, 0)
     this.player.setTint(0x555555)
