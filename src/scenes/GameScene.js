@@ -328,6 +328,7 @@ export default class GameScene extends Phaser.Scene {
     this.destructibles = [] // obstacles (arbres de forêt) détruits par l'onde de choc à l'ouverture d'une arène
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
+    this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
     this.spawnForest()
     this.spawnBiomeTrees()
     this.scatterForestTrees() // chênes Mystic Woods dans la forêt
@@ -2514,6 +2515,43 @@ export default class GameScene extends Phaser.Scene {
     this.placeBuildingNear(cx - 52, cy + 44, 'house_long') // désert sud-ouest
     this.placeBuildingNear(cx + 50, cy + 44, 'house_orange') // désert sud-est
     this.spawnVillageFlags() // bannières animées qui encadrent la place
+  }
+
+  /** Moulin à eau (maison-moulin ronde animée) posé sur la berge NORD de la rivière sud, près du
+   *  gué central (~208,153). On cherche la tuile d'eau de rivière la plus proche dont la tuile au-dessus
+   *  est de la terre = bord nord -> le moulin s'y adosse, base trempant dans l'eau. Collision + réservé. */
+  spawnWatermill() {
+    const TX = 208 // cible (cf. choix sur la carte : rivière forêt|désert, près du gué central)
+    const TY = 153
+    const isRiver = (x, y) => this.waterCells.has(this.key(x, y)) && !this.isOcean(x, y)
+    let best = null
+    let bestD = Infinity
+    for (let y = TY - 10; y <= TY + 10; y++) {
+      for (let x = TX - 14; x <= TX + 14; x++) {
+        if (!isRiver(x, y)) continue
+        if (isRiver(x, y - 1)) continue // au-dessus = encore de l'eau -> pas le bord nord
+        if (this.fordCells && this.fordCells.has(this.key(x, y))) continue // pas sur un gué
+        const d = Math.hypot(x - TX, y - TY)
+        if (d < bestD) { bestD = d; best = { x, y } }
+      }
+    }
+    if (!best) return
+    const bx = best.x * TILE + 8
+    const by = best.y * TILE // ligne d'eau (haut de la 1re rangée de rivière)
+    const depth = (best.y + 1) * TILE + 50 // au-dessus de l'eau, trié avec le monde
+    // corps du moulin (×1,3) : base posée à la ligne d'eau (le bas trempe un peu dans la rivière)
+    this.add
+      .sprite(bx, by + 10, 'watermill', 0)
+      .setOrigin(0.5, 0.8)
+      .setScale(1.3)
+      .setDepth(depth) // au-dessus de l'eau, trié avec le monde
+      .play('watermill')
+    // collision sur la partie "terre" (au-dessus de la ligne d'eau) + réservation des tuiles
+    const rect = this.add.rectangle(bx, (best.y - 1) * TILE + 4, 26, 16)
+    this.physics.add.existing(rect, true)
+    this.obstacles.add(rect)
+    for (let dx = -1; dx <= 1; dx++)
+      for (let dy = -2; dy <= 0; dy++) this.occupied.add(this.key(best.x + dx, best.y + dy))
   }
 
   /** Bannière animée (déco, sans collision) au coin haut-droit de la place du village. */

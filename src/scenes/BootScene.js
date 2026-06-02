@@ -55,6 +55,8 @@ export default class BootScene extends Phaser.Scene {
     // déco ANIMÉE (Ninja Adventure) : bannières du village (mât compris, 4 frames de 16px, ondulent)
     this.load.spritesheet('flag_blue', 'assets/deco/flag_blue.png', { frameWidth: 16, frameHeight: 16 })
     this.load.spritesheet('flag_red', 'assets/deco/flag_red.png', { frameWidth: 16, frameHeight: 16 })
+    // moulin à eau (Ninja Adventure, maison-moulin ronde, 3 frames de 34x36) -> berge d'une rivière
+    this.load.spritesheet('watermill', 'assets/deco/watermill.png', { frameWidth: 34, frameHeight: 36 })
 
     // nature (arbres, rochers...) en spritesheet 16x16 pour placer des tuiles
     this.load.spritesheet('nature', 'assets/tiles/nature.png', {
@@ -251,6 +253,10 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('flag-red')) {
       this.anims.create({ key: 'flag-red', frames: this.anims.generateFrameNumbers('flag_red', { start: 0, end: 3 }), frameRate: 6, repeat: -1 })
+    }
+    // moulin à eau : mécanisme qui tourne lentement (3 frames)
+    if (!this.anims.exists('watermill')) {
+      this.anims.create({ key: 'watermill', frames: this.anims.generateFrameNumbers('watermill', { start: 0, end: 2 }), frameRate: 4, repeat: -1 })
     }
   }
 
