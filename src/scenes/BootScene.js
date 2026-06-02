@@ -17,6 +17,8 @@ const SFX_KEYS = [
   'sfx_step1', 'sfx_step2', // pas sur l'herbe (alternés pendant la marche)
   'sfx_gold', 'sfx_pickup', 'sfx_loot', // ramassage de butin (or / gemme-cœur / équipement)
   'sfx_roar', // rugissement de boss (cri descendu en hauteur au verrouillage de l'arène)
+  'sfx_el_fire', 'sfx_el_fireball', 'sfx_el_explosion', // sorts élémentaires de FEU (incantation / projectile / impact)
+  'sfx_strange', // magie d'OMBRE (Mage de l'ombre, violet)
 ]
 
 /**

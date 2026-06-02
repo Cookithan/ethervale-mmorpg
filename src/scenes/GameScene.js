@@ -98,6 +98,18 @@ const MUSIC_BY_BIOME = {
 // musique de combat de boss : on tire l'un des 3 au hasard à chaque combat
 const BOSS_MUSIC = ['mus_boss1', 'mus_boss2', 'mus_boss3']
 
+// sons des sorts/projectiles magiques par ÉLÉMENT (incantation / tir / impact + detune optionnel).
+// L'élément vient de l'APPARENCE du héros (cf. SPELL_ELEMENT_BY_HERO) : feu / lumière (blanc) /
+// ombre (violet) / arcane (défaut, ex. Soigneur). detune permet de teinter un même son (grave=ombre…).
+const SPELL_SFX = {
+  fire: { cast: 'sfx_el_fire', proj: 'sfx_el_fireball', impact: 'sfx_el_explosion' },
+  light: { cast: 'sfx_magic2', proj: 'sfx_magic1', impact: 'sfx_magic5', castDetune: 250, projDetune: 200, impactDetune: 300 },
+  // ombre : tir = magie sombre ; explosion du Météore = son "esprit" + boom d'explosion (feu) superposés
+  shadow: { cast: 'sfx_strange', proj: 'sfx_magic1', impact: 'sfx_spirit', impactExtra: 'sfx_el_explosion', projDetune: -250 },
+  arcane: { cast: 'sfx_magic1', proj: 'sfx_launch', impact: 'sfx_magic5' },
+}
+const SPELL_ELEMENT_BY_HERO = { hero_flam: 'fire', hero_spirit: 'light', hero_mage_black: 'shadow' }
+
 const MONSTERS_BY_BIOME = {
   prairie: ['lizard'], // (zone sûre : pas de spawn de toute façon)
   forest: ['lizard', 'racoon', 'mushroom'],
@@ -2557,6 +2569,11 @@ export default class GameScene extends Phaser.Scene {
     p.nextSpellAt = now + sp.cd * (p.spellCdMul ?? 1) // Focus -> cooldown réduit
   }
 
+  /** Jeu de sons magiques (cast/proj/impact + detune) selon l'APPARENCE du héros (feu/lumière/ombre/arcane). */
+  spellSfx() {
+    return SPELL_SFX[SPELL_ELEMENT_BY_HERO[this.player.heroKey] || 'arcane']
+  }
+
   /** SOIN (Soigneur) : se soigne SOI-MÊME de 35 % des PV max (en solo il n'y a pas d'allié ; le choix
    *  de cible d'allié arrivera avec le multijoueur). Si déjà au max : message clair, et on ne consomme
    *  ni mana ni cooldown. */
@@ -2660,7 +2677,9 @@ export default class GameScene extends Phaser.Scene {
     p.casting = true
     p.castInterrupted = false
     p.setVelocity(0, 0)
-    Audio.sfx(SFX.magic, { vol: 0.55 }) // début d'incantation
+    // incantation : son magique propre à l'apparence (feu / lumière / ombre / arcane)
+    const s = this.spellSfx()
+    Audio.sfx(s.cast, { vol: 0.6, detune: s.castDetune ?? 0 })
     // barre d'incantation au-dessus de la tête (espace monde) : fond + remplissage + libellé
     const W = 30
     const yOff = 24
@@ -2758,7 +2777,10 @@ export default class GameScene extends Phaser.Scene {
           this.tweens.add({ targets: boom, alpha: 0, scale: 1.35, duration: 320, onComplete: () => boom.destroy() })
         }
         this.cameras.main.shake(120, 0.004) // petit choc d'impact
-        Audio.sfx(SFX.meteor, { vol: 0.7 }) // détonation du météore
+        // détonation propre à l'élément (feu = explosion, lumière = boom clair, ombre = esprit + explosion)
+        const s = this.spellSfx()
+        Audio.sfx(s.impact, { vol: 0.75, detune: s.impactDetune ?? 0 })
+        if (s.impactExtra) Audio.sfx(s.impactExtra, { vol: 0.7, detune: 0 }) // son superposé (ex. boom de feu sur l'ombre)
         dealAoe()
       },
     })
@@ -2789,7 +2811,9 @@ export default class GameScene extends Phaser.Scene {
 
     const proj = this.projectiles.get(p.x, p.y)
     if (!proj) return
-    Audio.sfx(SFX.launch, { vol: 0.45 }) // sifflement du tir
+    // tir propre à l'élément (feu = whoosh enflammé, lumière/ombre/arcane = magie teintée)
+    const s = this.spellSfx()
+    Audio.sfx(s.proj, { vol: 0.45, detune: s.projDetune ?? 0 })
     proj.fire(p.x, p.y, tx, ty, Math.round(p.attackPower * p.rangedDmgMul), this.time.now, target, p.magicColor, p.projFx)
     // on VOIT l'arme à distance (sceptre/baguette) pointer vers la cible
     const wi = p.equipped?.weapon?.icon
