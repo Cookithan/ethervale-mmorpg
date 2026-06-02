@@ -357,6 +357,7 @@ export default class UIScene extends Phaser.Scene {
       const c = reg(this.add.rectangle(bx, gy, cell, cell, 0x000000, 0).setInteractive({ useHandCursor: true }))
       reg(this.addIcon(bx, gy, item.icon, cell - 12))
       c.on('pointerdown', () => {
+        Audio.sfx('ui_accept', { detune: 0 })
         if (item.type === 'consumable') this.useConsumable(item)
         else if (!canEquip(item, p.className)) this.showToast(classRestrictionLabel(item), '#e0a866')
         else if (p.equip(item)) this.showItemToast('Équipé', item)
@@ -397,6 +398,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.shopOpen) this.closeShop()
     this.charOpen = true
     this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
     this.buildCharPanel()
   }
 
@@ -404,6 +406,7 @@ export default class UIScene extends Phaser.Scene {
     this.charOpen = false
     this.destroyChar()
     this.hideTip()
+    Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
   }
 
@@ -461,6 +464,7 @@ export default class UIScene extends Phaser.Scene {
         reg(this.addIcon(pos.x, pos.y, item.icon, cellSz - 14))
         c.setInteractive({ useHandCursor: true })
         c.on('pointerdown', () => {
+          Audio.sfx('ui_accept', { detune: 0 })
           p.unequip(slot)
           this.hideTip()
         })
@@ -486,6 +490,7 @@ export default class UIScene extends Phaser.Scene {
     this.shopTab = 'weapon' // onglet (catégorie) par défaut
     this.scene.pause('GameScene')
     Audio.playMusic(this, 'mus_shop') // thème "Fight" chez le marchand (restauré à la fermeture par GameScene.update)
+    Audio.sfx('ui_accept', { detune: 0 })
     this.buildShop()
   }
 
@@ -493,6 +498,7 @@ export default class UIScene extends Phaser.Scene {
     this.shopOpen = false
     this.destroyShop()
     this.hideTip()
+    Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
   }
 
@@ -585,7 +591,10 @@ export default class UIScene extends Phaser.Scene {
     reg(this.add.rectangle(x, y, w, h, active ? GOLD : 0x2a3340, 1).setOrigin(0, 0).setStrokeStyle(1, GOLD))
     reg(this.add.text(x + w / 2, y + h / 2, label, { fontFamily: 'monospace', fontSize: '11px', color: active ? '#1a1a1a' : '#cfe8ff' }).setOrigin(0.5))
     const z = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
-    z.on('pointerdown', onClick)
+    z.on('pointerdown', () => {
+      Audio.sfx('ui_move', { detune: 0 }) // changement d'onglet (catégorie / acheter-vendre)
+      onClick()
+    })
   }
 
   /** Barre de durabilité (verte -> rouge selon l'usure). */
@@ -609,7 +618,11 @@ export default class UIScene extends Phaser.Scene {
     const z = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
     z.on('pointerover', () => this.showTip(item, x + w / 2, y))
     z.on('pointerout', () => this.hideTip())
-    if (footer.onClick) z.on('pointerdown', footer.onClick)
+    if (footer.onClick)
+      z.on('pointerdown', () => {
+        Audio.sfx('ui_coin', { detune: 0 }) // transaction (achat/vente/réparation/amélioration)
+        footer.onClick()
+      })
   }
 
   /** Grille de cartes 3 colonnes (cb(item) -> {text,color,onClick}). */
@@ -637,6 +650,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.shopOpen) this.closeShop()
     this.forgeOpen = true
     this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
     this.buildForge()
   }
 
@@ -644,6 +658,7 @@ export default class UIScene extends Phaser.Scene {
     this.forgeOpen = false
     this.destroyForge()
     this.hideTip()
+    Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
   }
 
@@ -761,12 +776,14 @@ export default class UIScene extends Phaser.Scene {
     if (this.charOpen) this.closeChar()
     this.pauseOpen = true
     this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
     this.buildPause()
   }
 
   closePause() {
     this.pauseOpen = false
     this.destroyPause()
+    Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
   }
 
@@ -871,6 +888,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.game_.gameOver) return
     this.mapOpen = true
     this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
     this.buildWorldMap()
   }
 
@@ -878,6 +896,7 @@ export default class UIScene extends Phaser.Scene {
     this.mapOpen = false
     this.mapObjects.forEach((o) => o.destroy())
     this.mapObjects = []
+    Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
   }
 

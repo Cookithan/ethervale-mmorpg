@@ -13,7 +13,7 @@ const SFX_KEYS = [
   'sfx_magic5', 'sfx_fx', 'sfx_spirit', 'sfx_heal',
   'sfx_levelup', 'sfx_gameover', // jingles (montée de niveau / défaite)
   'amb_wind', // ambiance : vent (monte près de la côte)
-  'ui_accept', 'ui_move', 'ui_cancel', // sons d'interface (menus / création de perso)
+  'ui_accept', 'ui_move', 'ui_cancel', 'ui_coin', // sons d'interface (menus, panneaux, transactions)
 ]
 
 /**

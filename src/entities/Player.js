@@ -340,12 +340,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.setVelocity(vx * this.speed, vy * this.speed)
 
-    if (vx < 0) this.facing = 'left'
-    else if (vx > 0) this.facing = 'right'
-    else if (vy < 0) this.facing = 'up'
-    else if (vy > 0) this.facing = 'down'
-
     const moving = vx !== 0 || vy !== 0
+    // direction = axe DOMINANT (sinon le clic-déplacement, dont vx est presque toujours ≠ 0,
+    // regarde toujours sur le côté et jamais vers le haut/bas)
+    if (moving) {
+      if (Math.abs(vx) > Math.abs(vy)) this.facing = vx < 0 ? 'left' : 'right'
+      else this.facing = vy < 0 ? 'up' : 'down'
+    }
     this.anims.play(`${this.heroKey}-` + (moving ? 'walk-' : 'idle-') + this.facing, true)
   }
 }

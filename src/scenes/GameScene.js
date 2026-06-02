@@ -392,6 +392,11 @@ export default class GameScene extends Phaser.Scene {
         this.pendingNpc = null // clic au sol : annule une interaction en attente
         this.player.moveTo(p.worldX, p.worldY)
         this.showMoveMarker(p.worldX, p.worldY)
+        // confirmation du clic-déplacement, mais THROTTLÉE : enchaîner les clics ne spamme plus le bip
+        if (this.time.now >= (this._moveSfxAt || 0)) {
+          Audio.sfx('ui_move', { vol: 0.35, detune: 0 })
+          this._moveSfxAt = this.time.now + 600
+        }
       })
     }
 

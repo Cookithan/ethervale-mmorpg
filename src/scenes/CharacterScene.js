@@ -176,10 +176,14 @@ export default class CharacterScene extends Phaser.Scene {
         spr.setScale(4.5)
         S.add([box, spr, name])
       }
-      box.on('pointerover', () => this.setHero(i)) // survol = sélection (son de défilement)
+      box.on('pointerover', () => {
+        if (i !== this.heroIndex) Audio.sfx('ui_move', { detune: 0 }) // survol d'une AUTRE apparence (sans la sélectionner)
+      })
       box.on('pointerdown', () => {
-        this.setHero(i)
-        Audio.sfx('ui_accept', { detune: 0 })
+        if (i === this.heroIndex) return // apparence déjà choisie -> on ne refait pas le son
+        this.heroIndex = i
+        this.refreshHeroes()
+        Audio.sfx('ui_cancel', { detune: 0 }) // son d'annulation au choix de l'apparence (préférence utilisateur)
       })
       this.heroCells.push(box)
     })
