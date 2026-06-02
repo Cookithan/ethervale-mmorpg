@@ -21,6 +21,7 @@ export const SFX = {
   shield: ['sfx_fx'], // bouclier (Tank)
   heal: ['sfx_heal'], // soin (Soigneur)
   spirit: ['sfx_spirit'], // halo / esprit
+  step: ['sfx_step1', 'sfx_step2'], // pas (alternés pendant la marche)
 }
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v))

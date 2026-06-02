@@ -14,6 +14,7 @@ const SFX_KEYS = [
   'sfx_levelup', 'sfx_gameover', // jingles (montée de niveau / défaite)
   'amb_wind', // ambiance : vent (monte près de la côte)
   'ui_accept', 'ui_move', 'ui_cancel', 'ui_coin', // sons d'interface (menus, panneaux, transactions)
+  'sfx_step1', 'sfx_step2', // pas sur l'herbe (alternés pendant la marche)
 ]
 
 /**

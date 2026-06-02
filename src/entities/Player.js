@@ -347,6 +347,17 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       if (Math.abs(vx) > Math.abs(vy)) this.facing = vx < 0 ? 'left' : 'right'
       else this.facing = vy < 0 ? 'up' : 'down'
     }
+
+    // bruits de pas pendant la marche : alternés, cadence calée sur la vitesse (lent = pas espacés)
+    if (moving) {
+      const stepMs = 320 * (SPEED / this.speed)
+      if (time >= (this._stepAt || 0)) {
+        Audio.sfx(SFX.step, { vol: 0.32 })
+        this._stepAt = time + stepMs
+      }
+    } else {
+      this._stepAt = 0 // à l'arrêt : le prochain pas joue tout de suite quand on repart
+    }
     this.anims.play(`${this.heroKey}-` + (moving ? 'walk-' : 'idle-') + this.facing, true)
   }
 }
