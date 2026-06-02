@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { hasSave, loadSave } from '../data/save.js'
+import { Audio } from '../data/sound.js'
 
 // Écran d'accueil : le menu (titre + boutons) est posé PAR-DESSUS le VRAI village du jeu,
 // affiché en fond par GameScene en mode "aperçu" (vivant : PNJ qui se baladent, héros au centre).
@@ -21,6 +22,8 @@ export default class MenuScene extends Phaser.Scene {
     // ne pas le relancer si on revient ici via un resize (il tourne déjà)
     if (!this.scene.isActive('GameScene')) this.scene.launch('GameScene', { preview: true })
     this.scene.bringToTop() // le menu reste au-dessus du village
+
+    Audio.playMusic(this, 'mus_menu') // thème d'accueil (démarre au 1er clic si autoplay verrouillé)
 
     // léger voile global pour la lisibilité des boutons sur la map claire
     this.add.rectangle(0, 0, cw, ch, 0x0a0a14, 0.12).setOrigin(0, 0).setDepth(0)

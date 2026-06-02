@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON } from '../data/items.js'
 import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
+import { Audio, SFX } from '../data/sound.js'
 
 const SPEED = 65 // vitesse de déplacement de base (px/s) — modulée par la classe (speedMul)
 const ATTACK_MS = 260 // durée de l'animation d'attaque (déplacement bloqué)
@@ -251,6 +252,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (now < this.shieldUntil) amount *= 0.2 // Bouclier (Tank) : le bouclier absorbe 80 % -> héros = 20 %
     const dmg = Math.max(1, Math.round(amount - this.defense)) // la défense réduit les dégâts (min 1)
     this.hp = Math.max(0, this.hp - dmg)
+    Audio.sfx(SFX.hurt, { vol: 0.5 }) // le héros encaisse (toutes sources : morsure, sort...)
     this.invulnUntil = now + HURT_IFRAMES
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(90, () => this.clearTint())

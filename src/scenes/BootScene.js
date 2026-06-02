@@ -1,8 +1,17 @@
 import Phaser from 'phaser'
 import { HEROES } from '../data/classes.js'
+import { Audio } from '../data/sound.js'
 
 // monstres (sprites mon_<nom>.png, grille 4x4) — chargement + animations directionnelles
 const MONSTER_SPRITES = ['mushroom', 'lizard', 'racoon', 'snake', 'spider', 'bear', 'owl', 'skull', 'spirit', 'flam']
+
+// audio : clés des fichiers (musiques .ogg + bruitages .wav) à précharger
+const MUSIC_KEYS = ['mus_menu', 'mus_village', 'mus_forest', 'mus_snow', 'mus_desert', 'mus_cursed', 'mus_boss1', 'mus_boss2', 'mus_boss3', 'mus_shop']
+const SFX_KEYS = [
+  'sfx_slash', 'sfx_slash2', 'sfx_sword', 'sfx_whoosh', 'sfx_launch',
+  'sfx_hit1', 'sfx_hit2', 'sfx_impact', 'sfx_magic1', 'sfx_magic2',
+  'sfx_magic5', 'sfx_fx', 'sfx_spirit', 'sfx_heal',
+]
 
 /**
  * BootScene — précharge les assets puis crée les animations du héros.
@@ -105,6 +114,12 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_fireball', 'assets/fx/fireball.png', { frameWidth: 16, frameHeight: 16 }) // 4 frames (projectile feu)
     this.load.spritesheet('fx_shuriken', 'assets/fx/shuriken.png', { frameWidth: 16, frameHeight: 16 }) // 2 frames (shuriken qui tourne)
     this.load.image('fx_kunai', 'assets/fx/kunai.png') // dague de lancer (statique, pointe dans la direction)
+
+    // --- AUDIO (pack Ninja Adventure, CC0) ---
+    // musiques de fond (boucle) par zone + combat de boss + menu
+    for (const m of MUSIC_KEYS) this.load.audio(m, `assets/audio/music/${m}.ogg`)
+    // bruitages de combat (coups, slash, sorts, projectiles)
+    for (const s of SFX_KEYS) this.load.audio(s, `assets/audio/sfx/${s}.wav`)
   }
 
   create() {
@@ -114,6 +129,7 @@ export default class BootScene extends Phaser.Scene {
     this.createNpcAnimations()
     this.createItemAnimations()
     this.createFxAnimations()
+    Audio.init(this.game) // moteur audio prêt (mute persisté + gestion autoplay verrouillé)
     this.scene.start('MenuScene') // écran d'accueil (puis création de perso -> jeu)
   }
 

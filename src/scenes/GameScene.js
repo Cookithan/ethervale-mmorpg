@@ -6,6 +6,7 @@ import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY } from '../data/items.js'
 import { DEFAULT_CHARACTER } from '../data/classes.js'
 import { makeSave, writeSave } from '../data/save.js'
+import { Audio, SFX } from '../data/sound.js'
 
 const MONSTER_COUNT = 110 // nombre de monstres sur la map (répartis ISOLÉS, couverture uniforme)
 const MONSTER_GAP = 6 // distance mini entre deux monstres au spawn (en tuiles) -> répartition régulière
@@ -84,6 +85,18 @@ const BIOME_NAMES = {
   snow: 'Terres gelées',
   cursed: 'Terres maudites',
 }
+
+// musique de fond par zone (clé chargée dans BootScene) ; un boss engagé prend le dessus
+const MUSIC_BY_BIOME = {
+  prairie: 'mus_village',
+  forest: 'mus_forest',
+  desert: 'mus_desert',
+  snow: 'mus_snow',
+  cursed: 'mus_cursed',
+}
+
+// musique de combat de boss : on tire l'un des 3 au hasard à chaque combat
+const BOSS_MUSIC = ['mus_boss1', 'mus_boss2', 'mus_boss3']
 
 const MONSTERS_BY_BIOME = {
   prairie: ['lizard'], // (zone sûre : pas de spawn de toute façon)
@@ -289,6 +302,7 @@ export default class GameScene extends Phaser.Scene {
       const py = proj.y
       const dmg = proj.damage
       proj.kill()
+      Audio.sfx(SFX.hit, { vol: 0.4 }) // impact du projectile
       this.hitMonster(mon, dmg, px, py, 0) // pas de recul (seul le Tank repousse) ; dégâts seuls
     })
     // les projectiles s'arrêtent sur le décor
@@ -393,6 +407,7 @@ export default class GameScene extends Phaser.Scene {
       this.time.delayedCall(600, () => this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES.prairie))
       // sauvegarde automatique périodique (toutes les 30 s)
       this.time.addEvent({ delay: 30000, loop: true, callback: () => this.saveGame() })
+      Audio.playMusic(this, MUSIC_BY_BIOME[this.currentBiome] || 'mus_village') // musique de la zone de départ
     } else {
       this.setupPreview() // village vivant en fond de l'écran d'accueil
     }
@@ -2431,6 +2446,7 @@ export default class GameScene extends Phaser.Scene {
     else this.showSlash(p.x, p.y, p.facing)
     // tranche FX selon le TYPE d'arme (lame = tranche courbée, masse = slash circulaire)
     if (weapon?.fx && this.anims.exists(weapon.fx)) this.showSlashFx(p.x, p.y, p.facing, weapon.fx)
+    Audio.sfx(SFX.slash, { vol: 0.5 }) // sifflement de la lame à chaque coup
 
     let hitAny = false
     this.monsters.getChildren().forEach((mon) => {
@@ -2445,6 +2461,7 @@ export default class GameScene extends Phaser.Scene {
     })
     // l'arme s'use quand le coup porte ; casse à 0 -> notif
     if (hitAny) {
+      Audio.sfx(SFX.hit, { vol: 0.45 }) // impact net quand le coup porte (1 fois par swing)
       const broke = p.wearSlot('weapon')
       if (broke) this.notifyBreak(broke)
     }
@@ -2534,6 +2551,7 @@ export default class GameScene extends Phaser.Scene {
       return false
     }
     const healed = p.heal(Math.round(p.maxHp * 0.35 * (p.spellPowerMul ?? 1)))
+    Audio.sfx(SFX.heal, { vol: 0.6 })
     this.showHealEffect(p.x, p.y)
     const aura = this.add.sprite(p.x, p.y - 2, 'fx_aura').setDepth(p.y + 61).setScale(1.6).setTint(0x8ef0a0) // aura animée teintée vert
     aura.play('fx-aura')
@@ -2564,6 +2582,7 @@ export default class GameScene extends Phaser.Scene {
     p.attackUntil = now + dur + 20
     p.setVelocity(Math.cos(ang) * SPD, Math.sin(ang) * SPD)
     p.anims.play(`${p.heroKey}-attack-` + p.facing, true)
+    Audio.sfx(SFX.whoosh, { vol: 0.6 }) // souffle du bond
     // slash circulaire animé au départ de la charge
     const slash = this.add.sprite(p.x, p.y, 'fx_circslash').setDepth(p.y + 60).setScale(1.5)
     slash.play('fx-circslash')
@@ -2597,6 +2616,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     const dur = 4000 * (p.spellPowerMul ?? 1) // Focus -> bouclier plus long
     p.shieldUntil = this.time.now + dur
+    Audio.sfx(SFX.shield, { vol: 0.6 })
     // bulle de bouclier ANIMÉE (FX du pack) qui suit le héros pendant la durée
     const bubble = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 60).setScale(1.7).setAlpha(0.9)
     bubble.play('fx-shield')
@@ -2624,6 +2644,7 @@ export default class GameScene extends Phaser.Scene {
     p.casting = true
     p.castInterrupted = false
     p.setVelocity(0, 0)
+    Audio.sfx(SFX.magic, { vol: 0.55 }) // début d'incantation
     // barre d'incantation au-dessus de la tête (espace monde) : fond + remplissage + libellé
     const W = 30
     const yOff = 24
@@ -2721,6 +2742,7 @@ export default class GameScene extends Phaser.Scene {
           this.tweens.add({ targets: boom, alpha: 0, scale: 1.35, duration: 320, onComplete: () => boom.destroy() })
         }
         this.cameras.main.shake(120, 0.004) // petit choc d'impact
+        Audio.sfx(SFX.meteor, { vol: 0.7 }) // détonation du météore
         dealAoe()
       },
     })
@@ -2751,6 +2773,7 @@ export default class GameScene extends Phaser.Scene {
 
     const proj = this.projectiles.get(p.x, p.y)
     if (!proj) return
+    Audio.sfx(SFX.launch, { vol: 0.45 }) // sifflement du tir
     proj.fire(p.x, p.y, tx, ty, Math.round(p.attackPower * p.rangedDmgMul), this.time.now, target, p.magicColor, p.projFx)
     // on VOIT l'arme à distance (sceptre/baguette) pointer vers la cible
     const wi = p.equipped?.weapon?.icon
@@ -2994,6 +3017,17 @@ export default class GameScene extends Phaser.Scene {
     if (biome !== this.currentBiome) {
       this.currentBiome = biome
       this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES[biome])
+    }
+
+    // musique : un boss engagé impose un thème de combat (tiré au hasard au début du combat,
+    // gardé jusqu'au désengagement), sinon la musique de la zone. playMusic court-circuite si
+    // le morceau voulu joue déjà -> pas de coût par frame.
+    if (this.activeBoss) {
+      if (!this.bossTrack) this.bossTrack = Phaser.Utils.Array.GetRandom(BOSS_MUSIC)
+      Audio.playMusic(this, this.bossTrack)
+    } else {
+      this.bossTrack = null
+      Audio.playMusic(this, MUSIC_BY_BIOME[biome] || 'mus_village')
     }
 
     this.updateNpcs(time) // villageois qui se baladent

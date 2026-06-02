@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
+import { Audio } from '../data/sound.js'
 
 // palette UI (style WoW lisible)
 const GOLD = 0xc8a24a
@@ -484,6 +485,7 @@ export default class UIScene extends Phaser.Scene {
     this.shopOpen = true
     this.shopTab = 'weapon' // onglet (catégorie) par défaut
     this.scene.pause('GameScene')
+    Audio.playMusic(this, 'mus_shop') // thème "Fight" chez le marchand (restauré à la fermeture par GameScene.update)
     this.buildShop()
   }
 
@@ -782,11 +784,25 @@ export default class UIScene extends Phaser.Scene {
     const cw = this.scale.width
     const ch = this.scale.height
     reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0))
-    const W = 260
-    const H = 232
+    const W = 300
+    const H = 372
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
-    reg(this.add.text(cw / 2, ch / 2 - H / 2 + 24, 'Pause', { fontFamily: 'monospace', fontSize: '22px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5))
-    let y = ch / 2 - 42
+    let y = ch / 2 - H / 2 + 24
+    reg(this.add.text(cw / 2, y, 'Pause', { fontFamily: 'monospace', fontSize: '22px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5))
+
+    // --- réglages audio ---
+    y += 36
+    this.muteButton = this.menuButton(reg, cw / 2, y, this.muteLabel(), () => {
+      Audio.toggleMute()
+      this.muteButton.txt.setText(this.muteLabel())
+    })
+    y += 44
+    this.volumeSlider(reg, cw / 2, y, 'Musique', () => Audio.settings.music, (v) => Audio.setMusicVol(v))
+    y += 40
+    this.volumeSlider(reg, cw / 2, y, 'Effets', () => Audio.settings.sfx, (v) => Audio.setSfxVol(v))
+
+    // --- boutons ---
+    y += 48
     this.menuButton(reg, cw / 2, y, 'Reprendre', () => this.closePause())
     y += 48
     this.menuButton(reg, cw / 2, y, 'Sauvegarder', () => {
@@ -795,6 +811,32 @@ export default class UIScene extends Phaser.Scene {
     })
     y += 48
     this.menuButton(reg, cw / 2, y, 'Quitter au menu', () => this.quitToMenu())
+  }
+
+  muteLabel() {
+    return Audio.settings.muted ? 'Son : coupé 🔇' : 'Son : activé 🔊'
+  }
+
+  /** Curseur de volume (0..1) : libellé à gauche, piste cliquable + poignée glissable à droite. */
+  volumeSlider(reg, cx, y, label, get, set) {
+    const w = 150 // largeur de la piste
+    const x0 = cx - 6 // bord gauche de la piste (le libellé est à gauche de x0)
+    reg(this.add.text(x0 - 12, y, label, { fontFamily: 'monospace', fontSize: '13px', color: '#cfe0ff' }).setOrigin(1, 0.5))
+    const val = Phaser.Math.Clamp(get(), 0, 1)
+    reg(this.add.rectangle(x0, y, w, 6, 0x2a3346).setOrigin(0, 0.5).setStrokeStyle(1, CELL_BORDER))
+    const fill = reg(this.add.rectangle(x0, y, w * val, 6, GOLD).setOrigin(0, 0.5))
+    const handle = reg(this.add.circle(x0 + w * val, y, 8, 0xffe066).setStrokeStyle(2, 0x000000))
+    const apply = (f) => {
+      const v = Phaser.Math.Clamp(f, 0, 1)
+      handle.x = x0 + w * v
+      fill.width = w * v
+      set(v)
+    }
+    handle.setInteractive({ useHandCursor: true, draggable: true })
+    handle.on('drag', (_p, dragX) => apply((dragX - x0) / w))
+    // clic direct sur la piste = saut à la valeur
+    const track = reg(this.add.rectangle(x0, y, w, 18, 0xffffff, 0.001).setOrigin(0, 0.5).setInteractive({ useHandCursor: true }))
+    track.on('pointerdown', (p) => apply((p.x - x0) / w))
   }
 
   menuButton(reg, x, y, label, cb) {
@@ -812,6 +854,7 @@ export default class UIScene extends Phaser.Scene {
       txt.setColor('#ffffff')
     })
     z.on('pointerdown', cb)
+    return { bg, txt, z }
   }
 
   quitToMenu() {
