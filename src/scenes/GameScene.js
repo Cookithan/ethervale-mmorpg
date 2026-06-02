@@ -413,12 +413,14 @@ export default class GameScene extends Phaser.Scene {
       // sauvegarde automatique périodique (toutes les 30 s)
       this.time.addEvent({ delay: 30000, loop: true, callback: () => this.saveGame() })
       Audio.playMusic(this, MUSIC_BY_BIOME[this.currentBiome] || 'mus_village') // musique de la zone de départ
-      Audio.setAmbientLevel(0)
-      Audio.startAmbient('amb_wind') // calque de vent (volume piloté par la proximité de la côte)
-      this.ambLevel = 0 // intensité lissée de l'ambiance vent
+      Audio.startAmbient('amb_wind') // calques côtiers (vent + vagues), volume piloté par la proximité de la mer
+      Audio.startAmbient('amb_waves')
+      Audio.setAmbientLevel('amb_wind', 0)
+      Audio.setAmbientLevel('amb_waves', 0)
+      this.ambLevel = 0 // intensité lissée de l'ambiance côtière
       this.ambTarget = 0
       this.ambCheckAt = 0 // throttle du calcul de proximité côte
-      this.events.once('shutdown', () => Audio.stopAmbient()) // coupe le vent en quittant la scène (menu)
+      this.events.once('shutdown', () => Audio.stopAmbient()) // coupe toutes les ambiances en quittant la scène (menu)
     } else {
       this.setupPreview() // village vivant en fond de l'écran d'accueil
     }
@@ -3055,7 +3057,9 @@ export default class GameScene extends Phaser.Scene {
       this.ambTarget = this.coastProximity(Math.floor(p.x / TILE), Math.floor(p.y / TILE))
     }
     this.ambLevel = Phaser.Math.Linear(this.ambLevel, this.ambTarget || 0, 0.06)
-    Audio.setAmbientLevel(this.ambLevel) // volume max du vent au bord de l'eau (plein effet)
+    // vent un peu en retrait, vagues dominantes au bord de l'eau (montée plus marquée tout près)
+    Audio.setAmbientLevel('amb_wind', this.ambLevel * 0.7)
+    Audio.setAmbientLevel('amb_waves', Math.pow(this.ambLevel, 1.3))
 
     this.updateNpcs(time) // villageois qui se baladent
 

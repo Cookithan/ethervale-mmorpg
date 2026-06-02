@@ -12,7 +12,7 @@ const SFX_KEYS = [
   'sfx_hit1', 'sfx_hit2', 'sfx_impact', 'sfx_magic1', 'sfx_magic2',
   'sfx_magic5', 'sfx_fx', 'sfx_spirit', 'sfx_heal',
   'sfx_levelup', 'sfx_gameover', // jingles (montée de niveau / défaite)
-  'amb_wind', // ambiance : vent (monte près de la côte)
+  'amb_wind', 'amb_waves', // ambiance côtière (vent + vagues, montent près de la mer)
   'ui_accept', 'ui_move', 'ui_cancel', 'ui_coin', // sons d'interface (menus, panneaux, transactions)
   'sfx_step1', 'sfx_step2', // pas sur l'herbe (alternés pendant la marche)
   'sfx_gold', 'sfx_pickup', 'sfx_loot', // ramassage de butin (or / gemme-cœur / équipement)

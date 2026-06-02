@@ -32,9 +32,7 @@ class AudioManager {
     this.settings = { ...DEFAULTS }
     this.curKey = null // clé de la musique VOULUE (peut différer de l'instance si verrouillé)
     this.curMusic = null // instance Phaser.Sound en cours
-    this.amb = null // calque d'ambiance en boucle (ex. vent près de la côte)
-    this.ambKey = null
-    this.ambLevel = 0 // intensité voulue 0..1 (volume réel = ambLevel * sfx)
+    this.ambients = {} // calques d'ambiance en boucle, indexés par clé (ex. vent + vagues). { key: { sound, level } }
     this._load()
   }
 
@@ -87,37 +85,49 @@ class AudioManager {
 
   setSfxVol(v) {
     this.settings.sfx = clamp01(v)
-    if (this.amb) this.amb.setVolume(this.ambLevel * this.settings.sfx) // l'ambiance suit le volume Effets
+    for (const k in this.ambients) {
+      const a = this.ambients[k]
+      if (a.sound) a.sound.setVolume(a.level * this.settings.sfx) // les ambiances suivent le volume Effets
+    }
     this._save()
   }
 
-  // --- ambiance (calque en boucle par-dessus la musique) ---
-  /** Démarre/maintient un son d'ambiance en boucle (idempotent par clé). Volume piloté par setAmbientLevel. */
+  // --- ambiances (calques en boucle par-dessus la musique, plusieurs simultanés possibles) ---
+  /** Démarre/maintient un son d'ambiance en boucle pour la clé donnée (idempotent). Volume via setAmbientLevel. */
   startAmbient(key) {
     if (!this.game || !key) return
-    if (this.ambKey === key && this.amb && this.amb.isPlaying) return
-    if (this.amb) this.amb.destroy()
-    this.ambKey = key
-    this.amb = null
+    const a = this.ambients[key]
+    if (a && a.sound && a.sound.isPlaying) return
     if (!this.game.cache.audio.exists(key)) return
-    this.amb = this.game.sound.add(key, { loop: true, volume: 0 })
-    this.amb.play()
-    this.amb.setVolume(this.ambLevel * this.settings.sfx)
+    const sound = this.game.sound.add(key, { loop: true, volume: 0 })
+    sound.play()
+    const level = a?.level ?? 0
+    this.ambients[key] = { sound, level }
+    sound.setVolume(level * this.settings.sfx)
   }
 
-  /** Intensité de l'ambiance (0..1) ; le volume réel est mis à l'échelle par le volume Effets. */
-  setAmbientLevel(level) {
-    this.ambLevel = clamp01(level)
-    if (this.amb) this.amb.setVolume(this.ambLevel * this.settings.sfx)
-  }
-
-  stopAmbient() {
-    this.ambKey = null
-    this.ambLevel = 0
-    if (this.amb) {
-      this.amb.destroy()
-      this.amb = null
+  /** Intensité d'une ambiance (0..1) ; le volume réel est mis à l'échelle par le volume Effets. */
+  setAmbientLevel(key, level) {
+    const lv = clamp01(level)
+    const a = this.ambients[key]
+    if (!a) {
+      this.ambients[key] = { sound: null, level: lv } // mémorise même si pas encore démarré
+      return
     }
+    a.level = lv
+    if (a.sound) a.sound.setVolume(lv * this.settings.sfx)
+  }
+
+  /** Coupe une ambiance précise (clé) ou TOUTES si aucune clé. */
+  stopAmbient(key) {
+    if (key) {
+      const a = this.ambients[key]
+      if (a && a.sound) a.sound.destroy()
+      delete this.ambients[key]
+      return
+    }
+    for (const k in this.ambients) if (this.ambients[k].sound) this.ambients[k].sound.destroy()
+    this.ambients = {}
   }
 
   // --- bruitages ---
