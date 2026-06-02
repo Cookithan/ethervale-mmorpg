@@ -137,7 +137,7 @@ const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka',
 // tuile valide du bon biome. Forêt = ceinture Nord/Sud, neige = grand Nord, désert = grand Sud.
 const BIOME_BOSSES = {
   forest: { type: 'samurai', name: 'Gankai, le Samouraï Sylvestre' }, // BOSS DE RAID (intuable solo)
-  desert: { type: 'spider', name: 'Sslyth, Reine des Sables' }, // boss SOLO normal (tuable seul)
+  desert: { type: 'democyclop', name: 'Gorehk, le Cyclope des Sables' }, // boss SOLO dédié (sprite "rig", tuable seul)
   snow: { type: 'tengublue', name: 'Raijin, le Tengu des Glaces' }, // BOSS DE RAID (intuable solo)
   cursed: { type: 'flam', name: 'Dargoth, Seigneur Maudit' }, // sur l'ÎLE MAUDITE (verrouillée) ; futur DragonBlue
 }
@@ -3044,10 +3044,15 @@ export default class GameScene extends Phaser.Scene {
       mon.setDepth(mon.y)
     })
 
-    // barre de boss : on suit le boss engagé (en aggro, ou simplement proche du joueur)
+    // barre de boss : on suit le boss engagé (en aggro, ou simplement proche du joueur).
+    // HYSTÉRÉSIS : un boss DÉJÀ actif le reste jusqu'à 1,5× la portée -> pas de clignotement quand
+    // un boss rôde autour de la limite (sinon activeBoss bascule on/off chaque frame -> la musique
+    // basculait boss/zone en boucle = empilement de sons = FREEZE).
     let engagedBoss = null
     for (const b of this.bosses || []) {
-      if (b.active && (b.aggroed || this.dist(p.x, p.y, b.x, b.y) < BOSS_BAR_RANGE)) {
+      if (!b.active) continue
+      const range = b === this.activeBoss ? BOSS_BAR_RANGE * 1.5 : BOSS_BAR_RANGE
+      if (b.aggroed || this.dist(p.x, p.y, b.x, b.y) < range) {
         engagedBoss = b
         break
       }

@@ -145,7 +145,16 @@ class AudioManager {
   /** Musique de fond en boucle, avec fondu enchaîné. `scene` sert aux tweens du fondu. */
   playMusic(scene, key) {
     if (!this.game || !key) return
-    if (this.curKey === key && this.curMusic && this.curMusic.isPlaying) return
+    // court-circuit sur la CLÉ voulue uniquement : si on veut déjà ce morceau, on ne touche à rien.
+    // (NE PAS tester curMusic.isPlaying : ce flag peut être transitoirement faux -> recréation par
+    //  frame depuis update -> empilement de dizaines d'instances -> FREEZE. Vécu.)
+    if (this.curKey === key) return
+    // GARDE-FOU anti-freeze : jamais plus d'un changement toutes les MUSIC_SWITCH_MS, même si une
+    // zone/un boss oscille à la frontière (la clé voulue revient chaque frame depuis update, on la
+    // committera dès que le délai est passé). Empêche tout empilement d'instances.
+    const now = scene?.time?.now ?? 0
+    if (now && this._lastMusicAt && now - this._lastMusicAt < 600) return
+    this._lastMusicAt = now
     this.curKey = key
     // autoplay verrouillé : on ne crée RIEN maintenant (sinon double instance + "redémarrage" au
     // 1er clic). On mémorise juste la clé ; le handler 'unlocked' (init) lancera la musique une fois.
@@ -155,27 +164,48 @@ class AudioManager {
 
   _startMusic(key, scene) {
     if (!this.game || !this.game.cache.audio.exists(key)) return
-    const old = this.curMusic
+    // COUPE IMMÉDIATE de l'ancienne musique (pas de tween de sortie qui se chevauche avec un autre).
+    // ⚠️ NE JAMAIS tweener l'objet Sound directement, ni le détruire pendant qu'un tween le vise :
+    // deux tweens concurrents sur `volume` + destroy = FREEZE (vécu, surtout quand un boss force un
+    // changement pendant que la zone fait encore son fondu d'entrée).
+    this._killMusic(this.curMusic)
+    this.curMusic = null
     const next = this.game.sound.add(key, { loop: true, volume: 0 })
     next.play()
     this.curMusic = next
     const target = this.settings.music
+    // fondu d'ENTRÉE via un OBJET PROXY (on tween {v}, pas le Sound) -> sûr même si le son est
+    // remplacé/détruit entre-temps (on revérifie que c'est toujours la musique courante).
     if (scene && scene.tweens) {
-      scene.tweens.add({ targets: next, volume: target, duration: 700 })
-      if (old) scene.tweens.add({ targets: old, volume: 0, duration: 600, onComplete: () => old.destroy() })
+      const fade = { v: 0 }
+      scene.tweens.add({
+        targets: fade,
+        v: target,
+        duration: 600,
+        onUpdate: () => {
+          if (this.curMusic === next && next.setVolume) next.setVolume(fade.v)
+        },
+      })
     } else {
       next.setVolume(target)
-      if (old) old.destroy()
     }
   }
 
-  stopMusic(scene) {
+  /** Détruit proprement une instance de musique (sans tween). */
+  _killMusic(snd) {
+    if (!snd) return
+    try {
+      snd.stop()
+      snd.destroy()
+    } catch (e) {
+      /* déjà détruit */
+    }
+  }
+
+  stopMusic() {
     this.curKey = null
-    const old = this.curMusic
+    this._killMusic(this.curMusic)
     this.curMusic = null
-    if (!old) return
-    if (scene && scene.tweens) scene.tweens.add({ targets: old, volume: 0, duration: 400, onComplete: () => old.destroy() })
-    else old.destroy()
   }
 }
 

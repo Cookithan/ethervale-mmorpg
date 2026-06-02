@@ -69,6 +69,13 @@ export const MONSTER_TYPES = {
     hp: 260, speed: 30, damage: 20, xp: 0, aggro: 90, scale: 1.5, body: { w: 40, h: 28 },
     tier: 'epic', loot: { gold: [0, 0] }, name: 'Samouraï Sylvestre',
   },
+
+  // --- BOSS SOLO à sprite dédié (rig, mais PAS raid -> tuable seul) ---
+  democyclop: {
+    key: 'boss_democyclop_idle', rig: 'democyclop', face: 'face_democyclop',
+    hp: 70, speed: 28, damage: 15, xp: 32, aggro: 110, scale: 2.2, body: { w: 26, h: 34 },
+    tier: 'epic', loot: { gold: [6, 12] }, name: 'Cyclope démon',
+  },
 }
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)

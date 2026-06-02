@@ -83,6 +83,10 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('boss_samurai_idle', 'assets/boss/samurai_idle.png', { frameWidth: 96, frameHeight: 48 })
     this.load.spritesheet('boss_samurai_walk', 'assets/boss/samurai_walk.png', { frameWidth: 96, frameHeight: 48 })
     this.load.spritesheet('boss_samurai_hit', 'assets/boss/samurai_hit.png', { frameWidth: 96, frameHeight: 48 })
+    // boss solo désert : Cyclope démon (frames 50×50 : Idle 5, Walk 6, Hit 3)
+    this.load.spritesheet('boss_democyclop_idle', 'assets/boss/democyclop_idle.png', { frameWidth: 50, frameHeight: 50 })
+    this.load.spritesheet('boss_democyclop_walk', 'assets/boss/democyclop_walk.png', { frameWidth: 50, frameHeight: 50 })
+    this.load.spritesheet('boss_democyclop_hit', 'assets/boss/democyclop_hit.png', { frameWidth: 50, frameHeight: 50 })
 
     // logo du menu (titre "NINJA ADVENTURE" extrait de la cover du pack)
     this.load.image('title_logo', 'assets/ui/title.png')
@@ -516,6 +520,7 @@ export default class BootScene extends Phaser.Scene {
     const rigs = {
       tengublue: { idle: 6, walk: 10, hit: 8 },
       samurai: { idle: 6, walk: 6, hit: 4 },
+      democyclop: { idle: 5, walk: 6, hit: 3 },
     }
     for (const [rig, states] of Object.entries(rigs)) {
       for (const [state, count] of Object.entries(states)) {
