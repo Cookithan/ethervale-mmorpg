@@ -126,7 +126,7 @@ const ZONE_WARP = 16 // déformation (tuiles) des frontières de zones (Voronoi)
 const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île -> casse la symétrie (décalé à l'EST)
 const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
-const MONSTER_MAX_LEVEL = 18 // zones lointaines = niveau élevé -> très coriaces (faut farmer/s'équiper)
+const MONSTER_MAX_LEVEL = 5 // mobs niv 1 (normal) -> 5 max ; chaque niveau = ×1.5 PV & dégâts (cf. Monster.js)
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
 const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
@@ -1929,7 +1929,7 @@ export default class GameScene extends Phaser.Scene {
     if (!cfg || !lair) return null
     const tile = this.findBossTile(lair.tx, lair.ty, biome) || lair
     if (!tile) return null
-    const level = MONSTER_MAX_LEVEL + 2 // boss de monde = niveau fixe élevé (au-dessus des 1-5)
+    const level = 7 // boss = niveau de scaling élevé (PV "comme avant", pas un mob) ; affiché plafonné à 5
     const boss = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, cfg.type, { level, boss: true, name: cfg.name })
     boss.bossBiome = biome
     boss.homeX = tile.tx * TILE + 8 // ancre de patrouille = son repaire
@@ -2004,6 +2004,11 @@ export default class GameScene extends Phaser.Scene {
     const ring = this.add.circle(cx, cy, r, col, 0).setStrokeStyle(3, col, 0.9).setDepth(900000) // bord toujours visible
     this.tweens.add({ targets: [fill, ring], alpha: 0.45, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
     this.activeArena = { boss, cx, cy, r, fill, ring }
+    // ÉVACUE les mobs ordinaires présents dans le cercle -> on n'affronte QUE le boss (pas une meute)
+    this.monsters.getChildren().slice().forEach((m) => {
+      if (m.isBoss || !m.active) return
+      if (this.dist(m.x, m.y, cx, cy) <= r) m.despawn()
+    })
     const msg = boss.isRaid ? '☠ Arène scellée — aucune fuite possible !' : '⚔ Arène scellée !'
     this.scene.get('UIScene')?.showToast?.(msg, boss.isRaid ? '#d6a3ff' : '#ffd86b')
     this.cameras.main.shake(250, 0.006)

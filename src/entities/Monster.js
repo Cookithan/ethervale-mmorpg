@@ -97,8 +97,7 @@ const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn
 const PATROL_RADIUS = 80 // rayon autour duquel un BOSS rôde/garde son repaire avant d'être provoqué (px)
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
-const LEVEL_STAT_STEP = 0.5 // +50 % des PV/XP de base par niveau -> zones lointaines TRÈS coriaces (brief)
-const LEVEL_DMG_STEP = 0.28 // dégâts montent plus DOUCEMENT que les PV (dur mais pas one-shot injuste)
+// (le scaling de niveau est désormais exponentiel ×1.5/niv, calculé directement dans le constructeur)
 const BOSS_HP_MUL = 8 // PV d'un boss = type × niveau × 8 (gros sac à PV)
 const BOSS_DMG_MUL = 1.5 // dégâts du boss (kitable car plus lent que le joueur -> on encaisse rarement)
 const BOSS_XP_MUL = 8 // XP massive
@@ -138,12 +137,19 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.isRaid = !!def.raid // boss de raid = intuable solo (PV-mur + dégâts qui écrasent)
     this.eliteName = opts.name ?? null
 
-    // stats mises à l'échelle selon le NIVEAU (+12 %/niv) et le statut ÉLITE/BOSS/RAID
-    const lvlMul = 1 + (level - 1) * LEVEL_STAT_STEP // PV/XP : forte montée par niveau
-    const dmgLvlMul = 1 + (level - 1) * LEVEL_DMG_STEP // dégâts : montée plus douce
+    // NIVEAU DE SCALING (≠ niveau AFFICHÉ) : ×1.5 PV ET dégâts par niveau (exponentiel).
+    // - mob normal : son niveau de zone (1-5) ; niv4 = 1.5× le niv3.
+    // - ÉLITE : valeurs d'un niveau 7 (mais affiché 5).
+    // - BOSS : niveau passé tel quel (élevé -> PV "comme avant", pas un mob).
+    const scaleLevel = elite ? 7 : level
+    const lvlMul = Math.pow(1.5, scaleLevel - 1) // PV/XP
+    const dmgLvlMul = Math.pow(1.5, scaleLevel - 1) // dégâts (même facteur que les PV)
     this.lvlMul = lvlMul
-    const hpMul = this.isRaid ? RAID_HP_MUL : boss ? BOSS_HP_MUL : elite ? 2.2 : 1
-    const dmgMul = this.isRaid ? RAID_DMG_MUL : boss ? BOSS_DMG_MUL : elite ? 1.6 : 1
+    // niveau AFFICHÉ plafonné à 5 (élite niv7 -> "Niv.5", boss niv7 -> "Niv.5")
+    this.displayLevel = Math.min(scaleLevel, 5)
+    // élite : le boost vient déjà du niveau 7 -> pas de multiplicateur HP/dmg en plus (sinon ×2 de trop)
+    const hpMul = this.isRaid ? RAID_HP_MUL : boss ? BOSS_HP_MUL : 1
+    const dmgMul = this.isRaid ? RAID_DMG_MUL : boss ? BOSS_DMG_MUL : 1
     const xpMul = boss ? BOSS_XP_MUL : elite ? 3 : 1
     this.maxHp = Math.round(def.hp * lvlMul * hpMul)
     this.hp = this.maxHp
@@ -185,6 +191,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.wander = new Phaser.Math.Vector2(0, 0)
     this.homeX = x
     this.homeY = y
+    this.homeBiome = scene.biomeAt(Math.floor(x / 16), Math.floor(y / 16)) // biome de spawn (ne le quitte pas en poursuivant)
 
     // barre de vie (cachée tant que le monstre est intact)
     this.hpBarBg = scene.add.rectangle(x, y - this.barOffsetY, 16, 3, 0x000000, 0.6).setDepth(50000).setVisible(false)
@@ -193,7 +200,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
     // étiquette : ÉLITE -> nom + niveau toujours visibles (or) ; NORMAL -> "Niv.X" qui
     // n'apparaît qu'avec la barre de vie (au combat) pour ne pas surcharger l'écran.
-    const labelTxt = elite ? `★ ${this.eliteName} · Niv.${level}` : `Niv.${level}`
+    const labelTxt = elite ? `★ ${this.eliteName} · Niv.${this.displayLevel}` : `Niv.${this.displayLevel}`
     this.infoText = scene.add
       .text(x, y - this.barOffsetY - 4, labelTxt, {
         fontFamily: 'monospace',
@@ -352,6 +359,18 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.hpHideAt = this.scene.time.now + 2500 // se cache 2,5 s après le dernier coup
   }
 
+  /** Retire le monstre SANS récompense (ni loot ni XP ni respawn) — ex. mobs évacués d'une arène de boss. */
+  despawn() {
+    this.hpBarBg.destroy()
+    this.hpBarFg.destroy()
+    this.infoText.destroy()
+    this.aura?.destroy()
+    this.segs?.forEach((s) => s.destroy())
+    this.wingL?.destroy()
+    this.wingR?.destroy()
+    this.destroy()
+  }
+
   die() {
     this.scene.onMonsterKilled?.(this)
     this.hpBarBg.destroy()
@@ -392,9 +411,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     let aimX
     let aimY
 
+    // biome courant du monstre (sert à la zone sûre prairie ET au verrou de biome ci-dessous)
+    const curBiome = this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16))
     // la prairie est une zone sûre : un monstre NORMAL qui y pénètre abandonne et rentre.
     // Les BOSS sont implacables (aucune fuite possible) -> ils ignorent la zone sûre.
-    if (!this.isBoss && this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16)) === 'prairie') {
+    if (!this.isBoss && curBiome === 'prairie') {
       this.aggroed = false
       this.returning = true
     }
@@ -406,10 +427,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       if (homeDist <= HOME_RADIUS) this.returning = false // rentré : reprend la patrouille
     } else if (this.aggroed) {
       // BOSS = IMPLACABLE : une fois engagé, il poursuit SANS JAMAIS lâcher (aucune fuite possible).
-      // Monstre normal : abandonne après LEASH_RANGE depuis l'endroit où il a repéré le joueur.
+      // Monstre normal : abandonne après LEASH_RANGE, OU dès qu'il QUITTE son biome d'origine
+      // (pas de poursuite d'un biome à l'autre -> chaque zone garde ses mobs).
       if (!this.isBoss) {
         const leashDist = Math.hypot(this.leashX - this.x, this.leashY - this.y)
-        if (leashDist > this.leashRange) {
+        if (leashDist > this.leashRange || curBiome !== this.homeBiome) {
           this.aggroed = false
           this.returning = true // a lâché le joueur : rentre au spawn
         }

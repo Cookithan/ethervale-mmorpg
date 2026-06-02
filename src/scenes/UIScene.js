@@ -291,12 +291,14 @@ export default class UIScene extends Phaser.Scene {
     }
     // BOSS DE RAID = intuable solo : on l'annonce clairement (icône crâne + couleur violette + sous-titre).
     const raid = boss.isRaid
-    this.bossNameText.setText(`${raid ? '☠' : '⚔'} ${boss.displayName} · Niv.${boss.level}`)
+    this.bossNameText.setText(`${raid ? '☠' : '⚔'} ${boss.displayName} · Niv.${boss.displayLevel ?? boss.level}`)
     this.bossNameText.setColor(raid ? '#d6a3ff' : '#ffd86b')
     this.bossHpBar.setFillStyle(raid ? 0x6a2bb5 : 0x9b1b1b)
     const ratio = Phaser.Math.Clamp(boss.hp / boss.maxHp, 0, 1)
     this.bossHpBar.setSize(this.bossBarW * ratio, 12)
-    this.bossHpText.setText(raid ? 'RAID · groupe requis' : `${Math.max(0, Math.round(boss.hp))} / ${boss.maxHp}`)
+    // on affiche TOUJOURS les PV (le joueur voit combien il a tapé) ; le raid garde son avertissement
+    const hpTxt = `${Math.max(0, Math.round(boss.hp))} / ${boss.maxHp}`
+    this.bossHpText.setText(raid ? `RAID · groupe requis · ${hpTxt}` : hpTxt)
   }
 
   rebuildHud() {
