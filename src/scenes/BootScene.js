@@ -101,6 +101,15 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('boss_giantslime_hit', 'assets/boss/giantslime_hit.png', { frameWidth: 62, frameHeight: 52 })
     this.load.spritesheet('boss_giantspirit_idle', 'assets/boss/giantspirit_idle.png', { frameWidth: 50, frameHeight: 50 })
     this.load.spritesheet('boss_giantspirit_hit', 'assets/boss/giantspirit_hit.png', { frameWidth: 50, frameHeight: 50 })
+    // lot 2 (3e boss/zone : variantes)
+    this.load.spritesheet('boss_redsamurai_idle', 'assets/boss/redsamurai_idle.png', { frameWidth: 96, frameHeight: 48 })
+    this.load.spritesheet('boss_redsamurai_walk', 'assets/boss/redsamurai_walk.png', { frameWidth: 96, frameHeight: 48 })
+    this.load.spritesheet('boss_redsamurai_hit', 'assets/boss/redsamurai_hit.png', { frameWidth: 96, frameHeight: 48 })
+    this.load.spritesheet('boss_tengured_idle', 'assets/boss/tengured_idle.png', { frameWidth: 82, frameHeight: 82 })
+    this.load.spritesheet('boss_tengured_walk', 'assets/boss/tengured_walk.png', { frameWidth: 82, frameHeight: 82 })
+    this.load.spritesheet('boss_tengured_hit', 'assets/boss/tengured_hit.png', { frameWidth: 82, frameHeight: 82 })
+    this.load.spritesheet('boss_giantslime2_idle', 'assets/boss/giantslime2_idle.png', { frameWidth: 62, frameHeight: 52 })
+    this.load.spritesheet('boss_giantslime2_hit', 'assets/boss/giantslime2_hit.png', { frameWidth: 62, frameHeight: 52 })
     // boss RAID île maudite : Dragon BLEU SEGMENTÉ (images uniques assemblées en chaîne par le code)
     this.load.image('boss_dragon_head', 'assets/boss/dragon_head.png')
     this.load.image('boss_dragon_body1', 'assets/boss/dragon_body1.png')
@@ -546,6 +555,9 @@ export default class BootScene extends Phaser.Scene {
       giantbamboo: { idle: 6, walk: 12, hit: 4 },
       giantslime: { idle: 5, hit: 5 }, // pas de walk
       giantspirit: { idle: 5, hit: 3 }, // pas de walk
+      redsamurai: { idle: 6, walk: 6, hit: 4 },
+      tengured: { idle: 6, walk: 10, hit: 8 },
+      giantslime2: { idle: 5, hit: 5 }, // pas de walk
     }
     for (const [rig, states] of Object.entries(rigs)) {
       for (const [state, count] of Object.entries(states)) {

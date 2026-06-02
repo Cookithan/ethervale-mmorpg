@@ -103,6 +103,21 @@ export const MONSTER_TYPES = {
     hp: 82, speed: 30, damage: 18, xp: 38, aggro: 120, scale: 2.0, body: { w: 22, h: 30 },
     tier: 'epic', loot: { gold: [8, 15] }, name: 'Âme damnée',
   },
+  redsamurai: {
+    key: 'boss_redsamurai_idle', rig: 'redsamurai', face: 'face_redsamurai',
+    hp: 88, speed: 32, damage: 19, xp: 38, aggro: 95, scale: 1.5, body: { w: 40, h: 28 },
+    tier: 'epic', loot: { gold: [8, 15] }, name: 'Samouraï Rouge',
+  },
+  tengured: {
+    key: 'boss_tengured_idle', rig: 'tengured', face: 'face_tengured',
+    hp: 84, speed: 36, damage: 18, xp: 38, aggro: 95, scale: 1.7, body: { w: 26, h: 32 },
+    tier: 'epic', loot: { gold: [8, 15] }, name: 'Tengu Rouge',
+  },
+  giantslime2: {
+    key: 'boss_giantslime2_idle', rig: 'giantslime2', face: 'face_giantslime2',
+    hp: 80, speed: 22, damage: 16, xp: 36, aggro: 105, scale: 1.9, body: { w: 34, h: 26 },
+    tier: 'epic', loot: { gold: [7, 14] }, name: 'Gelée ancienne',
+  },
 
   // --- BOSS DE RAID SEGMENTÉ (tête + chaîne de corps qui ondule) ---
   dragonblue: {
@@ -116,6 +131,7 @@ const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)
 const LEASH_RANGE = 200 // distance parcourue depuis l'endroit où elle t'a repéré avant d'abandonner (px)
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
 const PATROL_RADIUS = 80 // rayon autour duquel un BOSS rôde/garde son repaire avant d'être provoqué (px)
+const BOSS_GUARD_LEASH = 220 // tant que le combat n'a PAS commencé, le boss ne poursuit pas au-delà (revient au repaire)
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
 // (le scaling de niveau est désormais exponentiel ×1.5/niv, calculé directement dans le constructeur)
@@ -206,6 +222,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.repickAt = 0
     this.knockbackUntil = 0 // fenêtre de RECUL : l'IA ne reprend pas la main tant qu'elle dure
     this.aggroed = false // poursuit-il le joueur en ce moment ?
+    this.combatEngaged = false // BOSS : le combat a-t-il VRAIMENT commencé (joueur l'a tapé / touché) -> scelle l'arène
     this.returning = false // rentre-t-il à son spawn après avoir abandonné ? (ignore le joueur)
     this.leashX = x // ancre posée au moment où il repère le joueur (origine du leash)
     this.leashY = y
@@ -360,7 +377,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     })
     this.showHpBar()
     // boss à rig : joue l'anim "hit" (verrouille l'état le temps de l'anim) -> réaction visible aux coups
-    if (this.rig && this.hp > 0) {
+    if (this.rig && this.hp > 0 && this.scene.anims.exists(`boss-${this.rig}-hit`)) {
       this.rigState = null // force le rejeu même si on était déjà sur un autre état
       this.anims.play(`boss-${this.rig}-hit`)
       this.rigState = 'hit'
@@ -447,15 +464,18 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.returning) {
       if (homeDist <= HOME_RADIUS) this.returning = false // rentré : reprend la patrouille
     } else if (this.aggroed) {
-      // BOSS = IMPLACABLE : une fois engagé, il poursuit SANS JAMAIS lâcher (aucune fuite possible).
-      // Monstre normal : abandonne après LEASH_RANGE, OU dès qu'il QUITTE son biome d'origine
-      // (pas de poursuite d'un biome à l'autre -> chaque zone garde ses mobs).
+      // Monstre normal : abandonne après LEASH_RANGE, OU dès qu'il QUITTE son biome d'origine.
       if (!this.isBoss) {
         const leashDist = Math.hypot(this.leashX - this.x, this.leashY - this.y)
         if (leashDist > this.leashRange || curBiome !== this.homeBiome) {
           this.aggroed = false
           this.returning = true // a lâché le joueur : rentre au spawn
         }
+      } else if (!this.combatEngaged && homeDist > BOSS_GUARD_LEASH) {
+        // BOSS pas encore en COMBAT : il garde son repaire (te poursuit un peu puis revient) -> tu peux
+        // l'observer/repartir. Une fois TAPÉ/TOUCHÉ (combatEngaged), il devient IMPLACABLE (aucune fuite).
+        this.aggroed = false
+        this.returning = true
       }
     } else if (dist < this.aggroRange) {
       // s'engage parce que le joueur est venu TROP PRÈS (l'engagement par coup reçu = takeDamage)

@@ -140,14 +140,17 @@ const BIOME_BOSSES = {
   forest: [
     { type: 'samurai', name: 'Gankai, le Samouraï Sylvestre' }, // RAID (intuable solo)
     { type: 'giantbamboo', name: 'Sylvas, le Colosse de Bambou' }, // solo
+    { type: 'redsamurai', name: 'Akaoni, le Samouraï Rouge' }, // solo
   ],
   desert: [
     { type: 'democyclop', name: 'Gorehk, le Cyclope des Sables' }, // solo
     { type: 'democyclop2', name: 'Vorrn, le Cyclope Ancien' }, // solo
+    { type: 'tengured', name: 'Fujin, le Tengu Rouge' }, // solo
   ],
   snow: [
     { type: 'tengublue', name: 'Raijin, le Tengu des Glaces' }, // RAID (intuable solo)
     { type: 'giantslime', name: 'Givralk, la Gelée Polaire' }, // solo
+    { type: 'giantslime2', name: 'Cryos, la Gelée Ancienne' }, // solo
   ],
   cursed: [
     { type: 'giantflam', name: 'Dargoth, Seigneur Maudit' }, // solo (île maudite verrouillée)
@@ -316,6 +319,7 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
     this.physics.add.collider(this.monsters, this.monsters)
     this.physics.add.overlap(this.player, this.monsters, (pl, mon) => {
+      if (mon.isBoss) mon.combatEngaged = true // TOUCHER un boss (contact) déclenche son combat -> scelle l'arène
       if (mon.tryBite(pl, this.time.now)) {
         this.flashHurt()
         if (mon.isBoss) this.bossAttackFx(mon) // retour visuel net quand un BOSS frappe
@@ -1811,44 +1815,57 @@ export default class GameScene extends Phaser.Scene {
   computeBossLairs() {
     this.bossLairs = {}
     this.bossDefs = BIOME_BOSSES // exposé pour l'UI (noms des boss sur la carte du monde)
-    // marge de TERRE autour (≈5 tuiles dans toutes les directions) -> l'arène ne tombe pas dans l'eau
+    // marge de TERRE autour (≈5 tuiles) -> l'arène ne tombe pas dans l'eau
     const inland = (tx, ty) => {
       for (const [dx, dy] of [[-5, 0], [5, 0], [0, -5], [0, 5], [-4, -4], [4, -4], [-4, 4], [4, 4]]) {
         if (this.isOcean(tx + dx, ty + dy)) return false
       }
       return true
     }
-    // candidats de repaire par biome : terre ferme, PAS collé au village (mais pas forcément au plus loin)
+    // INTÉRIEUR du biome : entouré du même biome à ≈6 tuiles -> loin des FRONTIÈRES (donc des rivières/gués)
+    const interior = (tx, ty, b) => {
+      for (const [dx, dy] of [[-6, 0], [6, 0], [0, -6], [0, 6], [-5, -5], [5, -5], [-5, 5], [5, 5]]) {
+        if (this.biomeAt(tx + dx, ty + dy) !== b) return false
+      }
+      return true
+    }
+    // candidats de repaire par biome : intérieur de zone, terre ferme, PAS collé au village
     const cands = {}
-    for (let ty = 8; ty < MAP_H - 8; ty += 2) {
-      for (let tx = 8; tx < MAP_W - 8; tx += 2) {
+    for (let ty = 8; ty < MAP_H - 8; ty += 3) {
+      for (let tx = 8; tx < MAP_W - 8; tx += 3) {
+        if (Math.hypot(tx - this.cx, ty - this.cy) < 36) continue // pas à côté du village
         if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
         const b = this.biomeAt(tx, ty)
         if (!BIOME_BOSSES[b] || b === 'cursed') continue // cursed = île, géré à part
-        if (Math.hypot(tx - this.cx, ty - this.cy) < 36) continue // pas à côté du village
-        if (!inland(tx, ty)) continue
+        if (!inland(tx, ty) || !interior(tx, ty, b)) continue
         ;(cands[b] || (cands[b] = [])).push({ tx, ty })
       }
     }
+    const MIN_SEP = 28 // distance mini (tuiles) entre 2 repaires, TOUTES ZONES CONFONDUES (jamais côte à côte)
+    const placed = [] // tous les repaires déjà posés -> séparation globale
+    const farFromPlaced = (c) => placed.every((p) => Math.hypot(p.tx - c.tx, p.ty - c.ty) >= MIN_SEP)
     for (const b of Object.keys(BIOME_BOSSES)) {
       if (b === 'cursed') continue
       const need = BIOME_BOSSES[b].length
       const list = cands[b] || []
       if (!list.length) { this.bossLairs[b] = []; continue }
-      // ÉTALEMENT (farthest-point sampling) : 1er repaire à mi-distance du village, puis chaque suivant
-      // = le candidat le PLUS LOIN de tous les repaires déjà posés -> boss dispersés dans toute la zone.
       list.sort((a, z) => Math.hypot(a.tx - this.cx, a.ty - this.cy) - Math.hypot(z.tx - this.cx, z.ty - this.cy))
-      const picks = [list[Math.floor(list.length / 2)]]
+      const picks = []
       while (picks.length < need) {
-        let bestC = null
-        let bestMin = -1
-        for (const c of list) {
-          let m = Infinity
-          for (const p of picks) m = Math.min(m, Math.hypot(p.tx - c.tx, p.ty - c.ty))
-          if (m > bestMin) { bestMin = m; bestC = c }
+        const valid = list.filter(farFromPlaced) // assez loin de TOUS les repaires déjà posés
+        if (!valid.length) break
+        // 1er repaire = médian en distance au village ; suivants = le plus loin des repaires de la zone
+        let bestC = picks.length === 0 ? valid[Math.floor(valid.length / 2)] : null
+        if (bestC === null) {
+          let bestMin = -1
+          for (const c of valid) {
+            let m = Infinity
+            for (const p of picks) m = Math.min(m, Math.hypot(p.tx - c.tx, p.ty - c.ty))
+            if (m > bestMin) { bestMin = m; bestC = c }
+          }
         }
-        if (!bestC) break
         picks.push(bestC)
+        placed.push(bestC)
       }
       this.bossLairs[b] = picks.map((p) => ({ tx: p.tx, ty: p.ty }))
     }
@@ -1859,7 +1876,7 @@ export default class GameScene extends Phaser.Scene {
     this.bossLairs.cursed = []
     for (let i = 0; i < cn; i++) {
       const a = (i / cn) * Math.PI * 2
-      this.bossLairs.cursed.push({ tx: Math.round(ccx + Math.cos(a) * 11), ty: Math.round(ccy + Math.sin(a) * 11) })
+      this.bossLairs.cursed.push({ tx: Math.round(ccx + Math.cos(a) * 14), ty: Math.round(ccy + Math.sin(a) * 14) })
     }
   }
 
@@ -2003,11 +2020,10 @@ export default class GameScene extends Phaser.Scene {
       }
       return
     }
-    // pas encore verrouillée : dès qu'un boss vivant est ENGAGÉ (aggro), l'arène se scelle.
-    // (Avant : sur la proximité du repaire -> le boss venait à toi et tu pouvais l'éloigner sans
-    //  jamais déclencher = fuite possible. Maintenant : engager = piégé, pas de fuite.)
+    // pas encore verrouillée : l'arène se scelle quand le COMBAT commence vraiment (le joueur a TAPÉ le
+    // boss ou s'est fait TOUCHER). Pas sur la simple approche -> on peut s'avancer, observer, repartir.
     for (const b of this.bosses || []) {
-      if (b.active && b.hp > 0 && b.aggroed) {
+      if (b.active && b.hp > 0 && b.combatEngaged) {
         this.lockArena(b)
         break
       }
@@ -2611,6 +2627,7 @@ export default class GameScene extends Phaser.Scene {
       mon.setVelocity(Math.cos(a) * knock, Math.sin(a) * knock)
       mon.knockbackUntil = this.time.now + 220 // l'IA ne reprend pas la main pendant le recul
     }
+    if (mon.isBoss) mon.combatEngaged = true // TAPER un boss déclenche son combat (-> scelle l'arène)
     mon.takeDamage(Math.round(amount))
   }
 
