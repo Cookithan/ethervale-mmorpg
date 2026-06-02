@@ -303,7 +303,10 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
     this.physics.add.collider(this.monsters, this.monsters)
     this.physics.add.overlap(this.player, this.monsters, (pl, mon) => {
-      if (mon.tryBite(pl, this.time.now)) this.flashHurt()
+      if (mon.tryBite(pl, this.time.now)) {
+        this.flashHurt()
+        if (mon.isBoss) this.bossAttackFx(mon) // retour visuel net quand un BOSS frappe
+      }
     })
 
     // --- projectiles (attaque à distance) ---
@@ -367,6 +370,7 @@ export default class GameScene extends Phaser.Scene {
           cam.centerOn(vX, vY)
         },
       })
+      this.spawnSeaDragon() // dragon qui rôde au large -> visible lors du dézoom de l'accueil
     } else {
       cam.useBounds = true // (l'instance peut avoir été utilisée en preview où on l'a mis à false)
       // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
@@ -534,6 +538,7 @@ export default class GameScene extends Phaser.Scene {
       this.wanderEntity(npc._w, time, dt)
       if (npc.label) npc.label.setPosition(npc.sprite.x, npc.sprite.y - 14)
     }
+    this.seaDragon?.update(time) // le dragon rôde au large aussi à l'accueil (visible au dézoom)
   }
 
   /** IA de balade légère : marche vers une cible LIBRE, pause, recommence (sans traverser le décor). */
@@ -1873,6 +1878,48 @@ export default class GameScene extends Phaser.Scene {
   spawnBosses() {
     this.bosses = []
     for (const biome of Object.keys(BIOME_BOSSES)) this.spawnBoss(biome)
+    this.spawnSeaDragon() // Dragon des Abysses : rôde dans l'océan autour de l'île (ambiance, pas un boss classique)
+  }
+
+  /** Construit une boucle de points qui ÉPOUSE la côte (juste dans l'océan) : pour chaque angle, on
+   *  marche du centre de l'île vers l'extérieur jusqu'à la 1re tuile d'océan = la côte, puis on décale
+   *  de SEA_OFFSET tuiles dans l'eau. -> le dragon longe la côte sans jamais monter sur la terre. */
+  buildSeaPath() {
+    const cx = this.icx
+    const cy = this.icy
+    const N = 240 // résolution de la boucle
+    const SEA_OFFSET = 3 // tuiles au large de la côte (proche du rivage)
+    const maxR = Math.max(ISLAND_RX, ISLAND_RY) + 30
+    const pts = []
+    for (let k = 0; k < N; k++) {
+      const a = (k / N) * Math.PI * 2
+      const ca = Math.cos(a)
+      const sa = Math.sin(a)
+      let coastR = maxR
+      for (let r = 6; r <= maxR; r++) {
+        if (this.isOcean(Math.round(cx + r * ca), Math.round(cy + r * sa))) { coastR = r; break }
+      }
+      const r = coastR + SEA_OFFSET
+      pts.push({ x: (cx + r * ca) * TILE + 8, y: (cy + r * sa) * TILE + 8 })
+    }
+    return pts
+  }
+
+  /** Crée le Dragon de mer d'AMBIANCE : il LONGE la côte sans fin (chemin précalculé dans l'océan ;
+   *  nage = ignore la collision ; aucune interaction tant que la nage n'existe pas). */
+  spawnSeaDragon() {
+    const path = this.buildSeaPath()
+    // espacement des segments voulu (~28 px) converti en indices de chemin (selon l'écart moyen des points)
+    let len = 0
+    for (let i = 0; i < path.length; i++) {
+      const a = path[i]
+      const b = path[(i + 1) % path.length]
+      len += Math.hypot(b.x - a.x, b.y - a.y)
+    }
+    const segGap = 28 / (len / path.length)
+    this.seaDragon = new Monster(this, path[0].x, path[0].y, 'dragonblue', {
+      seaPatrol: { path, speed: path.length / 70, segGap }, // ~70 s pour un tour complet
+    })
   }
 
   /** (Re)crée le boss d'un biome à son repaire (au fond de la zone), re-calé sur tuile libre. */
@@ -1920,23 +1967,38 @@ export default class GameScene extends Phaser.Scene {
       }
       return
     }
-    // pas encore verrouillée : s'approcher TROP PRÈS du repaire d'un boss vivant scelle l'arène
+    // pas encore verrouillée : dès qu'un boss vivant est ENGAGÉ (aggro), l'arène se scelle.
+    // (Avant : sur la proximité du repaire -> le boss venait à toi et tu pouvais l'éloigner sans
+    //  jamais déclencher = fuite possible. Maintenant : engager = piégé, pas de fuite.)
     for (const b of this.bosses || []) {
-      const cx = b.arenaCx ?? b.x
-      const cy = b.arenaCy ?? b.y
-      if (b.active && b.hp > 0 && this.dist(p.x, p.y, cx, cy) < ARENA_TRIGGER) {
+      if (b.active && b.hp > 0 && b.aggroed) {
         this.lockArena(b)
         break
       }
     }
   }
 
+  /** Effet visuel quand un BOSS frappe le joueur : éclat de tranche + secousse + son d'impact +
+   *  bref "coup" du boss vers le joueur (lunge tween). Marche pour tous les boss (rig/dragon/mob). */
+  bossAttackFx(boss) {
+    const p = this.player
+    const col = boss.isRaid ? 0x6fb0ff : 0xff7a3a // raid = bleu glacial, sinon orange
+    const fx = this.add.sprite(p.x, p.y - 4, 'fx_circslash').setDepth(p.y + 60).setScale(1.9).setTint(col)
+    fx.play('fx-circslash')
+    fx.once('animationcomplete', () => fx.destroy())
+    this.cameras.main.shake(130, 0.006)
+    Audio.sfx(SFX.hit, { vol: 0.7, detune: -200 }) // impact lourd
+  }
+
   /** Scelle l'arène autour du REPAIRE du boss (centre fixe = clairière dégagée d'arbres). */
   lockArena(boss) {
     boss.engage() // le boss s'engage définitivement
-    const r = boss.arenaR ?? ARENA_RADIUS
     const cx = boss.arenaCx ?? boss.x
     const cy = boss.arenaCy ?? boss.y
+    // rayon : au moins ARENA_RADIUS, mais agrandi pour ENGLOBER le joueur au moment du lock
+    // (il peut avoir aggro le boss depuis le bord/à distance) -> jamais piégé DEHORS du cercle.
+    const base = boss.arenaR ?? ARENA_RADIUS
+    const r = Phaser.Math.Clamp(this.dist(this.player.x, this.player.y, cx, cy) + 28, base, 360)
     const col = boss.isRaid ? 0x8b2fd6 : 0xd23a3a // raid = violet, boss solo = rouge
     const fill = this.add.circle(cx, cy, r, col, 0.07).setDepth(1) // sol scellé teinté
     const ring = this.add.circle(cx, cy, r, col, 0).setStrokeStyle(3, col, 0.9).setDepth(900000) // bord toujours visible
@@ -3043,6 +3105,7 @@ export default class GameScene extends Phaser.Scene {
       mon.update(time, p)
       mon.setDepth(mon.y)
     })
+    this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
 
     // barre de boss : on suit le boss engagé (en aggro, ou simplement proche du joueur).
     // HYSTÉRÉSIS : un boss DÉJÀ actif le reste jusqu'à 1,5× la portée -> pas de clignotement quand

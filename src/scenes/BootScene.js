@@ -90,6 +90,12 @@ export default class BootScene extends Phaser.Scene {
     // boss maudit : Seigneur de flamme (frames 50×50 : Idle 5, Hit 3 — PAS de walk)
     this.load.spritesheet('boss_giantflam_idle', 'assets/boss/giantflam_idle.png', { frameWidth: 50, frameHeight: 50 })
     this.load.spritesheet('boss_giantflam_hit', 'assets/boss/giantflam_hit.png', { frameWidth: 50, frameHeight: 50 })
+    // boss RAID île maudite : Dragon BLEU SEGMENTÉ (images uniques assemblées en chaîne par le code)
+    this.load.image('boss_dragon_head', 'assets/boss/dragon_head.png')
+    this.load.image('boss_dragon_body1', 'assets/boss/dragon_body1.png')
+    this.load.image('boss_dragon_body2', 'assets/boss/dragon_body2.png')
+    this.load.image('boss_dragon_bodyend', 'assets/boss/dragon_bodyend.png')
+    this.load.image('boss_dragon_wing', 'assets/boss/dragon_wing.png')
 
     // logo du menu (titre "NINJA ADVENTURE" extrait de la cover du pack)
     this.load.image('title_logo', 'assets/ui/title.png')

@@ -82,6 +82,13 @@ export const MONSTER_TYPES = {
     hp: 90, speed: 18, damage: 22, xp: 40, aggro: 120, scale: 2.2, body: { w: 24, h: 34 },
     tier: 'epic', loot: { gold: [8, 16] }, name: 'Seigneur de flamme',
   },
+
+  // --- BOSS DE RAID SEGMENTÉ (tête + chaîne de corps qui ondule) ---
+  dragonblue: {
+    key: 'boss_dragon_head', dragon: true, raid: true, face: 'face_dragon',
+    hp: 240, speed: 78, damage: 20, xp: 0, aggro: 100, scale: 1.3, body: { w: 20, h: 20 },
+    tier: 'epic', loot: { gold: [0, 0] }, name: 'Dragon des Abysses',
+  },
 }
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)
@@ -100,6 +107,11 @@ const BOSS_SCALE_MUL = 2.2 // taille imposante (uniquement les boss = MONSTRES a
 // Contenu verrouillé tant que le multijoueur (Phase 4) n'existe pas : on peut les approcher, pas les vaincre.
 const RAID_HP_MUL = 28 // × le PV déjà scalé par niveau (=> dizaines de milliers de PV)
 const RAID_DMG_MUL = 3 // chaque coup enlève une énorme part de vie -> facetank = mort
+
+// DRAGON SEGMENTÉ : la tête (= le Monster) tire une chaîne de segments. Chaque segment est CONTRAINT
+// en continu à distance fixe derrière celui qui le précède (suivi fluide, pas de saut de point).
+const DRAGON_BODY = ['body1', 'body2', 'body1', 'body2', 'body1', 'body2', 'body1', 'body2', 'body1', 'bodyend'] // long serpent crème/bleu + queue
+const DRAGON_SEG_DIST = 20 // espacement (px, avant scale) entre 2 segments
 
 /**
  * Monster — IA simple : patrouille aléatoire, puis poursuite si le joueur entre
@@ -121,6 +133,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.elite = elite
     this.isBoss = boss
     this.rig = def.rig ?? null // boss à sprites dédiés (anims idle/walk/hit) au lieu des anims directionnelles
+    this.dragon = !!def.dragon // boss SEGMENTÉ (tête + chaîne de corps qui ondule) -> rendu custom
+    this.seaPatrol = opts.seaPatrol ?? null // dragon de mer d'AMBIANCE : orbite autour de l'île, sans interaction
     this.isRaid = !!def.raid // boss de raid = intuable solo (PV-mur + dégâts qui écrasent)
     this.eliteName = opts.name ?? null
 
@@ -141,18 +155,20 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
     // taille : les boss à sprite dédié sont DÉJÀ grands (scale ~1) ; seuls les boss = monstres
     // agrandis prennent BOSS_SCALE_MUL.
-    const s = (def.scale ?? 1) * (this.rig ? 1 : boss ? BOSS_SCALE_MUL : elite ? 1.4 : 1)
+    const dedicated = this.rig || this.dragon // sprite(s) dédié(s) -> on n'applique PAS BOSS_SCALE_MUL
+    const s = (def.scale ?? 1) * (dedicated ? 1 : boss ? BOSS_SCALE_MUL : elite ? 1.4 : 1)
     this.setScale(s)
     this.barOffsetY = Math.round(9 * s + 3) // barre de vie remontée pour les gros
 
-    this.setCollideWorldBounds(true)
-    // hitbox : boss à rig = body dédié (en px de texture) ; sinon 11x11 proportionnel au scale.
-    if (this.rig && def.body) this.body.setSize(def.body.w, def.body.h, true)
+    this.setCollideWorldBounds(!this.seaPatrol) // le dragon de mer va dans l'océan -> pas de clamp aux bords
+    // hitbox : boss à sprite dédié = body dédié (en px de texture) ; sinon 11x11 proportionnel au scale.
+    if (dedicated && def.body) this.body.setSize(def.body.w, def.body.h, true)
     else this.body.setSize(11, 11, true)
     this.facing = 'down'
     this.rigState = null // état d'anim courant du rig (idle/walk/hit)
     this.rigLockUntil = 0 // pendant l'anim "hit" on ne change pas d'état
-    if (this.rig) this.playRig('idle')
+    if (this.dragon) this.setupDragon()
+    else if (this.rig) this.playRig('idle')
     else this.anims.play(`mon-${typeKey}-down`, true)
 
     // teinte dorée permanente pour les élites "shiny"
@@ -195,10 +211,10 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // (donc on masque sa barre/étiquette au-dessus de la tête pour éviter le doublon).
     if (boss) {
       // largeur de l'aura calée sur la taille AFFICHÉE du boss ; raid = bleu glacial, sinon rouge sang.
-      const auraW = this.rig ? this.displayWidth * 0.7 : 34 * s
-      const auraH = this.rig ? this.displayHeight * 0.22 : 13 * s
+      const auraW = dedicated ? this.displayWidth * 0.7 : 34 * s
+      const auraH = dedicated ? this.displayHeight * 0.22 : 13 * s
       const auraColor = this.isRaid ? 0x2a6bff : 0x8a0f12
-      this.auraY = this.rig ? this.displayHeight * 0.36 : 6 // pieds du boss
+      this.auraY = dedicated ? this.displayHeight * 0.36 : 6 // pieds du boss
       this.aura = scene.add.ellipse(x, y + this.auraY, auraW, auraH, auraColor, 0.34).setDepth(0)
       scene.tweens.add({ targets: this.aura, scaleX: 1.3, scaleY: 1.3, alpha: 0.18, duration: 750, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
       this.hpBarBg.setVisible(false)
@@ -226,8 +242,86 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.anims.play(finalKey, true)
   }
 
+  /** Crée la chaîne de segments + les ailes du dragon. La tête (=`this`) reste l'entité de combat. */
+  setupDragon() {
+    const sc = this.scaleX
+    this.segDist = DRAGON_SEG_DIST * sc
+    this.setDepth(this.y)
+    // segments alignés DERRIÈRE la tête (qui regarde par défaut vers le bas -> corps au-dessus au départ)
+    this.segs = DRAGON_BODY.map((p, i) =>
+      this.scene.add.image(this.x, this.y - (i + 1) * this.segDist, `boss_dragon_${p}`).setScale(sc).setDepth(this.y - 1 - i)
+    )
+    // 2 ailes flanquant la tête (miroir via le SIGNE du scaleX), battent en vol
+    this.wingL = this.scene.add.image(this.x, this.y, 'boss_dragon_wing').setScale(sc).setDepth(this.y - 0.5)
+    this.wingL.wingSign = 1
+    this.wingR = this.scene.add.image(this.x, this.y, 'boss_dragon_wing').setScale(sc).setDepth(this.y - 0.5)
+    this.wingR.wingSign = -1
+    this.updateDragon(0)
+  }
+
+  /** Dragon de MER d'ambiance : suit une orbite elliptique au large de l'île (rôde sans fin),
+   *  tête orientée dans le sens de la nage. Aucune interaction (ni aggro, ni dégâts, ni arène). */
+  updateSeaPatrol(time) {
+    const sp = this.seaPatrol
+    const path = sp.path // boucle de points qui ÉPOUSE la côte (dans l'océan) -> ne traverse pas la terre
+    const n = path.length
+    // point + direction du chemin à un index FRACTIONNAIRE (interpolé, bouclé)
+    const at = (ff) => {
+      const f = ((ff % n) + n) % n
+      const i = Math.floor(f)
+      const t = f - i
+      const a = path[i]
+      const b = path[(i + 1) % n]
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, a: Math.atan2(b.y - a.y, b.x - a.x) }
+    }
+    const headF = (time / 1000) * sp.speed // avance le long du chemin
+    const h = at(headF)
+    this.rotation = h.a - Math.PI / 2 // tête (défaut bas) vers le sens de nage
+    this.setPosition(h.x, h.y).setDepth(h.y)
+    // TOUT le corps suit le CHEMIN derrière la tête -> le serpent entier longe la côte (pas de corde sur terre)
+    for (let i = 0; i < this.segs.length; i++) {
+      const pt = at(headF - (i + 1) * sp.segGap)
+      this.segs[i].setPosition(pt.x, pt.y).setDepth(h.y - 1 - i).setRotation(pt.a - Math.PI / 2)
+    }
+    const beat = 1 + Math.sin(time / 80) * 0.22
+    for (const w of [this.wingL, this.wingR]) {
+      if (!w) continue
+      w.setPosition(h.x, h.y).setRotation(this.rotation).setDepth(h.y - 0.5)
+      w.scaleX = w.wingSign * this.scaleX * beat
+    }
+  }
+
+  /** Suivi FLUIDE : chaque segment est tiré à distance fixe derrière celui qui le précède (tête en 1er). */
+  updateDragon(time) {
+    const v = this.body.velocity
+    if (Math.abs(v.x) > 1 || Math.abs(v.y) > 1) this.rotation = Math.atan2(v.y, v.x) - Math.PI / 2 // tête face au mouvement (défaut = bas)
+    let lx = this.x // position du "leader" (segment précédent / tête)
+    let ly = this.y
+    for (let i = 0; i < this.segs.length; i++) {
+      const seg = this.segs[i]
+      let dx = seg.x - lx
+      let dy = seg.y - ly
+      let d = Math.hypot(dx, dy)
+      if (d < 0.001) { dx = 0; dy = this.segDist; d = this.segDist } // cas dégénéré -> sous le leader
+      const nx = lx + (dx / d) * this.segDist // placé pile à segDist derrière le leader
+      const ny = ly + (dy / d) * this.segDist
+      seg.setPosition(nx, ny).setDepth(this.y - 1 - i) // tout le corps derrière la tête, ordonné
+      seg.setRotation(Math.atan2(ly - ny, lx - nx) - Math.PI / 2) // orienté vers le leader
+      lx = nx
+      ly = ny
+    }
+    // ailes : sur la tête, suivent sa rotation, battent (oscillation de la largeur), DERRIÈRE la tête
+    const beat = 1 + Math.sin(time / 80) * 0.22
+    for (const w of [this.wingL, this.wingR]) {
+      if (!w) continue
+      w.setPosition(this.x, this.y).setRotation(this.rotation).setDepth(this.y - 0.5)
+      w.scaleX = w.wingSign * this.scaleX * beat // signe = côté (miroir), |valeur| = battement
+    }
+  }
+
   /** Inflige des dégâts au monstre ; renvoie true s'il meurt. */
   takeDamage(amount) {
+    if (this.seaPatrol) return false // dragon de mer d'ambiance : intouchable tant que la nage n'existe pas
     this.hp -= amount
     this.engage() // frappé = engagé (un boss ne lâchera plus jamais ; un monstre normal contre-attaque)
     this.setTintFill(0xffffff)
@@ -264,11 +358,18 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.hpBarFg.destroy()
     this.infoText.destroy()
     this.aura?.destroy()
+    this.segs?.forEach((s) => s.destroy()) // dragon : détruire la chaîne de segments + les ailes
+    this.wingL?.destroy()
+    this.wingR?.destroy()
     this.destroy()
   }
 
   update(time, player) {
     if (!this.active) return
+    if (this.seaPatrol) {
+      this.updateSeaPatrol(time)
+      return
+    }
     // FENÊTRE DE RECUL : on laisse la vélocité du knockback agir (légèrement amortie) sans que l'IA
     // ne reprenne le contrôle -> le coup repousse VRAIMENT le monstre, qui se replace ensuite.
     if (time < this.knockbackUntil) {
@@ -354,7 +455,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       aimY = this.wander.y
     }
 
-    this.updateFacing(aimX, aimY, time)
+    if (this.dragon) this.updateDragon(time)
+    else this.updateFacing(aimX, aimY, time)
     if (this.isBoss && this.aura) {
       this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)) // l'aura suit le boss
       this.aura.setDepth(this.y - 1)
