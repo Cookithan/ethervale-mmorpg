@@ -119,6 +119,32 @@ export const MONSTER_TYPES = {
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Gelée ancienne',
   },
 
+  // --- BOSS CÔTIER À DISTANCE (tire des orbes que le joueur ESQUIVE ; mêlée faible -> garde tes distances ou approche) ---
+  // ranged = il télégraphe (anim shoot) puis lance un projectile vers le joueur. Lent et peu mobile : il garde son rivage.
+  squidred: {
+    key: 'boss_squidred_idle', rig: 'squidred', face: 'face_squidred',
+    hp: 96, speed: 18, damage: 12, xp: 42, aggro: 240, scale: 1.5, body: { w: 30, h: 30 },
+    ranged: true, shootRange: 230, shootCd: 1700, projSpeed: 155, projDamage: 16,
+    solid: true, // gros corps : le joueur ne le traverse pas (collision, en plus de l'overlap de morsure)
+    tier: 'epic', loot: { gold: [9, 17] }, name: 'Kraken',
+  },
+
+  giantfrog: {
+    key: 'boss_giantfrog_idle', rig: 'giantfrog', face: 'face_giantfrog',
+    hp: 76, speed: 30, damage: 16, xp: 34, aggro: 110, scale: 2.0, body: { w: 26, h: 22 },
+    tier: 'epic', loot: { gold: [6, 13] }, name: 'Crapaud colossal',
+  },
+  giantracoon: {
+    key: 'boss_giantracoon_idle', rig: 'giantracoon', face: 'face_giantracoon',
+    hp: 82, speed: 34, damage: 17, xp: 36, aggro: 100, scale: 1.7, body: { w: 30, h: 30 },
+    tier: 'epic', loot: { gold: [7, 14] }, name: 'Raton géant',
+  },
+  giantbamboo2: {
+    key: 'boss_giantbamboo2_idle', rig: 'giantbamboo2', face: 'face_giantbamboo2',
+    hp: 86, speed: 24, damage: 17, xp: 36, aggro: 110, scale: 1.8, body: { w: 28, h: 40 },
+    tier: 'epic', loot: { gold: [7, 15] }, name: 'Colosse de bambou ancien',
+  },
+
   // --- BOSS DE RAID SEGMENTÉ (tête + chaîne de corps qui ondule) ---
   dragonblue: {
     key: 'boss_dragon_head', dragon: true, raid: true, face: 'face_dragon',
@@ -172,6 +198,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.dragon = !!def.dragon // boss SEGMENTÉ (tête + chaîne de corps qui ondule) -> rendu custom
     this.seaPatrol = opts.seaPatrol ?? null // dragon de mer d'AMBIANCE : orbite autour de l'île, sans interaction
     this.isRaid = !!def.raid // boss de raid = intuable solo (PV-mur + dégâts qui écrasent)
+    this.ranged = !!def.ranged // boss à DISTANCE : télégraphe (anim shoot) puis tire un projectile à esquiver
     this.eliteName = opts.name ?? null
 
     // NIVEAU DE SCALING (≠ niveau AFFICHÉ) : ×1.5 PV ET dégâts par niveau (exponentiel).
@@ -207,9 +234,13 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // hitbox : boss à sprite dédié = body dédié (en px de texture) ; sinon 11x11 proportionnel au scale.
     if (dedicated && def.body) this.body.setSize(def.body.w, def.body.h, true)
     else this.body.setSize(11, 11, true)
+    if (def.solid) this.setImmovable(true) // gros corps : le joueur bute dessus sans le pousser
     this.facing = 'down'
     this.rigState = null // état d'anim courant du rig (idle/walk/hit)
     this.rigLockUntil = 0 // pendant l'anim "hit" on ne change pas d'état
+    this.rigShootUntil = 0 // boss à distance : fenêtre du télégraphe d'anim "shoot" (immobile pendant)
+    this.shootFireAt = 0 // instant où le projectile part réellement (vers la fin du télégraphe)
+    this.nextShootAt = 0 // cooldown entre deux tirs
     if (this.dragon) this.setupDragon()
     else if (this.rig) this.playRig('idle')
     else this.anims.play(`mon-${typeKey}-down`, true)
@@ -518,8 +549,30 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       aimY = this.wander.y
     }
 
+    // BOSS À DISTANCE : tire des orbes que le joueur esquive. Le projectile part vers la FIN du
+    // télégraphe (anim "shoot"), pas au début -> on a le temps de voir venir et de se décaler.
+    if (this.ranged && this.hp > 0) {
+      if (this.shootFireAt && time >= this.shootFireAt) {
+        this.shootFireAt = 0
+        this.scene.bossFireProjectile?.(this, player)
+      }
+      const busy = (this.rigState === 'hit' && time < this.rigLockUntil) || time < this.rigShootUntil
+      if (this.aggroed && !busy && this.shootFireAt === 0 && time >= this.nextShootAt && dist <= (def.shootRange ?? 230)) {
+        const dur = 5 / 12 * 1000 // durée de l'anim shoot (5 frames @ 12 fps)
+        this.nextShootAt = time + (def.shootCd ?? 1700)
+        this.rigShootUntil = time + dur
+        this.shootFireAt = time + dur * 0.72 // l'orbe part juste avant la fin du geste
+        this.setFlipX(dx < 0) // regarde sa cible
+        this.rigState = null
+        this.anims.play('boss-squidred-shoot')
+        this.rigState = 'shoot'
+      }
+    }
+    // immobile pendant le télégraphe de tir (il plante son geste)
+    if (time < this.rigShootUntil) this.setVelocity(0, 0)
+
     if (this.dragon) this.updateDragon(time)
-    else this.updateFacing(aimX, aimY, time)
+    else if (time >= this.rigShootUntil) this.updateFacing(aimX, aimY, time)
     if (this.isBoss && this.aura) {
       this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)) // l'aura suit le boss
       this.aura.setDepth(this.y - 1)

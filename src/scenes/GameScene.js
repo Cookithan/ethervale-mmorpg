@@ -141,6 +141,9 @@ const BIOME_BOSSES = {
     { type: 'samurai', name: 'Gankai, le Samouraï Sylvestre' }, // RAID (intuable solo)
     { type: 'giantbamboo', name: 'Sylvas, le Colosse de Bambou' }, // solo
     { type: 'redsamurai', name: 'Akaoni, le Samouraï Rouge' }, // solo
+    { type: 'giantbamboo2', name: 'Daïkon, le Bambou Ancien' }, // solo
+    { type: 'giantracoon', name: 'Tanu, le Raton Géant' }, // solo
+    { type: 'giantfrog', name: 'Gluk, le Crapaud Colossal' }, // solo
   ],
   desert: [
     { type: 'democyclop', name: 'Gorehk, le Cyclope des Sables' }, // solo
@@ -155,6 +158,10 @@ const BIOME_BOSSES = {
   cursed: [
     { type: 'giantflam', name: 'Dargoth, Seigneur Maudit' }, // solo (île maudite verrouillée)
     { type: 'giantspirit', name: 'Nyl, l’Âme Damnée' }, // solo
+  ],
+  // CÔTE : boss à DISTANCE qui surgit au bord de l'océan (repaire = tuile de terre au rivage, cf. computeBossLairs)
+  coast: [
+    { type: 'squidred', name: 'Vorakh, le Kraken des Récifs' }, // solo, tire des orbes à esquiver
   ],
 }
 // ÎLE MAUDITE (end-game) : GRANDE île détachée loin au SUD-OUEST, au-delà des mers. Biome `cursed` +
@@ -339,6 +346,15 @@ export default class GameScene extends Phaser.Scene {
     })
     // les projectiles s'arrêtent sur le décor
     this.physics.add.collider(this.projectiles, this.obstacles, (proj) => proj.kill())
+
+    // --- projectiles ENNEMIS (boss à distance, ex. Kraken) : touchent le JOUEUR, pas les monstres ---
+    this.enemyProjectiles = this.physics.add.group({ classType: Projectile, runChildUpdate: true })
+    this.physics.add.overlap(this.player, this.enemyProjectiles, (pl, proj) => {
+      if (!proj.active) return
+      proj.kill()
+      if (pl.takeDamage(proj.damage, this.time.now)) this.flashHurt() // takeDamage joue déjà le son de douleur
+    })
+    this.physics.add.collider(this.enemyProjectiles, this.obstacles, (proj) => proj.kill())
 
     // --- objets ramassables (drops) ---
     this.drops = this.physics.add.group()
@@ -1845,7 +1861,7 @@ export default class GameScene extends Phaser.Scene {
     const placed = [] // tous les repaires déjà posés -> séparation globale
     const farFromPlaced = (c) => placed.every((p) => Math.hypot(p.tx - c.tx, p.ty - c.ty) >= MIN_SEP)
     for (const b of Object.keys(BIOME_BOSSES)) {
-      if (b === 'cursed') continue
+      if (b === 'cursed' || b === 'coast') continue // gérés à part (île / rivage)
       const need = BIOME_BOSSES[b].length
       const list = cands[b] || []
       if (!list.length) { this.bossLairs[b] = []; continue }
@@ -1877,6 +1893,41 @@ export default class GameScene extends Phaser.Scene {
     for (let i = 0; i < cn; i++) {
       const a = (i / cn) * Math.PI * 2
       this.bossLairs.cursed.push({ tx: Math.round(ccx + Math.cos(a) * 14), ty: Math.round(ccy + Math.sin(a) * 14) })
+    }
+
+    // CÔTE : repaire du Kraken = tuile de TERRE au bord de l'océan (rivage), la plus LOIN du village
+    // possible (un cap au bout d'une contrée), avec assez de terre ferme au centre pour l'arène.
+    this.bossLairs.coast = []
+    if (BIOME_BOSSES.coast?.length) {
+      const seaWithin = (tx, ty, rad) => { // de l'océan dans un rayon proche -> c'est un rivage
+        for (let r = 1; r <= rad; r++) {
+          for (const [dx, dy] of [[-r, 0], [r, 0], [0, -r], [0, r]]) {
+            if (this.isOcean(tx + dx, ty + dy)) return true
+          }
+        }
+        return false
+      }
+      const solidCenter = (tx, ty) => { // terre ferme à ≈2 tuiles tout autour -> l'arène ne tombe pas dans l'eau au centre
+        for (const [dx, dy] of [[-2, 0], [2, 0], [0, -2], [0, 2], [-2, -2], [2, -2], [-2, 2], [2, 2]]) {
+          if (this.isOcean(tx + dx, ty + dy)) return false
+        }
+        return true
+      }
+      let best = null
+      let bestD = -1
+      for (let ty = 8; ty < MAP_H - 8; ty += 2) {
+        for (let tx = 8; tx < MAP_W - 8; tx += 2) {
+          if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
+          const b = this.biomeAt(tx, ty)
+          if (b === 'prairie') continue // pas au village
+          if (!seaWithin(tx, ty, 4) || !solidCenter(tx, ty)) continue
+          if (!farFromPlaced({ tx, ty })) continue // pas collé à un autre repaire
+          const d = Math.hypot(tx - this.cx, ty - this.cy)
+          if (d < 40) continue
+          if (d > bestD) { bestD = d; best = { tx, ty } }
+        }
+      }
+      if (best) { this.bossLairs.coast = [best]; placed.push(best) }
     }
   }
 
@@ -1993,6 +2044,7 @@ export default class GameScene extends Phaser.Scene {
     boss.arenaCx = lair.tx * TILE + 8
     boss.arenaCy = lair.ty * TILE + 8
     this.monsters.add(boss)
+    if (boss.def?.solid) this.physics.add.collider(this.player, boss) // boss solide : on ne le traverse pas
     this.bosses.push(boss)
     return boss
   }
@@ -2939,6 +2991,24 @@ export default class GameScene extends Phaser.Scene {
     // on VOIT l'arme à distance (sceptre/baguette) pointer vers la cible
     const wi = p.equipped?.weapon?.icon
     if (wi && this.textures.exists(wi)) this.showWeaponPoint(p.x, p.y, p.facing, wi)
+  }
+
+  /** Un BOSS à distance (Kraken) lance une orbe vers la position ACTUELLE du joueur (sans homing ->
+   *  esquivable). Tire depuis le centre du sprite du boss, projectile lent et bien visible. */
+  bossFireProjectile(boss, player) {
+    if (!boss?.active || boss.hp <= 0 || !player?.active || player.hp <= 0) return
+    const proj = this.enemyProjectiles.get(boss.x, boss.y)
+    if (!proj) return
+    const def = boss.def || {}
+    const dmg = Math.round((def.projDamage ?? 14) * (boss.lvlMul ?? 1))
+    const fx = { anim: 'fx-fireball', tex: 'fx_fireball', scale: 1.6 } // boule de feu ROUGE (asset du pack, pas de teinte)
+    // léger biais d'avance : on vise un peu DEVANT le joueur s'il bouge (rend l'esquive moins triviale,
+    // mais sans homing -> un changement de direction franc évite l'orbe).
+    const lead = 90 // ms d'anticipation
+    const tx = player.x + (player.body?.velocity.x ?? 0) * (lead / 1000)
+    const ty = player.y + (player.body?.velocity.y ?? 0) * (lead / 1000)
+    proj.fire(boss.x, boss.y - 6, tx, ty, dmg, this.time.now, null, 0xffffff, fx, def.projSpeed ?? 155)
+    Audio.sfx(SFX.magic, { vol: 0.5, detune: -300 }) // "blop" magique grave
   }
 
   /** Petit éclair blanc en arc pour matérialiser le coup d'épée. */

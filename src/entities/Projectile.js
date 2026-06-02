@@ -27,10 +27,11 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
    * Si `target` est fourni (cible verrouillée), la boule la suit jusqu'au contact.
    * `projFx` = {anim, tex, tint} -> sprite ANIMÉ du pack (energyball/fireball) ; sinon boule générée.
    */
-  fire(x, y, tx, ty, damage, now, target = null, tint = 0xffffff, projFx = null) {
+  fire(x, y, tx, ty, damage, now, target = null, tint = 0xffffff, projFx = null, speed = SPEED) {
     this.damage = damage
     this.dieAt = now + LIFESPAN
     this.target = target
+    this.speed = speed
     this.enableBody(true, x, y, true, true)
     const a = Math.atan2(ty - y, tx - x)
     if (projFx) {
@@ -54,7 +55,7 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
       this.setRotation(a)
     }
     this.setDepth(y + 40)
-    this.setVelocity(Math.cos(a) * SPEED, Math.sin(a) * SPEED)
+    this.setVelocity(Math.cos(a) * speed, Math.sin(a) * speed)
   }
 
   /** Désactive le projectile et le remet dans le pool. */
