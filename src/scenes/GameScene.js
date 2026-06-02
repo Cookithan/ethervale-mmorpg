@@ -2934,19 +2934,23 @@ export default class GameScene extends Phaser.Scene {
       p.gold += drop.amount
       text = `+${drop.amount} or`
       color = '#ffe066'
+      Audio.sfx('sfx_gold', { vol: 0.5, detune: 0 })
     } else if (drop.type === 'gem') {
       p.gainXp(drop.amount)
       text = `+${drop.amount} XP`
       color = '#9beaf5'
+      Audio.sfx('sfx_pickup', { vol: 0.5, detune: 0 })
     } else if (drop.type === 'heart') {
       const healed = p.heal(drop.amount)
       if (healed <= 0) return // PV déjà au max : pas de texte trompeur
       text = `+${healed} PV`
       color = '#ff8088'
+      Audio.sfx('sfx_pickup', { vol: 0.5, detune: 0 })
     } else if (drop.type === 'equip') {
       p.addItem(drop.item)
       text = drop.item.name
       color = RARITY[drop.item.rarity]?.color ?? '#9be1ff'
+      Audio.sfx('sfx_loot', { vol: 0.6, detune: 0 }) // équipement = son plus marquant
       this.scene.get('UIScene')?.showItemToast?.('Obtenu', drop.item) // toast HUD lisible
     }
     this.floatingText(drop.x, drop.y, text, color)

@@ -357,11 +357,20 @@ export default class UIScene extends Phaser.Scene {
       const c = reg(this.add.rectangle(bx, gy, cell, cell, 0x000000, 0).setInteractive({ useHandCursor: true }))
       reg(this.addIcon(bx, gy, item.icon, cell - 12))
       c.on('pointerdown', () => {
-        Audio.sfx('ui_accept', { detune: 0 })
-        if (item.type === 'consumable') this.useConsumable(item)
-        else if (!canEquip(item, p.className)) this.showToast(classRestrictionLabel(item), '#e0a866')
-        else if (p.equip(item)) this.showItemToast('Équipé', item)
-        else this.showToast('Objet cassé — à réparer chez Aldric', '#e06666')
+        // son PAR RÉSULTAT : validation si l'action aboutit, refus (throttlé) sinon -> pas de spam
+        if (item.type === 'consumable') {
+          this.useConsumable(item)
+          Audio.sfx('ui_accept', { detune: 0 })
+        } else if (!canEquip(item, p.className)) {
+          this.showToast(classRestrictionLabel(item), '#e0a866')
+          this.playDenied()
+        } else if (p.equip(item)) {
+          this.showItemToast('Équipé', item)
+          Audio.sfx('ui_accept', { detune: 0 })
+        } else {
+          this.showToast('Objet cassé — à réparer chez Aldric', '#e06666')
+          this.playDenied()
+        }
         this.hideTip()
       })
       c.on('pointerover', () => this.showTip(item, bx, gy - cell / 2))
@@ -408,6 +417,14 @@ export default class UIScene extends Phaser.Scene {
     this.hideTip()
     Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
+  }
+
+  /** Son de refus (action impossible : mauvaise classe, objet cassé…), THROTTLÉ pour ne pas spammer. */
+  playDenied() {
+    const now = this.time.now
+    if (now < (this._deniedAt || 0)) return
+    this._deniedAt = now + 400
+    Audio.sfx('ui_cancel', { detune: 0 })
   }
 
   destroyChar() {
