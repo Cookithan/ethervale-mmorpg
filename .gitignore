@@ -8,3 +8,8 @@ dist/
 _*.png
 _*.jpg
 dims.txt
+
+# packs d'assets NON-COMMERCIAUX : interdiction de redistribuer le pack BRUT (repo public).
+# Seuls les sprites RÉELLEMENT utilisés sont copiés dans public/assets/ (cf. CREDITS.md).
+/Sprout Lands - Sprites - Basic pack/
+/mystic_woods_free_2.2/

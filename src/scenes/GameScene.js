@@ -45,6 +45,7 @@ const OCEAN_BG = 0x3f8ed0 // couleur de fond (océan) : marges hors-map au dézo
 
 // --- sol (TilesetField / field.png, 5 colonnes) ---
 const GRASS = 21 // herbe verte claire = sol de base
+const WATER_TINT = 0x5f7fc0 // teinte MULTIPLY de l'eau (Sprout teal -> bleu océan profond ; ↓ = plus sombre)
 // blobs autotile : 3x3 (coins/bords transparents) + fills pleins pour la variété
 const BLOB = {
   darkGrass: {
@@ -293,6 +294,12 @@ export default class GameScene extends Phaser.Scene {
     this.buildOcean() // océan autour du continent (île entourée d'eau)
     this.spawnDryLakes() // lacs asséchés (terre craquelée) dans le désert
     this.paintPaths() // chemins (routés par les ponts pour franchir les rivières)
+    // eau ANIMÉE : on cycle les 4 frames Sprout sur les tuiles d'eau VISIBLES (océan/rivières/lacs)
+    this.waterFrame = 0
+    this.time.addEvent({ delay: 170, loop: true, callback: this.animateWater, callbackScope: this })
+    // "film" bleu foncé : teinte MULTIPLY sur chaque tuile d'eau -> teal Sprout assombri en bleu océan
+    // (la teinte persiste quand on change la frame d'anim). Une seule passe (forme d'eau figée).
+    this.waterLayer.forEachTile((t) => { if (t.index >= 0) t.tint = WATER_TINT })
 
     // --- physique / héros ---
     this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
@@ -1092,7 +1099,19 @@ export default class GameScene extends Phaser.Scene {
     this.oceanMask = mask
   }
 
-  /** Pose l'eau de l'OCÉAN (tuiles 'water_gen') sur le pourtour, avec collision. À appeler
+  /** Anime l'eau : avance d'une frame (0→3) et applique la frame courante à toutes les tuiles d'eau
+   *  DANS LA VUE caméra (les 4 frames du tileset Sprout sont les images d'animation, pas des variantes).
+   *  Vue seule -> coût négligeable même sur un grand océan ; l'eau hors-champ se remet à jour en arrivant. */
+  animateWater() {
+    if (!this.waterLayer || this.gameOver) return
+    this.waterFrame = (this.waterFrame + 1) % 4
+    const v = this.cameras.main.worldView
+    const tiles = this.waterLayer.getTilesWithinWorldXY(v.x - 16, v.y - 16, v.width + 32, v.height + 32)
+    const f = this.waterFrame
+    for (const t of tiles) if (t && t.index >= 0) t.index = f
+  }
+
+  /** Pose l'eau de l'OCÉAN (tuiles d'eau animée) sur le pourtour, avec collision. À appeler
    *  après buildRivers (qui a créé this.waterLayer / this.waterCells). */
   buildOcean() {
     for (let ty = 0; ty < MAP_H; ty++) {
@@ -1116,7 +1135,7 @@ export default class GameScene extends Phaser.Scene {
     this.frontierCells = new Set() // (rivières-frontières retirées : laissé vide pour les gardes)
     this.riverPaths = [] // tracé (centerline) de chaque rivière -> sert à poser les ponts régulièrement
     const wmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
-    const wts = wmap.addTilesetImage('water_gen', 'water_gen', TILE, TILE) // eau générée par code
+    const wts = wmap.addTilesetImage('water_sprout', 'water_sprout', TILE, TILE) // eau ANIMÉE Sprout (4 frames)
     this.waterLayer = wmap.createBlankLayer('water', wts, 0, 0).setDepth(-8)
     // couche de pont (au-dessus de l'eau)
     const bmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
