@@ -52,6 +52,10 @@ export default class BootScene extends Phaser.Scene {
     // objets Mystic Woods (16 col) : ARBRES de forêt (chêne), libres dans la version free
     this.load.spritesheet('mystic_obj', 'assets/tiles/mystic_obj.png', { frameWidth: 16, frameHeight: 16 })
 
+    // déco ANIMÉE (Ninja Adventure) : bannières du village (mât compris, 4 frames de 16px, ondulent)
+    this.load.spritesheet('flag_blue', 'assets/deco/flag_blue.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.spritesheet('flag_red', 'assets/deco/flag_red.png', { frameWidth: 16, frameHeight: 16 })
+
     // nature (arbres, rochers...) en spritesheet 16x16 pour placer des tuiles
     this.load.spritesheet('nature', 'assets/tiles/nature.png', {
       frameWidth: 16,
@@ -235,6 +239,18 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('fx-shuriken')) {
       this.anims.create({ key: 'fx-shuriken', frames: this.anims.generateFrameNumbers('fx_shuriken', { start: 0, end: 1 }), frameRate: 20, repeat: -1 })
+    }
+    this.createDecoAnimations()
+  }
+
+  /** Animations de la déco animée du décor (bannières du village, etc.). */
+  createDecoAnimations() {
+    // bannières : ondulation en boucle (4 frames). Détune léger du frameRate possible plus tard.
+    if (!this.anims.exists('flag-blue')) {
+      this.anims.create({ key: 'flag-blue', frames: this.anims.generateFrameNumbers('flag_blue', { start: 0, end: 3 }), frameRate: 6, repeat: -1 })
+    }
+    if (!this.anims.exists('flag-red')) {
+      this.anims.create({ key: 'flag-red', frames: this.anims.generateFrameNumbers('flag_red', { start: 0, end: 3 }), frameRate: 6, repeat: -1 })
     }
   }
 

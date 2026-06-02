@@ -2513,6 +2513,18 @@ export default class GameScene extends Phaser.Scene {
     // hameaux inhabités du désert (bande du bas) : coins OPPOSÉS, loin du centre
     this.placeBuildingNear(cx - 52, cy + 44, 'house_long') // désert sud-ouest
     this.placeBuildingNear(cx + 50, cy + 44, 'house_orange') // désert sud-est
+    this.spawnVillageFlags() // bannières animées qui encadrent la place
+  }
+
+  /** Bannière animée (déco, sans collision) au coin haut-droit de la place du village. */
+  spawnVillageFlags() {
+    const tx = this.cx + 4
+    const ty = this.cy - 3
+    this.add
+      .sprite(tx * TILE + 8, ty * TILE + TILE, 'flag_blue', 0)
+      .setOrigin(0.5, 1) // pied du mât posé au bas de la tuile
+      .setDepth((ty + 1) * TILE) // tri Y : le héros passe devant quand il est en dessous
+      .play('flag-blue')
   }
 
   /** Sol du village : une place (herbe foncée) au centre + des chemins de terre qui
