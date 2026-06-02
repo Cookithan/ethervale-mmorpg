@@ -81,3 +81,6 @@ export const HEROES = CLASS_LIST.flatMap((c) => c.heroes)
 
 /** Personnage par défaut (sécurité si on lance le jeu sans passer par la création). */
 export const DEFAULT_CHARACTER = { hero: 'hero_gladiator_blue', name: 'Héros', classKey: 'warrior' }
+
+/** Chevalier : héros affiché sur l'accueil quand aucune partie n'a encore été lancée. */
+export const KNIGHT_CHARACTER = { hero: 'hero_knight', name: 'Chevalier', classKey: 'tank' }

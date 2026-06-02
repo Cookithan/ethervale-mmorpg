@@ -4,8 +4,8 @@ import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY } from '../data/items.js'
-import { DEFAULT_CHARACTER } from '../data/classes.js'
-import { makeSave, writeSave } from '../data/save.js'
+import { DEFAULT_CHARACTER, KNIGHT_CHARACTER } from '../data/classes.js'
+import { makeSave, writeSave, hasSave, loadSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
 
 const MONSTER_COUNT = 110 // nombre de monstres sur la map (répartis ISOLÉS, couverture uniforme)
@@ -245,8 +245,12 @@ export default class GameScene extends Phaser.Scene {
   create(initData) {
     // personnage choisi (création) ou repris (sauvegarde)
     this.saveData = initData?.save ?? null
-    this.character = this.saveData?.character ?? initData?.character ?? DEFAULT_CHARACTER
     this.preview = !!initData?.preview // mode aperçu = fond vivant de l'écran d'accueil (pas de HUD/combat)
+    let character = this.saveData?.character ?? initData?.character ?? null
+    // ACCUEIL (aperçu sans perso explicite) : montrer le DERNIER perso joué (sauvegarde),
+    // sinon le CHEVALIER tant qu'aucune partie n'a été lancée.
+    if (!character && this.preview) character = (hasSave() ? loadSave()?.character : null) ?? KNIGHT_CHARACTER
+    this.character = character ?? DEFAULT_CHARACTER
 
     // monde DÉTERMINISTE : pendant toute la génération (terrain, chemins, forêt,
     // rochers, déco, monstres), Math.random est remplacé par un PRNG à graine fixe
@@ -571,6 +575,27 @@ export default class GameScene extends Phaser.Scene {
     return this.physics.overlapRect(x - 5, y, 10, 8, false, true).length > 0
   }
 
+  /** true si la tuile est dans l'emprise (toit compris) d'un bâtiment du village. */
+  onBuilding(tx, ty) {
+    for (const f of this.villageFootprints || []) {
+      if (tx >= f.tx && tx < f.tx + f.w && ty >= f.ty && ty < f.ty + f.h) return true
+    }
+    return false
+  }
+
+  /** Blocage de balade : obstacles solides + (pour les baladeurs verrouillés en biome) hors biome,
+   *  chemins et emprise des bâtiments -> les civils ne marchent ni sur les chemins ni sur les maisons. */
+  wanderBlocked(w, x, y) {
+    if (this.previewBlocked(x, y)) return true
+    if (!w.biomeLock) return false
+    const tx = Math.floor(x / TILE)
+    const ty = Math.floor(y / TILE)
+    if (this.biomeAt(tx, ty) !== w.biomeLock) return true
+    if (this.pathCells && this.pathCells.has(this.key(tx, ty))) return true
+    if (this.onBuilding(tx, ty)) return true
+    return false
+  }
+
   /** Choisit une nouvelle cible LIBRE autour du point d'ancrage (sinon reste sur place). */
   previewRetarget(w, time) {
     w.pauseUntil = time + 600 + Math.random() * 2200
@@ -579,9 +604,8 @@ export default class GameScene extends Phaser.Scene {
       const r = w.radius * (0.3 + Math.random() * 0.7)
       const tx = w.hx + Math.cos(ang) * r
       const ty = w.hy + Math.sin(ang) * r
-      // verrou de biome (PNJ baladeurs confinés à leur biome) : refuse une cible hors biome
-      if (w.biomeLock && this.biomeAt(Math.round(tx / TILE), Math.round(ty / TILE)) !== w.biomeLock) continue
-      if (!this.previewBlocked(tx, ty)) {
+      // refuse une cible hors biome / sur un chemin / sur un bâtiment (pour les baladeurs verrouillés)
+      if (!this.wanderBlocked(w, tx, ty)) {
         w.tx = tx
         w.ty = ty
         return
@@ -626,8 +650,8 @@ export default class GameScene extends Phaser.Scene {
     const step = w.speed * dt
     const nx = s.x + (dx / d) * step
     const ny = s.y + (dy / d) * step
-    if (this.previewBlocked(nx, ny)) {
-      this.previewRetarget(w, time) // mur devant (maison/rocher) -> on repart ailleurs
+    if (this.wanderBlocked(w, nx, ny)) {
+      this.previewRetarget(w, time) // mur/chemin/bâtiment devant -> on repart ailleurs
       s.anims.play(`${w.texture}-idle-${w.facing}`, true)
       return
     }
