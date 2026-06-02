@@ -37,8 +37,10 @@ function makeSeededRandom(seed) {
 const TILE = 16
 // grille TOTALE agrandie : le continent est une ÎLE elliptique CENTRÉE, entourée d'OCÉAN de
 // tous les côtés (marges nettes à gauche/droite ET haut/bas). Cf. isOcean/buildOcean.
-const MAP_W = 360 // élargie à l'EST : place pour la grande ÎLE MAUDITE au large (hors du cadre d'accueil)
-const MAP_H = 220
+// Grille agrandie de +50% par dimension (360x220 -> 540x330) : le continent (ISLAND_RX/RY FIXE) reste
+// centré sur icx/icy et de même taille -> tout le surplus de grille devient de l'OCÉAN autour.
+const MAP_W = 540
+const MAP_H = 330
 const ISLAND_RX = 96 // demi-largeur du continent (tuiles) -> marge océan gauche/droite = icx - RX
 const ISLAND_RY = 82 // demi-hauteur du continent (tuiles) -> marge océan haut/bas = icy - RY
 const OCEAN_BG = 0x3f8ed0 // couleur de fond (océan) : marges hors-map au dézoom + raccord avec l'eau générée
