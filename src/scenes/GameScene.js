@@ -168,7 +168,6 @@ const BIOME_BOSSES = {
 // boss Dargoth. Entourée d'océan, AUCUN gué -> VERROUILLÉE tant que la nage n'existe pas. Placée hors
 // du cadre d'accueil (centré sur le village) -> on n'en voit qu'un BOUT au dézoom = secret end-game.
 const CURSED_ISLE = { ox: -100, oy: 60, r: 28 } // [offset tuiles depuis le centre de l'île, rayon]
-const BOSS_BAR_RANGE = 240 // distance (px) à laquelle la barre de boss apparaît en haut de l'écran
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
 const ARENA_RADIUS = 160 // rayon de la zone scellée (px), centrée sur le repaire du boss
@@ -326,7 +325,8 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
     this.physics.add.collider(this.monsters, this.monsters)
     this.physics.add.overlap(this.player, this.monsters, (pl, mon) => {
-      if (mon.isBoss) mon.combatEngaged = true // TOUCHER un boss (contact) déclenche son combat -> scelle l'arène
+      // le contact NE réveille PAS un boss endormi (il faut l'ATTAQUER -> combatEngaged via hitMonster) ;
+      // tryBite est verrouillé tant qu'il dort, donc un boss assoupi ne te mord pas si tu le frôles.
       if (mon.tryBite(pl, this.time.now)) {
         this.flashHurt()
         if (mon.isBoss) this.bossAttackFx(mon) // retour visuel net quand un BOSS frappe
@@ -2044,7 +2044,7 @@ export default class GameScene extends Phaser.Scene {
     boss.arenaCx = lair.tx * TILE + 8
     boss.arenaCy = lair.ty * TILE + 8
     this.monsters.add(boss)
-    if (boss.def?.solid) this.physics.add.collider(this.player, boss) // boss solide : on ne le traverse pas
+    if (!boss.dragon) this.physics.add.collider(this.player, boss) // tout boss = mur : on ne le traverse pas
     this.bosses.push(boss)
     return boss
   }
@@ -3237,18 +3237,14 @@ export default class GameScene extends Phaser.Scene {
     })
     this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
 
-    // barre de boss : on suit le boss engagé (en aggro, ou simplement proche du joueur).
-    // HYSTÉRÉSIS : un boss DÉJÀ actif le reste jusqu'à 1,5× la portée -> pas de clignotement quand
-    // un boss rôde autour de la limite (sinon activeBoss bascule on/off chaque frame -> la musique
-    // basculait boss/zone en boucle = empilement de sons = FREEZE).
+    // barre de boss + musique de boss = UNIQUEMENT pendant le COMBAT réel (`combatEngaged` : tu l'as
+    // tapé ou il t'a touché), comme l'arène. Passer DEVANT un boss sans l'engager ne déclenche plus rien
+    // (avant : déclenché par proximité/aggro -> la musique prenait le dessus et tardait à se libérer
+    // tant que le boss rôdait/poursuivait ; parfois restait coincée). Le combat ne se termine que par la
+    // mort du boss (arène scellée) ou du joueur -> activeBoss se libère alors proprement.
     let engagedBoss = null
     for (const b of this.bosses || []) {
-      if (!b.active) continue
-      const range = b === this.activeBoss ? BOSS_BAR_RANGE * 1.5 : BOSS_BAR_RANGE
-      if (b.aggroed || this.dist(p.x, p.y, b.x, b.y) < range) {
-        engagedBoss = b
-        break
-      }
+      if (b.active && b.hp > 0 && b.combatEngaged) { engagedBoss = b; break }
     }
     this.activeBoss = engagedBoss
 

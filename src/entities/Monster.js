@@ -234,7 +234,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // hitbox : boss à sprite dédié = body dédié (en px de texture) ; sinon 11x11 proportionnel au scale.
     if (dedicated && def.body) this.body.setSize(def.body.w, def.body.h, true)
     else this.body.setSize(11, 11, true)
-    if (def.solid) this.setImmovable(true) // gros corps : le joueur bute dessus sans le pousser
+    if (def.solid || (boss && !this.dragon)) this.setImmovable(true) // boss = mur : le joueur bute dessus, ne le traverse pas
     this.facing = 'down'
     this.rigState = null // état d'anim courant du rig (idle/walk/hit)
     this.rigLockUntil = 0 // pendant l'anim "hit" on ne change pas d'état
@@ -316,6 +316,20 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     const finalKey = this.scene.anims.exists(key) ? key : `boss-${this.rig}-idle`
     this.rigState = state
     this.anims.play(finalKey, true)
+  }
+
+  /** Indicateur "endormi" : petit "z Z z" flottant qui ondule au-dessus du boss tant qu'il dort.
+   *  Créé à la demande, masqué/réaffiché selon `on`, détruit avec le boss. */
+  showSleep(time, on) {
+    if (!on) { this.sleepText?.setVisible(false); return }
+    if (!this.sleepText) {
+      this.sleepText = this.scene.add.text(this.x, this.y, 'z Z z', {
+        fontFamily: 'monospace', fontSize: '11px', color: '#bfe0ff', stroke: '#10204a', strokeThickness: 3,
+      }).setOrigin(0.5, 1).setDepth(50002)
+    }
+    this.sleepText.setPosition(this.x, this.y - this.barOffsetY - 6 + Math.sin(time / 400) * 2)
+    this.sleepText.setAlpha(0.55 + 0.45 * (0.5 + 0.5 * Math.sin(time / 480)))
+    this.sleepText.setVisible(true)
   }
 
   /** Crée la chaîne de segments + les ailes du dragon. La tête (=`this`) reste l'entité de combat. */
@@ -434,6 +448,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.hpBarFg.destroy()
     this.infoText.destroy()
     this.aura?.destroy()
+    this.sleepText?.destroy()
     this.segs?.forEach((s) => s.destroy())
     this.wingL?.destroy()
     this.wingR?.destroy()
@@ -446,6 +461,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.hpBarFg.destroy()
     this.infoText.destroy()
     this.aura?.destroy()
+    this.sleepText?.destroy()
     this.segs?.forEach((s) => s.destroy()) // dragon : détruire la chaîne de segments + les ailes
     this.wingL?.destroy()
     this.wingR?.destroy()
@@ -467,6 +483,22 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       this.updateHpBar(time)
       return
     }
+    // BOSS ENDORMI : tant qu'on ne lui a pas infligé de DÉGÂTS (combatEngaged, posé par hitMonster), il
+    // DORT sur son repaire — immobile, idle, ne mord pas, n'aggro pas. Passer à côté ne le réveille plus :
+    // seule une ATTAQUE le réveille. À la mort/respawn, combatEngaged retombe -> il se rendort.
+    if (this.isBoss && !this.combatEngaged && !this.dragon) {
+      this.setVelocity(0, 0)
+      this.aggroed = false
+      this.returning = false
+      if (this.rig && !(this.rigState === 'hit' && time < this.rigLockUntil)) this.playRig('idle')
+      this.showSleep(time, true)
+      if (this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.updateHpBar(time)
+      return
+    }
+    this.showSleep(time, false) // réveillé (ou monstre normal) : pas de "Zzz"
+
     const def = this.def
     const dx = player.x - this.x
     const dy = player.y - this.y
@@ -631,6 +663,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
   /** Tente de mordre le joueur au contact. Renvoie true si un coup a porté. */
   tryBite(player, now) {
+    if (this.isBoss && !this.combatEngaged) return false // boss endormi : ne mord pas tant qu'on ne l'a pas réveillé
     if (now < this.nextBiteAt) return false
     if (player.takeDamage(this.damage, now)) {
       this.nextBiteAt = now + TOUCH_COOLDOWN
