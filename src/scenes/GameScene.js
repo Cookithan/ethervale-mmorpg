@@ -139,7 +139,7 @@ const BIOME_BOSSES = {
   forest: { type: 'samurai', name: 'Gankai, le Samouraï Sylvestre' }, // BOSS DE RAID (intuable solo)
   desert: { type: 'democyclop', name: 'Gorehk, le Cyclope des Sables' }, // boss SOLO dédié (sprite "rig", tuable seul)
   snow: { type: 'tengublue', name: 'Raijin, le Tengu des Glaces' }, // BOSS DE RAID (intuable solo)
-  cursed: { type: 'flam', name: 'Dargoth, Seigneur Maudit' }, // sur l'ÎLE MAUDITE (verrouillée) ; futur DragonBlue
+  cursed: { type: 'giantflam', name: 'Dargoth, Seigneur Maudit' }, // sprite dédié ; sur l'ÎLE MAUDITE (verrouillée) ; futur DragonBlue en RAID
 }
 // ÎLE MAUDITE (end-game) : GRANDE île détachée loin au SUD-OUEST, au-delà des mers. Biome `cursed` +
 // boss Dargoth. Entourée d'océan, AUCUN gué -> VERROUILLÉE tant que la nage n'existe pas. Placée hors

@@ -76,6 +76,12 @@ export const MONSTER_TYPES = {
     hp: 70, speed: 28, damage: 15, xp: 32, aggro: 110, scale: 2.2, body: { w: 26, h: 34 },
     tier: 'epic', loot: { gold: [6, 12] }, name: 'Cyclope démon',
   },
+  // Seigneur de flamme (Terres Maudites) : rig SANS walk (reste sur place, lent) -> playRig retombe sur idle
+  giantflam: {
+    key: 'boss_giantflam_idle', rig: 'giantflam', face: 'face_giantflam',
+    hp: 90, speed: 18, damage: 22, xp: 40, aggro: 120, scale: 2.2, body: { w: 24, h: 34 },
+    tier: 'epic', loot: { gold: [8, 16] }, name: 'Seigneur de flamme',
+  },
 }
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)
@@ -213,8 +219,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
   /** Joue l'anim d'un boss à rig (idle/walk/hit) sans la relancer si déjà en cours. */
   playRig(state) {
     if (this.rigState === state) return
+    // certains rigs n'ont pas de "walk" (ex. GiantFlam) -> on retombe sur idle
+    const key = `boss-${this.rig}-${state}`
+    const finalKey = this.scene.anims.exists(key) ? key : `boss-${this.rig}-idle`
     this.rigState = state
-    this.anims.play(`boss-${this.rig}-${state}`, true)
+    this.anims.play(finalKey, true)
   }
 
   /** Inflige des dégâts au monstre ; renvoie true s'il meurt. */
