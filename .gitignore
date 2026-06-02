@@ -9,7 +9,11 @@ _*.png
 _*.jpg
 dims.txt
 
-# packs d'assets NON-COMMERCIAUX : interdiction de redistribuer le pack BRUT (repo public).
+# packs d'assets bruts : interdiction de redistribuer (Sprout/Mystic = NON-COMMERCIAUX) sur le repo
+# PUBLIC. Depuis 2026-06-03 les 3 packs sont regroupés dans Full_Asset/ (déplacés depuis la racine).
 # Seuls les sprites RÉELLEMENT utilisés sont copiés dans public/assets/ (cf. CREDITS.md).
+/Full_Asset/
+/Full_asset/
+# anciens emplacements racine (avant le regroupement) :
 /Sprout Lands - Sprites - Basic pack/
 /mystic_woods_free_2.2/
