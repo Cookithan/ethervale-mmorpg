@@ -308,7 +308,6 @@ export default class GameScene extends Phaser.Scene {
     this.paintGrassBiomes() // herbe Sprout : prairie/village (claire) + forêt (teintée vert sombre)
     this.buildRivers() // rivières + ponts (AVANT les chemins -> les chemins passent PAR les ponts)
     this.buildOcean() // océan autour du continent (île entourée d'eau)
-    this.spawnDryLakes() // lacs asséchés (terre craquelée) dans le désert
     this.paintPaths() // chemins (routés par les ponts pour franchir les rivières)
     // eau ANIMÉE Sprout (cycle des 4 frames sur les tuiles VISIBLES) + teinte bleu foncé
     this.waterFrame = 0
@@ -334,7 +333,7 @@ export default class GameScene extends Phaser.Scene {
     this.scatterForestTrees() // chênes Mystic Woods dans la forêt
     this.scatterForestUndergrowth() // sous-bois Ninja TOUFFU : fougères + buissons + fleurs (traversable)
     this.spawnRocks()
-    this.spawnDecor()
+    // spawnDecor() retiré : plus de buissons/touffes d'herbe en prairie (demandé)
     this.spawnBiomeProps() // props par biome (cactus, cristaux, souches, congères...)
     this.physics.add.collider(this.player, this.obstacles)
     this.physics.add.collider(this.player, this.waterLayer) // l'eau bloque (sauf ponts)
@@ -551,12 +550,17 @@ export default class GameScene extends Phaser.Scene {
     this.player.anims.play(`${this.player.heroKey}-idle-down`, true)
     this._heroW = this.makeWander(this.player, this.player.heroKey, this.player.x, this.player.y, 24, 18)
 
-    // villageois : balade autour de leur maison (les sheets villageois ont des anims de marche)
+    // SEULS les civils baladeurs de la prairie (déjà dotés de _w) errent à l'accueil ; les villageois
+    // de service (marchand/forgeron/Mira/Tom) restent STATIQUES partout (demandé).
     for (const npc of this.npcs || []) {
+      if (!npc._w) continue
       this.tweens.killTweensOf(npc.sprite) // stoppe la "respiration" (sinon elle écrase l'anim de marche)
       npc.sprite.setScale(1)
-      if (npc.sprite.body) npc.sprite.body.enable = false // ne se bloquent pas entre eux (collision gérée à la main)
-      npc._w = this.makeWander(npc.sprite, npc.texture, npc.sprite.x, npc.sprite.y, 30, 18 + Math.random() * 10)
+      if (npc.sprite.body) this.physics.world.disable(npc.sprite) // retire le corps de l'arbre (pas juste enable=false)
+      const lock = npc._w.biomeLock // garde le confinement prairie aussi à l'accueil
+      // rayon/vitesse plus grands -> errance VISIBLE même à l'accueil dézoomé
+      npc._w = this.makeWander(npc.sprite, npc.texture, npc.sprite.x, npc.sprite.y, 64, 24 + Math.random() * 12)
+      if (lock) npc._w.biomeLock = lock
     }
     // le marchand reste à son étal (pas d'anim de marche pour sa planche) : juste sa respiration ;
     // on garde SON corps actif -> les villageois ne lui marchent pas dessus.
@@ -575,6 +579,8 @@ export default class GameScene extends Phaser.Scene {
       const r = w.radius * (0.3 + Math.random() * 0.7)
       const tx = w.hx + Math.cos(ang) * r
       const ty = w.hy + Math.sin(ang) * r
+      // verrou de biome (PNJ baladeurs confinés à leur biome) : refuse une cible hors biome
+      if (w.biomeLock && this.biomeAt(Math.round(tx / TILE), Math.round(ty / TILE)) !== w.biomeLock) continue
       if (!this.previewBlocked(tx, ty)) {
         w.tx = tx
         w.ty = ty
@@ -951,7 +957,14 @@ export default class GameScene extends Phaser.Scene {
         if (b === 'prairie') continue // prairie = herbe de base, rien à peindre
         const fills = BIOME_BLOCKS[b].fills
         const tile = fills[Math.floor(tileNoise(tx, ty, 7) * fills.length)]
-        this.groundLayer.putTileAt(tile, tx, ty) // sol de biome SOUS le chemin
+        const t = this.groundLayer.putTileAt(tile, tx, ty) // sol de biome SOUS le chemin
+        // FILM de teinte par TUILE (comme la forêt) -> effet MOSAÏQUE : 3 nuances proches alternées
+        // finement par bruit. Désert = sables orangés, neige = blancs/blanc-gris.
+        if (t) {
+          const r = tileNoise(tx, ty, 51)
+          if (b === 'desert') t.tint = r < 0.4 ? 0xe6a45c : r < 0.72 ? 0xf3c684 : 0xffe6b0
+          else if (b === 'snow') t.tint = r < 0.4 ? 0xbfcfe2 : r < 0.72 ? 0xe2ebf5 : 0xffffff
+        }
       }
     }
   }
@@ -964,7 +977,7 @@ export default class GameScene extends Phaser.Scene {
     const gmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
     const gts = gmap.addTilesetImage('grass_sprout', 'grass_sprout', TILE, TILE)
     this.grassLayer = gmap.createBlankLayer('grass', gts, 0, 0).setDepth(-9.8) // > field(-10), < overlay(-9)
-    const PRAIRIE_FILL = [56, 57, 56, 57, 56, 57, 66, 67, 68, 60] // pleine (majorité) + pousses + fleurs (rare)
+    const PRAIRIE_FILL = [56, 57] // herbe pleine uniquement (pousses/fleurs retirées : prairie sans plantes)
     const FOREST_FILL = [56, 57, 56, 57, 56, 57, 66, 58] // pleine (majorité) + rare pousse/touffe (peu de variation)
     for (let ty = 0; ty < MAP_H; ty++) {
       for (let tx = 0; tx < MAP_W; tx++) {
@@ -1410,7 +1423,7 @@ export default class GameScene extends Phaser.Scene {
       const cx = Phaser.Math.Between(6, MAP_W - 6)
       const cy = Phaser.Math.Between(6, MAP_H - 6)
       const b = this.biomeAt(cx, cy)
-      if (b !== 'forest' && b !== 'snow' && b !== 'prairie') continue
+      if (b !== 'forest' && b !== 'prairie') continue // plus de lacs gelés en NEIGE (retirés)
       if (this.nearSpawn(cx, cy, 9)) continue
       const cells = this.smallBlob(cx, cy, 3, 5) // petite flaque de 3-5 cases
       let ok = cells.length >= 3
@@ -2096,7 +2109,8 @@ export default class GameScene extends Phaser.Scene {
    *  Positions calculées tôt (avant les chemins) pour que de petits sentiers s'y greffent. */
   computeWildNpcs() {
     const names = ['Edda', 'Rurik', 'Sylvane', 'Bram', 'Oona', 'Tibert', 'Maelis', 'Joran', 'Cwen', 'Hadric', 'Niamh', 'Osric', 'Veya', 'Doran', 'Liesel']
-    const texes = ['npc_villager', 'npc_woman', 'npc_boy']
+    // apparences DISTINCTES (ni villageois du bourg, ni perso de classe) -> une UNIQUE par PNJ = pas de doublon
+    const texes = ['npc_noble', 'npc_princess', 'npc_oldman', 'npc_oldman2', 'npc_monk', 'npc_monk2', 'npc_hunter', 'npc_inspector', 'npc_master', 'npc_shaman', 'npc_mangreen', 'npc_eskimo', 'npc_fighterwhite', 'npc_fighterred']
     const pool = [
       ['Bonjour, voyageur. La route est sûre tant qu\'on y reste.'],
       ['Plus tu t\'éloignes du village, plus les bêtes sont coriaces.'],
@@ -2105,16 +2119,18 @@ export default class GameScene extends Phaser.Scene {
       ['Suis les chemins : ils mènent quelque part, l\'eau non.'],
       ['Repose-toi un instant, l\'aventurier. Puis repars plus fort.'],
     ]
+    // TOUS dans la PRAIRIE (autour du village) : ils s'y baladent et ne peuvent pas en sortir.
     this.wildNpcs = []
-    for (let guard = 0; this.wildNpcs.length < 15 && guard < 6000; guard++) {
-      const tx = Phaser.Math.Between(8, MAP_W - 9)
-      const ty = Phaser.Math.Between(8, MAP_H - 9)
+    for (let guard = 0; this.wildNpcs.length < texes.length && guard < 9000; guard++) {
+      const tx = Phaser.Math.Between(this.cx - 24, this.cx + 24)
+      const ty = Phaser.Math.Between(this.cy - 24, this.cy + 24)
+      if (tx < 2 || ty < 2 || tx >= MAP_W - 2 || ty >= MAP_H - 2) continue
       if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
-      if (this.biomeAt(tx, ty) === 'prairie') continue // pas dans le village
-      if (this.dist(tx, ty, this.cx, this.cy) < 24) continue // pas collé au village
-      if (this.wildNpcs.some((n) => this.dist(tx, ty, n.tx, n.ty) < 20)) continue // espacés
+      if (this.biomeAt(tx, ty) !== 'prairie') continue // UNIQUEMENT en prairie
+      if (this.dist(tx, ty, this.cx, this.cy) < 11) continue // pas sur les bâtiments du centre (s'étendent ~10 tuiles)
+      if (this.wildNpcs.some((n) => this.dist(tx, ty, n.tx, n.ty) < 4)) continue // espacés
       const i = this.wildNpcs.length
-      this.wildNpcs.push({ tx, ty, tex: texes[i % texes.length], name: names[i], lines: pool[i % pool.length] })
+      this.wildNpcs.push({ tx, ty, tex: texes[i], name: names[i], lines: pool[i % pool.length] })
     }
   }
 
@@ -2465,26 +2481,29 @@ export default class GameScene extends Phaser.Scene {
   spawnVillage() {
     const cx = this.cx
     const cy = this.cy
-    // plan partagé (maison + PNJ) : positions étalées autour du marchand central
+    // plan du village : maison de DROITE = marchand, GAUCHE = forgeron, HAUT = Mira, BAS = Tom.
+    // (marchand = entrée `merchant:true` -> place la maison + porte, mais PAS de villageois bavard ;
+    //  le sprite du marchand s'y tient, posé par spawnMerchant.)
     this.villagers = [
+      { hx: cx + 6, hy: cy - 3, key: 'house_orange', merchant: true }, // DROITE = boutique du marchand
       {
-        hx: cx - 1, hy: cy - 6, key: 'cottage', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge',
+        hx: cx - 8, hy: cy - 3, key: 'house_long', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge',
         lines: [
           'Je suis Aldric, le forgeron. Apporte-moi tes armes et armures.',
           'Je peux les réparer quand elles s\'usent, et les améliorer contre de l\'or.',
         ],
       },
       {
-        hx: cx + 6, hy: cy - 3, key: 'house_orange', tex: 'npc_woman', name: 'Mira',
+        hx: cx - 1, hy: cy - 6, key: 'cottage', tex: 'npc_woman', name: 'Mira',
         lines: [
-          'Le marchand est au centre du village. Parle-lui avec la touche E.',
+          'Le marchand tient boutique dans la maison de droite. Parle-lui avec la touche E.',
           'Appuie sur C pour ouvrir ta fiche : équipe armes et armures dans ton sac.',
           'Les monstres lâchent de l\'or et de l\'équipement, ramasse tout en marchant dessus !',
           'Reviens vendre ton butin au marchand pour t\'acheter mieux.',
         ],
       },
       {
-        hx: cx - 8, hy: cy - 3, key: 'house_long', tex: 'npc_boy', name: 'Tom',
+        hx: cx + 3, hy: cy + 4, key: 'cottage', tex: 'npc_boy', name: 'Tom',
         lines: [
           'Franchis les ponts pour sortir de la prairie et explorer le monde !',
           'À l\'est et au sud : la forêt puis le désert. Au nord : les terres gelées.',
@@ -2509,6 +2528,7 @@ export default class GameScene extends Phaser.Scene {
       this.villageFootprints.push({ tx: hx, ty: hy, w: b.w, h: b.h })
       v.nx = hx + b.door[0] // PNJ devant la porte (même colonne)
       v.ny = hy + b.h // une rangée sous la base de la maison réellement posée
+      if (v.merchant) this.merchantHome = { nx: v.nx, ny: v.ny } // porte de la maison du marchand
     }
     this.paintVillageGround() // place + chemins reliant les 3 maisons (look "village")
     // hameaux inhabités du désert (bande du bas) : coins OPPOSÉS, loin du centre
@@ -2645,8 +2665,10 @@ export default class GameScene extends Phaser.Scene {
 
   /** Place le marchand près du spawn (PNJ statique avec collision) + son indice "E". */
   spawnMerchant() {
-    const mx = this.cx * TILE + 3 * TILE // au centre du VILLAGE (décalé), 3 cases à droite du spawn
-    const my = this.cy * TILE
+    // devant la porte de la maison du HAUT (merchantHome, calculé dans spawnVillage) ; repli au centre
+    const h = this.merchantHome
+    const mx = (h ? h.nx : this.cx + 3) * TILE + 8
+    const my = (h ? h.ny : this.cy) * TILE + 8
     this.merchant = this.add.sprite(mx, my, 'npc_merchant', 0).setDepth(my)
     this.physics.add.existing(this.merchant, true)
     this.merchant.body.setSize(12, 12).setOffset(2, 4)
@@ -2773,11 +2795,22 @@ export default class GameScene extends Phaser.Scene {
 
   /** Oriente les villageois vers le héros à portée + affiche l'indice "(E)" de proximité.
    *  Gère aussi l'interaction AUTO quand on a cliqué un PNJ et qu'on vient d'arriver. */
-  updateNpcs() {
+  updateNpcs(time, delta = 16) {
     const p = this.player
+    const dt = delta / 1000
     for (const npc of this.npcs || []) {
       const s = npc.sprite
       const near = this.dist(p.x, p.y, s.x, s.y)
+      // PNJ baladeur : erre EN CONTINU (plus de figeage quand le joueur approche -> on les voit bouger).
+      if (npc._w) {
+        this.wanderEntity(npc._w, time, dt)
+        npc.x = s.x // synchronise la position de référence (clic / portée de dialogue)
+        npc.y = s.y
+        npc.label.setPosition(s.x, s.y - 14)
+        npc.hint.setPosition(s.x, s.y - 23)
+        npc.hint.setVisible(near <= HINT_RANGE)
+        continue
+      }
       let dir = 'down'
       if (near <= NPC_TALK_RANGE + 20) {
         const dx = p.x - s.x
@@ -2874,11 +2907,21 @@ export default class GameScene extends Phaser.Scene {
   spawnVillagers() {
     this.npcs = []
     for (const v of this.villagers || []) {
+      if (v.merchant) continue // la maison du marchand n'a pas de villageois bavard (le marchand s'y tient)
       this.addNpc(v.nx, v.ny, v.tex, v.name, v.lines, v.role ?? 'talk')
     }
-    // PNJ dispersés sur la map (au bout des petits chemins) : cliquables / "Parler (E)" comme les autres
+    // PNJ baladeurs de la prairie : cliquables / "Parler (E)" comme les autres, MAIS ils errent
+    // (corps physique désactivé -> pas de mur fantôme là où le sprite n'est plus ; on les traverse).
     for (const npc of this.wildNpcs || []) {
-      this.addNpc(npc.tx, npc.ty, npc.tex, npc.name, npc.lines, 'talk')
+      const n = this.addNpc(npc.tx, npc.ty, npc.tex, npc.name, npc.lines, 'talk')
+      if (!n) continue
+      this.tweens.killTweensOf(n.sprite) // stoppe la "respiration" (sinon elle écrase l'anim de marche)
+      n.sprite.setScale(1)
+      // RETIRE le corps statique de l'arbre de collision (enable=false ne suffit pas : overlapRect
+      // détecterait encore le propre corps du PNJ -> il se croit bloqué et ne bouge jamais).
+      if (n.sprite.body) this.physics.world.disable(n.sprite)
+      n._w = this.makeWander(n.sprite, n.texture, n.sprite.x, n.sprite.y, 64, 24 + Math.random() * 12)
+      n._w.biomeLock = 'prairie' // ne sortent jamais de la prairie
     }
   }
 
@@ -3594,7 +3637,7 @@ export default class GameScene extends Phaser.Scene {
     Audio.setAmbientLevel('amb_wind', this.ambLevel * 0.7)
     Audio.setAmbientLevel('amb_waves', Math.pow(this.ambLevel, 1.3))
 
-    this.updateNpcs(time) // villageois qui se baladent
+    this.updateNpcs(time, delta) // villageois (statiques) + PNJ baladeurs de la prairie
 
     // indice "Parler (E)" du marchand quand on est proche (les villageois parlent tout seuls)
     this.merchantHint.setVisible(this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= HINT_RANGE)

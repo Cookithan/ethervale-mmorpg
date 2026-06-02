@@ -5,6 +5,14 @@ import { Audio } from '../data/sound.js'
 // monstres (sprites mon_<nom>.png, grille 4x4) — chargement + animations directionnelles
 const MONSTER_SPRITES = ['mushroom', 'lizard', 'racoon', 'snake', 'spider', 'bear', 'owl', 'skull', 'spirit', 'flam']
 
+// PNJ (sprites 4×7, par colonne = direction) : villageois du bourg (statiques) + civils baladeurs de
+// la prairie (apparences distinctes, ni villageois ni perso de classe). Tout est chargé + animé pareil.
+const NPC_SPRITES = [
+  'npc_villager', 'npc_woman', 'npc_boy', // villageois du bourg (Aldric / Mira / Tom)
+  'npc_noble', 'npc_princess', 'npc_oldman', 'npc_oldman2', 'npc_monk', 'npc_monk2', 'npc_hunter',
+  'npc_inspector', 'npc_master', 'npc_shaman', 'npc_mangreen', 'npc_eskimo', 'npc_fighterwhite', 'npc_fighterred',
+]
+
 // audio : clés des fichiers (musiques .ogg + bruitages .wav) à précharger
 const MUSIC_KEYS = ['mus_menu', 'mus_village', 'mus_forest', 'mus_snow', 'mus_desert', 'mus_cursed', 'mus_boss1', 'mus_boss2', 'mus_boss3', 'mus_shop']
 const SFX_KEYS = [
@@ -153,8 +161,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('npc_merchant', 'assets/sprites/npc_merchant.png', { frameWidth: 16, frameHeight: 16 })
     this.load.image('merchant_face', 'assets/items/merchant_face.png')
 
-    // villageois (PNJ statiques, frame 0 = face)
-    for (const n of ['npc_villager', 'npc_woman', 'npc_boy']) {
+    // PNJ (villageois + civils baladeurs) : spritesheets 16x16 (4×7)
+    for (const n of NPC_SPRITES) {
       this.load.spritesheet(n, `assets/sprites/${n}.png`, { frameWidth: 16, frameHeight: 16 })
     }
 
@@ -628,7 +636,7 @@ export default class BootScene extends Phaser.Scene {
    */
   createNpcAnimations() {
     const dirs = { down: 0, up: 1, left: 2, right: 3 }
-    for (const n of ['npc_villager', 'npc_woman', 'npc_boy']) {
+    for (const n of NPC_SPRITES) {
       for (const [dir, col] of Object.entries(dirs)) {
         const wk = `${n}-walk-${dir}`
         if (!this.anims.exists(wk)) {
