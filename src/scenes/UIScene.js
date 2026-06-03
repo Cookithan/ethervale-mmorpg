@@ -572,7 +572,7 @@ export default class UIScene extends Phaser.Scene {
     if (p.gold < item.price) return
     if (p.bagFull()) {
       // cap strict : on n'achète pas si le sac est plein (l'objet n'a nulle part où aller)
-      this.showToast('Sac plein (5) — vends ou lâche un objet', '#e0a866')
+      this.showToast(`Sac plein (${p.invMax}) — vends ou lâche un objet`, '#e0a866')
       this.playDenied()
       return
     }
@@ -1331,7 +1331,7 @@ export default class UIScene extends Phaser.Scene {
     const now = this.time.now
     if (now < (this._bagFullAt || 0)) return
     this._bagFullAt = now + 1200
-    this.showToast('Sac plein (5) — lâche ou vends un objet', '#e0a866')
+    this.showToast(`Sac plein (${this.game_.player?.invMax ?? 6}) — lâche ou vends un objet`, '#e0a866')
     this.playDenied()
   }
 

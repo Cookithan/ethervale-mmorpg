@@ -9,7 +9,7 @@ const ATTACK_COOLDOWN = 340 // cadence de l'attaque de base : rapide/spammable m
 const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
 const SHOOT_COOLDOWN = 360 // délai mini entre deux tirs à distance (ms) — attaque de base à distance
 const MANA_REGEN = 3 // mana/s de BASE (compromis : la mana mord un peu ; des items de régén la complèteront)
-const INV_MAX = 5 // capacité du SAC (cap strict, brief A0) — l'équipement des 4 slots est à part
+const INV_MAX = 6 // capacité du SAC (cap strict) — l'équipement des 4 slots est à part (= nb de cases de la hotbar)
 
 // Progression « façon WoW » (brief A2) : cap niveau 50, courbe d'XP exponentielle DOUCE.
 // Montée très rapide au début (le joueur accroche), mur de plus en plus raide vers 50 (le farm
@@ -85,12 +85,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.nextSpellAt = 0 // fin du cooldown du sort de classe
     this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -50 % dégâts reçus
 
-    // équipement 4 SLOTS (Arme/Armure/Casque/Anneau) + sac. Arme de départ selon la classe + tunique.
+    // équipement 4 SLOTS (Arme/Armure/Focus/Anneau) + sac. Départ = SEULEMENT l'arme de base de la classe
+    // (rien d'autre : ni armure, ni anneau -> tout le reste se gagne/s'achète).
     const starterId = STARTER_WEAPON[this.className] ?? 'sword'
-    this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: cloneItem(ITEMS.leather), focus: null, ring: null }
+    this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: null, focus: null, ring: null }
     this.spellCdMul = 1 // <1 = cooldown de compétence réduit (Focus)
     this.spellPowerMul = 1 // >1 = effet de compétence renforcé (Focus)
-    this.inventory = [cloneItem(ITEMS.amulet)] // un Anneau de mana de départ dans le sac
+    this.inventory = [] // sac vide au départ
     // (les armes à LANCER ne sont pas de départ : trop fortes -> uniquement achetables au marché)
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
     this.invMax = INV_MAX // taille max du sac (loot/achat refusés quand plein)
