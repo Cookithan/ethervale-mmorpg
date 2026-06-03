@@ -81,6 +81,8 @@ export const MONSTER_TYPES = {
     key: 'boss_democyclop_idle', rig: 'democyclop', face: 'face_democyclop',
     hp: 70, speed: 28, damage: 15, xp: 32, aggro: 110, scale: 2.2, body: { w: 26, h: 34 },
     tier: 'epic', loot: { gold: [6, 12] }, name: 'Cyclope démon',
+    // BULL-RUSH : ruée lourde et télégraphiée (pas de feuille charge -> garde l'idle). Mêlée sûre entre 2 ruées.
+    charge: { range: 280, windup: 950, speed: 400, duration: 420, dmgMul: 1.6, cooldown: 2800, hitRadius: 30, color: 0xc97b3a },
   },
   // Seigneur de flamme (Terres Maudites) : rig SANS walk (reste sur place, lent) -> playRig retombe sur idle
   giantflam: {
@@ -93,6 +95,8 @@ export const MONSTER_TYPES = {
     key: 'boss_democyclop2_idle', rig: 'democyclop2', face: 'face_democyclop2',
     hp: 85, speed: 26, damage: 17, xp: 36, aggro: 115, scale: 2.2, body: { w: 26, h: 34 },
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Cyclope ancien',
+    // Cyclope ancien : bull-rush plus rapide, plus large et plus fort.
+    charge: { range: 290, windup: 850, speed: 440, duration: 420, dmgMul: 1.7, cooldown: 2500, hitRadius: 32, color: 0xd49a4a },
   },
   giantbamboo: {
     key: 'boss_giantbamboo_idle', rig: 'giantbamboo', face: 'face_giantbamboo',
@@ -443,7 +447,9 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       // ex. samouraï 96×96 vs 96×48 -> chargeOriginY pour aligner les pieds ; frog/racoon = même taille -> 0.5)
       this.setOrigin(0.5, cfg.chargeOriginY ?? 0.5)
       this.rigState = 'charge'
-      this.anims.play(`boss-${this.rig}-charge`, true)
+      // certains boss n'ont pas de feuille "charge" dédiée (ex. Cyclopes : bull-rush) -> on garde l'idle pendant la ruée
+      const ck = `boss-${this.rig}-charge`
+      this.anims.play(this.scene.anims.exists(ck) ? ck : `boss-${this.rig}-idle`, true)
       if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0)
       this.scene.bossChargeTelegraph?.(this, this.attackAngle, cfg) // zone de danger au sol
       return true
