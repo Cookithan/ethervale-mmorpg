@@ -8,6 +8,7 @@ const PROLOGUE = [
   'Puis le monde se brisa. La terre se fendit en domaines hostiles, et ceux qui veillaient sur Iroas se changèrent en monstres.',
   'Les héros partirent les affronter. Aucun ne revint.',
   "Aujourd'hui, il ne reste qu'un village au creux d'une clairière, cerné de ruines et de mers sombres. Et toi.",
+  'Choisis ta voie : Guerrier, Tank, Mage ou Soigneur.',
   "Pas un élu. Pas un roi. Juste celui qui n'a pas renoncé.",
 ]
 
@@ -37,56 +38,53 @@ export default class IntroScene extends Phaser.Scene {
       .setOrigin(0.5)
 
     // prologue : paragraphes qui apparaissent en fondu, l'un après l'autre
-    const tw = Math.min(620, cw - 60)
-    let y = ch * 0.24
+    const tw = Math.min(680, cw - 48)
+    let y = ch * 0.22
     const texts = []
     PROLOGUE.forEach((para) => {
       const t = this.add
         .text(cw / 2, y, para, {
           fontFamily: 'Georgia, serif',
-          fontSize: '15px',
-          color: '#e9e0cf',
+          fontSize: `${Math.round(Phaser.Math.Clamp(cw / 42, 16, 22))}px`,
+          color: '#ece3d2',
           align: 'center',
           wordWrap: { width: tw },
-          lineSpacing: 4,
+          lineSpacing: 6,
         })
         .setOrigin(0.5, 0)
         .setAlpha(0)
       texts.push(t)
-      y += t.height + 16
+      y += t.height + 30 // paragraphes bien espacés
     })
-    // apparition en cascade
-    texts.forEach((t, i) => {
-      this.tweens.add({ targets: t, alpha: 1, duration: 700, delay: 300 + i * 600, ease: 'Sine.out' })
-    })
-
-    // bouton "Commencer l'aventure" (apparaît après le prologue)
-    const btnY = Math.min(ch - 50, y + 36)
-    const bw = 240
-    const bh = 44
-    const bg = this.add.rectangle(cw / 2, btnY, bw, bh, 0x3b2a1e, 1).setStrokeStyle(2, 0xe0913c).setAlpha(0)
+    // bouton "Commencer l'aventure" (créé caché, révélé une fois le prologue terminé)
+    const btnY = Math.min(ch - 46, y + 30)
+    const bg = this.add.rectangle(cw / 2, btnY, 240, 44, 0x3b2a1e, 1).setStrokeStyle(2, 0xe0913c).setAlpha(0)
     const label = this.add.text(cw / 2, btnY, "Commencer l'aventure", { fontFamily: 'Georgia, serif', fontSize: '17px', fontStyle: 'bold', color: '#ffe9b0' }).setOrigin(0.5).setAlpha(0)
-    const startDelay = 300 + PROLOGUE.length * 600 + 400
-    this.tweens.add({ targets: [bg, label], alpha: 1, duration: 500, delay: startDelay })
     bg.setInteractive({ useHandCursor: true })
     bg.on('pointerover', () => bg.setFillStyle(0x553926))
     bg.on('pointerout', () => bg.setFillStyle(0x3b2a1e))
-    const begin = () => {
-      Audio.sfx('ui_accept', { detune: 0 })
-      this.scene.start('CharacterScene')
-    }
+    const begin = () => { Audio.sfx('ui_accept', { detune: 0 }); this.scene.start('CharacterScene') }
     bg.on('pointerdown', begin)
 
-    // aide : passer (clic ailleurs révèle tout de suite le bouton, ou Entrée commence)
-    this.add.text(cw / 2, ch - 16, 'Entrée : commencer  ·  clic : tout afficher', { fontFamily: 'monospace', fontSize: '10px', color: '#8a93a0' }).setOrigin(0.5)
+    // RÉVÉLATION paragraphe par paragraphe (visual-novel) : LENTE (3 s) en auto, et un clic AVANCE d'un
+    // seul paragraphe (sans tout sauter). Le bouton n'apparaît qu'à la dernière phrase.
+    let shown = 0
+    let autoTimer = null
+    const showButton = () => this.tweens.add({ targets: [bg, label], alpha: 1, duration: 500 })
+    const revealNext = () => {
+      autoTimer?.remove()
+      autoTimer = null
+      if (shown >= texts.length) { showButton(); return }
+      this.tweens.add({ targets: texts[shown], alpha: 1, duration: 800, ease: 'Sine.out' })
+      shown++
+      if (shown < texts.length) autoTimer = this.time.delayedCall(2200, revealNext)
+      else this.time.delayedCall(1000, showButton)
+    }
+
+    this.add.text(cw / 2, ch - 16, 'Clic : phrase suivante  ·  Entrée : commencer', { fontFamily: 'monospace', fontSize: '10px', color: '#8a93a0' }).setOrigin(0.5)
     this.input.keyboard.on('keydown-ENTER', begin)
-    // un clic dans le vide révèle immédiatement prologue + bouton (skip de l'animation)
-    this.input.on('pointerdown', (p, over) => {
-      if (over.includes(bg)) return
-      this.tweens.killTweensOf([...texts, bg, label])
-      texts.forEach((t) => t.setAlpha(1))
-      bg.setAlpha(1)
-      label.setAlpha(1)
-    })
+    this.input.on('pointerdown', (p, over) => { if (!over.includes(bg)) revealNext() }) // clic = paragraphe suivant
+
+    revealNext() // affiche le 1er paragraphe tout de suite
   }
 }

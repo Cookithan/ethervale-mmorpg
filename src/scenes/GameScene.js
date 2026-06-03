@@ -11,6 +11,7 @@ import { Audio, SFX } from '../data/sound.js'
 
 const MONSTER_COUNT = 170 // base de population (répartie par surface de biome × mult ci-dessous)
 const MONSTER_GAP = 7 // distance mini entre deux monstres au spawn/respawn (en tuiles)
+const MAX_CHASERS = 2 // PLAFOND d'aggro : nb max de monstres normaux qui poursuivent le joueur en même temps
 // réglage par biome : forêt (jungle) = PLUS dense ; tous bien espacés (pas de paquets).
 const BIOME_SPAWN = {
   forest: { mult: 1.5, gap: 7 }, // jungle : densité augmentée, espacée
@@ -3348,6 +3349,14 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Plafond d'aggro : vrai s'il reste de la place pour un nouveau poursuivant NORMAL (anti-meute +
+   *  en multi, empêche un joueur de "ramasser" tout un biome). Les boss ne comptent pas. */
+  aggroSlotFree() {
+    let n = 0
+    this.monsters.getChildren().forEach((m) => { if (m.active && m.aggroed && !m.isBoss) n++ })
+    return n < MAX_CHASERS
+  }
+
   nearestMonster(x, y, radius, visibleOnly = false) {
     let best = null
     let bestD = radius
@@ -3765,6 +3774,7 @@ export default class GameScene extends Phaser.Scene {
     if (i >= 0) this.bosses.splice(i, 1)
     if (this.activeBoss === mon) this.activeBoss = null
     if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
+    this.questKill(mon) // progression d'une quête « battre un boss » (cible = clé du boss, count 1)
 
     // butin de BOSS : UN SEUL légendaire (biaisé classe) + 2 objets épiques/rares + gros or + gros soin
     const cls = this.player.className

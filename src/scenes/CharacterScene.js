@@ -22,7 +22,7 @@ export default class CharacterScene extends Phaser.Scene {
     // village vivant en fond (continuité avec l'accueil chaleureux) au lieu d'un écran noir
     if (!this.scene.isActive('GameScene')) this.scene.launch('GameScene', { preview: true })
     this.scene.bringToTop()
-    this.add.rectangle(0, 0, this.cw, this.ch, 0x0a1018, 0.5).setOrigin(0, 0) // voile léger (lisibilité des cartes)
+    this.add.rectangle(0, 0, this.cw, this.ch, 0x07090e, 0.72).setOrigin(0, 0) // voile SOMBRE (continuité avec l'intro + lisibilité)
 
     this.classKey = null
     this.heroIndex = 0

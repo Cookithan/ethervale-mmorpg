@@ -1005,26 +1005,33 @@ export default class UIScene extends Phaser.Scene {
     const hov = reg(this.add.rectangle(x, y, w, h - 26, 0xffffff, 0.001).setOrigin(0, 0).setInteractive())
     hov.on('pointerover', () => this.showTip(item, x + w / 2, y))
     hov.on('pointerout', () => this.hideTip())
-    // coût en MATÉRIAUX de la prochaine amélioration (vert = en stock, orange = manquant)
+    // COÛT D'AMÉLIORATION bien visible : or + MATÉRIAUX (vert = tout en stock, orange = il manque qqch)
     const uCost = upgradeCost(item)
-    const mats = uCost != null ? this.upgradeMats(item) : null
-    const matsOk = !mats || this.hasMats(mats)
-    if (mats) reg(this.add.text(x + 44, y + 54, this.matsLabel(mats), { fontFamily: 'monospace', fontSize: '8px', color: matsOk ? '#9be8a0' : '#e0a060' }).setOrigin(0, 0))
-    // boutons
     const rCost = repairCost(item)
     const bw = (w - 24) / 2
     const by = y + h - 22
+    let upEnabled = false
+    if (uCost == null) {
+      reg(this.add.text(x + 8, y + 51, 'Amélioration au maximum (+5)', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0, 0))
+    } else {
+      const mats = this.upgradeMats(item)
+      upEnabled = p.gold >= uCost && this.hasMats(mats)
+      reg(this.add.text(x + 8, y + 51, `${uCost} or + ${this.matsLabel(mats)}`, { fontFamily: 'monospace', fontSize: '9px', color: upEnabled ? '#9be8a0' : '#e0a060', wordWrap: { width: w - 16 } }).setOrigin(0, 0))
+    }
     this.drawForgeBtn(reg, x + 8, by, bw, rCost > 0 && p.gold >= rCost, rCost > 0 ? `Réparer ${rCost}` : 'Intact', () => this.repairItem(item))
-    this.drawForgeBtn(reg, x + 16 + bw, by, bw, uCost != null && p.gold >= uCost && matsOk, uCost != null ? `+1 : ${uCost}or` : 'Max +5', () => this.upgradeItem(item))
+    this.drawForgeBtn(reg, x + 16 + bw, by, bw, upEnabled, uCost != null ? `Forger +${(item.upgrade ?? 0) + 1}` : 'Max +5', () => this.upgradeItem(item))
   }
 
-  /** Matériaux requis pour la prochaine amélioration d'un objet (arme→Os, armure→Cuir ; +Cristal en haut). */
+  /** Matériaux requis pour la PROCHAINE amélioration (armes ET armures) : progression par niveau —
+   *  Cuir (commun, tôt) → Lingot de fer (milieu) → Cristal (rare, haut niveau). */
   upgradeMats(item) {
-    const up = item.upgrade ?? 0
-    const base = item.slot === 'weapon' ? 'mat_essence' : 'mat_leather' // arme = Lingot de fer, armure = Cuir
-    const m = { [base]: up + 1 }
-    if (up >= 2) m.mat_crystal = up - 1 // +3 et au-delà : du Cristal
-    return m
+    switch (item.upgrade ?? 0) {
+      case 0: return { mat_leather: 2 } // +1 : 2 Cuir
+      case 1: return { mat_leather: 3, mat_essence: 1 } // +2 : 3 Cuir + 1 Lingot
+      case 2: return { mat_essence: 2 } // +3 : 2 Lingots
+      case 3: return { mat_essence: 3, mat_crystal: 1 } // +4 : 3 Lingots + 1 Cristal
+      default: return { mat_essence: 2, mat_crystal: 2 } // +5 : 2 Lingots + 2 Cristal
+    }
   }
 
   hasMats(mats) {
@@ -1478,7 +1485,7 @@ export default class UIScene extends Phaser.Scene {
   }
 
   /** Découpe les phrases trop longues en plusieurs pages (clic pour continuer) -> elles tiennent dans la boîte. */
-  paginateLines(lines, maxLen = 88) {
+  paginateLines(lines, maxLen = 120) {
     const out = []
     for (const raw of lines) {
       for (const seg of String(raw).split('\n')) { // chaque '\n' = nouvelle page
@@ -1526,10 +1533,10 @@ export default class UIScene extends Phaser.Scene {
       port.setScale((useFace ? 40 * s : 34 * s) / Math.max(port.width, port.height))
     }
 
-    // NOM (majuscules, brun, plus grand) + phrase (texte sombre) sur le crème
+    // NOM (majuscules, brun) + phrase (texte sombre) sur le crème — police Georgia (style RPG/parchemin)
     const tx = boxX + 58 * s
-    reg(this.add.text(tx, boxY + 7 * s, (this.dlgName || '').toUpperCase(), { fontFamily: 'monospace', fontSize: Math.round(12 * s) + 'px', fontStyle: 'bold', color: '#7a4516' }).setOrigin(0, 0).setResolution(2))
-    reg(this.add.text(tx, boxY + 22 * s, this.dlgLines[this.dlgIndex], { fontFamily: 'monospace', fontSize: Math.round(9.5 * s) + 'px', color: '#33271a', lineSpacing: 2, wordWrap: { width: 234 * s } }).setOrigin(0, 0).setResolution(2))
+    reg(this.add.text(tx, boxY + 12 * s, (this.dlgName || '').toUpperCase(), { fontFamily: 'Georgia, serif', fontSize: Math.round(10 * s) + 'px', fontStyle: 'bold', color: '#6b3f12' }).setOrigin(0, 0).setResolution(2))
+    reg(this.add.text(tx, boxY + 26 * s, this.dlgLines[this.dlgIndex], { fontFamily: 'Georgia, serif', fontSize: Math.round(8 * s) + 'px', color: '#33271a', lineSpacing: 2, wordWrap: { width: 236 * s } }).setOrigin(0, 0).setResolution(2))
 
     // flèche « suivant » en bas à droite, qui rebondit
     const arrow = reg(this.add.image(boxX + 286 * s, boxY + 46 * s, 'arrow_next').setScale(s))

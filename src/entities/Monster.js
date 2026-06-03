@@ -163,7 +163,7 @@ export const MONSTER_TYPES = {
 }
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)
-const LEASH_RANGE = 200 // distance parcourue depuis l'endroit où elle t'a repéré avant d'abandonner (px)
+const LEASH_RANGE = 120 // distance parcourue depuis l'endroit où elle t'a repéré avant d'abandonner (px) — poursuite courte
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
 const PATROL_RADIUS = 80 // rayon autour duquel un BOSS rôde/garde son repaire avant d'être provoqué (px)
 const BOSS_GUARD_LEASH = 220 // tant que le combat n'a PAS commencé, le boss ne poursuit pas au-delà (revient au repaire)
@@ -315,13 +315,33 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-  /** Engage le combat (poursuite). Pour un BOSS, c'est définitif (aucune fuite possible). */
-  engage() {
+  /** Engage le combat (poursuite). Pour un BOSS, c'est définitif (aucune fuite possible).
+   *  `force` = true quand le monstre a été FRAPPÉ (il contre-attaque toujours, hors plafond). */
+  engage(force = false) {
     if (this.aggroed) return
+    // PLAFOND D'AGGRO : seul un petit nombre de monstres NORMAUX peut poursuivre le joueur à la fois
+    // (sinon un biome dense te submerge ; en multi, un joueur ne pourrait pas "ramasser" tout le biome).
+    if (!force && !this.isBoss && this.scene.aggroSlotFree && !this.scene.aggroSlotFree()) return
     this.aggroed = true
     this.returning = false
     this.leashX = this.x // ancre du leash (ignorée par les boss)
     this.leashY = this.y
+    if (!this.isBoss) this.showAlert() // « ! » : le monstre vient de te REPÉRER
+  }
+
+  /** « ! » rouge au-dessus de la tête au moment où le monstre te repère (pop + disparition). */
+  showAlert() {
+    if (!this.alert) {
+      this.alert = this.scene.add
+        .text(this.x, this.y, '!', { fontFamily: 'Georgia, serif', fontSize: '13px', fontStyle: 'bold', color: '#ff5140', stroke: '#1a0a06', strokeThickness: 3 })
+        .setOrigin(0.5, 1)
+        .setResolution(3)
+        .setDepth(60004)
+    }
+    this.scene.tweens.killTweensOf(this.alert)
+    this.alert.setVisible(true).setAlpha(1).setScale(0.5).setPosition(this.x, this.y - this.barOffsetY - 6)
+    this.scene.tweens.add({ targets: this.alert, scale: 1, duration: 160, ease: 'Back.out' })
+    this.scene.tweens.add({ targets: this.alert, alpha: 0, delay: 700, duration: 250, onComplete: () => this.alert?.setVisible(false) })
   }
 
   /** Réveille un BOSS (1re attaque reçue) : il s'engage définitivement (combatEngaged -> arène + musique),
@@ -502,7 +522,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
   takeDamage(amount) {
     if (this.seaPatrol) return false // dragon de mer d'ambiance : intouchable tant que la nage n'existe pas
     this.hp -= amount
-    this.engage() // frappé = engagé (un boss ne lâchera plus jamais ; un monstre normal contre-attaque)
+    this.engage(true) // frappé = engagé TOUJOURS (hors plafond d'aggro) : un monstre frappé contre-attaque
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(80, () => {
       if (!this.active) return
@@ -539,6 +559,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.infoText.destroy()
     this.aura?.destroy()
     this.sleepText?.destroy()
+    this.alert?.destroy()
     this.segs?.forEach((s) => s.destroy())
     this.wingL?.destroy()
     this.wingR?.destroy()
@@ -552,6 +573,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.infoText.destroy()
     this.aura?.destroy()
     this.sleepText?.destroy()
+    this.alert?.destroy()
     this.segs?.forEach((s) => s.destroy()) // dragon : détruire la chaîne de segments + les ailes
     this.wingL?.destroy()
     this.wingR?.destroy()
@@ -712,6 +734,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       // niveau VISIBLE dès qu'on s'approche (avant d'attaquer) ; l'élite est toujours affichée
       this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)
     }
+    if (this.alert?.visible) this.alert.setPosition(this.x, this.y - this.barOffsetY - 6) // le « ! » suit le monstre
     this.updateHpBar(time)
   }
 
