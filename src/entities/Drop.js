@@ -28,6 +28,7 @@ export default class Drop extends Phaser.Physics.Arcade.Sprite {
     this.type = type
     this.amount = amount
     this.item = item // objet d'équipement (si type 'equip'), sinon null
+    if (item && item.iconTint) this.setTint(item.iconTint) // teinte (armure/bâton soigneur) aussi au sol
     // instant avant lequel l'objet n'est PAS ramassable (objet qu'on vient de lâcher : on évite
     // qu'il soit ré-aspiré aussitôt alors qu'on est encore dessus). 0 = ramassable tout de suite.
     this.pickableAt = pickupDelay ? scene.time.now + pickupDelay : 0

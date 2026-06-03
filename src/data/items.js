@@ -16,58 +16,68 @@ export const RARITY = {
 
 // `dur` = durabilité max (armes/armures s'usent au combat ; à 0 l'objet casse et se
 // déséquipe -> à réparer chez le forgeron). Les accessoires n'ont pas de durabilité.
+// `iconTint` (optionnel) = teinte appliquée à l'icône (différencie des items qui partagent un sprite :
+// tiers d'armure, bâtons de soigneur teintés vert...). Appliqué partout où l'icône est dessinée.
 export const ITEMS = {
-  // ARMES (slot 'weapon') -> +Attaque. `classes` = classes autorisées à l'équiper (restriction du brief §5).
-  // L'icône `wpn_*` sert AUSSI de sprite qui swingue à l'attaque (cf. showWeaponSwing).
-  // Guerrier (épées) :
+  // ===== ARMES (slot 'weapon') -> +Attaque. `classes` = classes autorisées. L'icône `wpn_*` sert AUSSI
+  // de sprite qui swingue à l'attaque (showWeaponSwing). =====
+  // Guerrier (épées / lames, tranche 'fx-slash') :
   dagger: { id: 'dagger', name: 'Dague', slot: 'weapon', classes: ['warrior'], icon: 'wpn_dagger', rarity: 'common', price: 45, stats: { attack: 4 }, dur: 40, fx: 'fx-slash' },
   sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 50, fx: 'fx-slash' },
+  sabre: { id: 'sabre', name: 'Sabre courbe', slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword2', rarity: 'rare', price: 200, stats: { attack: 11 }, dur: 65, fx: 'fx-slash' },
   katana: { id: 'katana', name: 'Katana', slot: 'weapon', classes: ['warrior'], icon: 'wpn_katana', rarity: 'rare', price: 220, stats: { attack: 12 }, dur: 70, fx: 'fx-slash' },
+  kris: { id: 'kris', name: "Kris de l'ombre", slot: 'weapon', classes: ['warrior'], icon: 'wpn_ninjaku', rarity: 'epic', price: 520, stats: { attack: 18 }, dur: 100, fx: 'fx-slash' },
   rapier: { id: 'rapier', name: 'Rapière du duelliste', slot: 'weapon', classes: ['warrior'], icon: 'wpn_rapier', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 110, fx: 'fx-slash' },
   // Guerrier — armes à LANCER (`ranged: true` -> l'attaque PROJETTE l'arme vers l'ennemi visible) :
   throwknife: { id: 'throwknife', name: 'Couteaux de lancer', slot: 'weapon', classes: ['warrior'], icon: 'fx_kunai', ranged: true, proj: { tex: 'fx_kunai' }, rarity: 'common', price: 90, stats: { attack: 4 }, dur: 45 },
   shuriken: { id: 'shuriken', name: 'Shuriken', slot: 'weapon', classes: ['warrior'], icon: 'fx_shuriken', ranged: true, proj: { tex: 'fx_shuriken', anim: 'fx-shuriken' }, rarity: 'rare', price: 200, stats: { attack: 8 }, dur: 60 },
-  // Tank (masses / lames lourdes) -> slash circulaire lourd :
+  // Tank (masses / lames lourdes -> slash circulaire 'fx-circslash') :
   club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'wpn_club', rarity: 'common', price: 90, stats: { attack: 5 }, dur: 60, fx: 'fx-circslash' },
   warhammer: { id: 'warhammer', name: 'Marteau de guerre', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'rare', price: 240, stats: { attack: 10 }, dur: 90, fx: 'fx-circslash' },
+  axe: { id: 'axe', name: 'Hache de guerre', slot: 'weapon', classes: ['tank'], icon: 'wpn_axe', rarity: 'rare', price: 250, stats: { attack: 11 }, dur: 85, fx: 'fx-circslash' },
   greatblade: { id: 'greatblade', name: 'Lame colossale', slot: 'weapon', classes: ['tank'], icon: 'wpn_bigsword', rarity: 'epic', price: 580, stats: { attack: 17 }, dur: 120, fx: 'fx-circslash' },
+  warlance: { id: 'warlance', name: 'Pertuisane', slot: 'weapon', classes: ['tank'], icon: 'wpn_lance2', rarity: 'epic', price: 560, stats: { attack: 16 }, dur: 115, fx: 'fx-circslash' },
   // Mage (baguettes / grimoires) :
   wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'wpn_wand', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 40 },
   grimoire: { id: 'grimoire', name: 'Grimoire interdit', slot: 'weapon', classes: ['mage'], icon: 'wpn_book', rarity: 'rare', price: 240, stats: { attack: 12 }, dur: 60 },
   archstaff: { id: 'archstaff', name: "Bâton de l'archimage", slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 80 },
-  // Soigneur (bâtons de soin) :
-  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'wpn_stick', rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40 },
-  healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'wpn_wand', rarity: 'rare', price: 220, stats: { attack: 8 }, dur: 60 },
+  // Soigneur (bâtons teintés VERT pour les distinguer du mage) :
+  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'wpn_stick', iconTint: 0x9be88f, rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40 },
+  healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'wpn_wand', iconTint: 0x9be88f, rarity: 'rare', price: 220, stats: { attack: 8 }, dur: 60 },
   relic: { id: 'relic', name: 'Relique sacrée', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', rarity: 'epic', price: 540, stats: { attack: 12 }, dur: 80 },
 
-  // armures (slot 'armor') -> PV / défense
-  leather: { id: 'leather', name: 'Tunique de cuir', slot: 'armor', icon: 'eq_armor', rarity: 'common', price: 90, stats: { hp: 16 }, dur: 50 },
-  chainmail: { id: 'chainmail', name: 'Cotte de mailles', slot: 'armor', icon: 'eq_armor', rarity: 'rare', price: 240, stats: { hp: 26, defense: 4 }, dur: 80 },
-  plate: { id: 'plate', name: 'Armure de plaques', slot: 'armor', icon: 'eq_armor', rarity: 'epic', price: 560, stats: { hp: 42, defense: 8 }, dur: 120 },
+  // ===== ARMURES (slot 'armor') -> PV / défense. Un seul sprite `eq_armor`, TEINTÉ par tier. =====
+  leather: { id: 'leather', name: 'Tunique de cuir', slot: 'armor', icon: 'eq_armor', iconTint: 0xc89a63, rarity: 'common', price: 90, stats: { hp: 16 }, dur: 50 },
+  chainmail: { id: 'chainmail', name: 'Cotte de mailles', slot: 'armor', icon: 'eq_armor', iconTint: 0xb6c0cc, rarity: 'rare', price: 240, stats: { hp: 26, defense: 4 }, dur: 80 },
+  plate: { id: 'plate', name: 'Armure de plaques', slot: 'armor', icon: 'eq_armor', iconTint: 0x9fb4d6, rarity: 'epic', price: 560, stats: { hp: 42, defense: 8 }, dur: 120 },
 
-  // FOCUS (slot 'focus') -> améliore LA COMPÉTENCE de classe : cooldown réduit + effet renforcé.
-  // (PAS de dégâts : `spellCd` = % de cooldown en moins, `spellPower` = % d'effet en plus.)
-  focus1: { id: 'focus1', name: "Focus d'apprenti", slot: 'focus', icon: 'eq_amulet', rarity: 'common', price: 110, spellCd: 0.08, spellPower: 0.08 },
-  focus2: { id: 'focus2', name: 'Focus de mage', slot: 'focus', icon: 'eq_amulet', rarity: 'rare', price: 260, spellCd: 0.15, spellPower: 0.18 },
-  focus3: { id: 'focus3', name: "Focus d'archimage", slot: 'focus', icon: 'eq_amulet', rarity: 'epic', price: 580, spellCd: 0.24, spellPower: 0.3 },
+  // ===== FOCUS (slot 'focus') -> améliore LA COMPÉTENCE (cooldown -%, effet +%). Parchemins élémentaires. =====
+  focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellCd: 0.08, spellPower: 0.08 },
+  focus2: { id: 'focus2', name: 'Parchemin de givre', slot: 'focus', icon: 'foc_ice', rarity: 'rare', price: 260, spellCd: 0.15, spellPower: 0.18 },
+  focus_plant: { id: 'focus_plant', name: 'Parchemin de vie', slot: 'focus', icon: 'foc_plant', rarity: 'rare', price: 250, spellCd: 0.14, spellPower: 0.2 },
+  focus3: { id: 'focus3', name: 'Parchemin de foudre', slot: 'focus', icon: 'foc_thunder', rarity: 'epic', price: 580, spellCd: 0.24, spellPower: 0.3 },
+  focus_fire: { id: 'focus_fire', name: 'Parchemin de flammes', slot: 'focus', icon: 'foc_fire', rarity: 'epic', price: 600, spellCd: 0.2, spellPower: 0.38 },
 
-  // ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire) [ex-accessoires]
+  // ===== ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire). Gemmes colorées. =====
   amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring', rarity: 'common', price: 90, stats: { mana: 16 } },
-  ring: { id: 'ring', name: 'Anneau arcanique', slot: 'ring', icon: 'eq_ring', rarity: 'rare', price: 220, stats: { mana: 34, attack: 3 } },
-  signet: { id: 'signet', name: "Anneau de l'archonte", slot: 'ring', icon: 'eq_ring', rarity: 'epic', price: 520, stats: { mana: 58, defense: 3 } },
+  ring: { id: 'ring', name: "Anneau d'émeraude", slot: 'ring', icon: 'ring_green', rarity: 'rare', price: 220, stats: { mana: 34, attack: 3 } },
+  ring_topaz: { id: 'ring_topaz', name: 'Anneau de topaze', slot: 'ring', icon: 'ring_yellow', rarity: 'rare', price: 230, stats: { mana: 28, hp: 14 } },
+  signet: { id: 'signet', name: "Anneau d'améthyste", slot: 'ring', icon: 'ring_purple', rarity: 'epic', price: 520, stats: { mana: 58, defense: 3 } },
 
-  // LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand ni en butin normal, cf. SHOP_STOCK / equipmentOfTier) :
+  // ===== LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand/butin normal, cf. SHOP_STOCK / equipmentOfTier) =====
   legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
   legend_hammer: { id: 'legend_hammer', name: 'Marteau des Titans', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'legendary', price: 600, stats: { attack: 34 }, dur: 220, fx: 'fx-circslash' },
   legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
-  legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
-  legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_armor', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
-  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'eq_amulet', rarity: 'legendary', price: 560, spellCd: 0.42, spellPower: 0.65 },
-  legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'eq_ring', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8 } },
+  legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', iconTint: 0xffe6a0, rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
+  legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_armor', iconTint: 0xffd27a, rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
+  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellCd: 0.42, spellPower: 0.65 },
+  legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'ring_red', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8 } },
 
-  // consommables (type 'consumable') -> usage = soin immédiat (clic dans le sac)
-  potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'drop_heart', rarity: 'common', price: 40, heal: 45 },
-  potion_big: { id: 'potion_big', name: 'Grande potion', type: 'consumable', icon: 'drop_heart', rarity: 'rare', price: 110, heal: 120 },
+  // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
+  potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'pot_heal', rarity: 'common', price: 40, heal: 45 },
+  potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, heal: 120 },
+  potion_mana: { id: 'potion_mana', name: 'Potion de mana', type: 'consumable', icon: 'pot_mana', rarity: 'common', price: 45, mana: 40 },
+  potion_mana_big: { id: 'potion_mana_big', name: 'Grande potion de mana', type: 'consumable', icon: 'pot_mana_big', rarity: 'rare', price: 120, mana: 90 },
 }
 
 // stock du marchand = tout le catalogue SAUF les légendaires (exclusifs aux boss, brief §8)
@@ -155,7 +165,12 @@ export function itemName(item) {
 /** Texte descriptif d'un objet (consommable = soin ; équipement = stats + durabilité). */
 export function describeItem(item) {
   if (item.desc) return item.desc // objet spécial décrit en clair (ex. bateau)
-  if (item.type === 'consumable') return item.heal ? `Rend ${item.heal} PV (clic = boire)` : 'Consommable'
+  if (item.type === 'consumable') {
+    const e = []
+    if (item.heal) e.push(`+${item.heal} PV`)
+    if (item.mana) e.push(`+${item.mana} mana`)
+    return (e.length ? e.join(', ') : 'Consommable') + ' (clic = boire)'
+  }
   let txt = describeStats(effectiveStats(item))
   if (item.spellCd || item.spellPower) {
     const parts = []

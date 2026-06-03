@@ -174,12 +174,17 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('drop_heart', 'assets/items/heart.png')
     this.load.image('drop_gem', 'assets/items/gem.png')
 
-    // icônes d'équipement (armure / accessoires) — pack Ninja Adventure
-    for (const key of ['eq_armor', 'eq_amulet', 'eq_ring', 'eq_helmet']) {
+    // icônes d'équipement + consommables — pack Ninja Adventure (armures, parchemins=focus, gemmes=anneaux, potions)
+    for (const key of [
+      'eq_armor', 'eq_amulet', 'eq_ring', 'eq_helmet',
+      'foc_scroll', 'foc_ice', 'foc_plant', 'foc_thunder', 'foc_fire', // Focus = parchemins élémentaires
+      'ring_green', 'ring_yellow', 'ring_purple', 'ring_red', // Anneaux = gemmes colorées
+      'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', // potions (soin / mana)
+    ]) {
       this.load.image(key, `assets/items/${key}.png`)
     }
     // sprites d'ARMES (Items/Weapons) : servent d'icône d'inventaire ET de sprite qui swingue à l'attaque
-    for (const key of ['wpn_sword', 'wpn_katana', 'wpn_rapier', 'wpn_dagger', 'wpn_club', 'wpn_hammer', 'wpn_bigsword', 'wpn_wand', 'wpn_book', 'wpn_stick', 'wpn_bone']) {
+    for (const key of ['wpn_sword', 'wpn_sword2', 'wpn_katana', 'wpn_rapier', 'wpn_dagger', 'wpn_ninjaku', 'wpn_club', 'wpn_hammer', 'wpn_axe', 'wpn_lance2', 'wpn_bigsword', 'wpn_wand', 'wpn_book', 'wpn_stick', 'wpn_bone']) {
       this.load.image(key, `assets/weapons/${key}.png`)
     }
 

@@ -377,8 +377,9 @@ export default class UIScene extends Phaser.Scene {
       const border = item ? RARITY[item.rarity]?.tint ?? CELL_BORDER : CELL_BORDER
       reg(this.add.rectangle(bx, gy, cell, cell, CELL, 1).setStrokeStyle(item ? 2 : 1, border))
       if (!item) continue
+      reg(this.rarityBg(bx, gy, cell - 6, item.rarity)) // filigrane de rareté
       const c = reg(this.add.rectangle(bx, gy, cell, cell, 0x000000, 0).setInteractive({ useHandCursor: true }))
-      reg(this.addIcon(bx, gy, item.icon, cell - 12))
+      this.addItemIcon(reg, bx, gy, item, cell - 12)
       c.on('pointerdown', () => {
         // son PAR RÉSULTAT : validation si l'action aboutit, refus (throttlé) sinon -> pas de spam
         if (item.type === 'consumable') {
@@ -404,17 +405,31 @@ export default class UIScene extends Phaser.Scene {
     }
   }
 
-  /** Boit une potion : soigne, retire l'objet du sac, toast. */
+  /** Boit une potion : restaure PV et/ou mana, retire l'objet du sac, toast. */
   useConsumable(item) {
     const p = this.game_.player
     if (this.game_.gameOver) return
-    if (p.hp >= p.maxHp) {
-      this.showToast('PV déjà au maximum', '#ffd84d')
-      return
+    const wantsHeal = (item.heal ?? 0) > 0
+    const wantsMana = (item.mana ?? 0) > 0
+    const hpFull = p.hp >= p.maxHp
+    const manaFull = p.mana >= p.maxMana
+    // refus si l'effet utile est déjà au max (on ne gaspille pas la potion)
+    if (wantsHeal && !wantsMana && hpFull) return this.showToast('PV déjà au maximum', '#ffd84d')
+    if (wantsMana && !wantsHeal && manaFull) return this.showToast('Mana déjà au maximum', '#ffd84d')
+    if (wantsHeal && wantsMana && hpFull && manaFull) return this.showToast('PV et mana au maximum', '#ffd84d')
+    const parts = []
+    if (wantsHeal) {
+      const h = p.heal(item.heal)
+      if (h > 0) parts.push(`+${h} PV`)
     }
-    const healed = p.heal(item.heal ?? 0)
+    if (wantsMana) {
+      const before = p.mana
+      p.mana = Math.min(p.maxMana, p.mana + item.mana)
+      const got = Math.round(p.mana - before)
+      if (got > 0) parts.push(`+${got} mana`)
+    }
     p.removeItem(item) // retire la potion (invVersion++ -> le sac se reconstruit)
-    this.showToast(`+${healed} PV`, '#6fdc6f')
+    this.showToast(parts.join('   '), '#6fdc6f')
   }
 
   // ---------- fiche personnage (touche C) ----------
@@ -501,7 +516,8 @@ export default class UIScene extends Phaser.Scene {
       const border = item ? RARITY[item.rarity]?.tint ?? GOLD : GOLD
       const c = reg(this.add.rectangle(pos.x, pos.y, cellSz, cellSz, CELL, 1).setStrokeStyle(2, border))
       if (item) {
-        reg(this.addIcon(pos.x, pos.y, item.icon, cellSz - 14))
+        reg(this.rarityBg(pos.x, pos.y, cellSz - 8, item.rarity)) // filigrane de rareté
+        this.addItemIcon(reg, pos.x, pos.y, item, cellSz - 14)
         c.setInteractive({ useHandCursor: true })
         c.on('pointerdown', () => {
           if (p.unequip(slot)) {
@@ -698,7 +714,8 @@ export default class UIScene extends Phaser.Scene {
   drawCard(reg, x, y, w, h, item, footer) {
     const rc = RARITY[item.rarity]
     reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, rc ? rc.tint : CELL_BORDER))
-    reg(this.addIcon(x + 20, y + 22, item.icon, 26))
+    reg(this.rarityBg(x + 20, y + 22, 30, item.rarity)) // filigrane de rareté derrière l'icône
+    this.addItemIcon(reg, x + 20, y + 22, item, 26)
     reg(this.add.text(x + 38, y + 8, itemName(item), { fontFamily: 'monospace', fontSize: '10px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 44 } }).setOrigin(0, 0))
     if (hasDurability(item)) this.drawDurBar(reg, x + 38, y + h - 20, w - 46, item)
     reg(this.add.text(x + w - 6, y + h - 8, footer.text, { fontFamily: 'monospace', fontSize: '10px', color: footer.color }).setOrigin(1, 1))
@@ -802,7 +819,8 @@ export default class UIScene extends Phaser.Scene {
     const rc = RARITY[item.rarity]
     const p = this.game_.player
     reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, rc ? rc.tint : CELL_BORDER))
-    reg(this.addIcon(x + 22, y + 26, item.icon, 30))
+    reg(this.rarityBg(x + 22, y + 26, 34, item.rarity)) // filigrane de rareté derrière l'icône
+    this.addItemIcon(reg, x + 22, y + 26, item, 30)
     reg(this.add.text(x + 44, y + 8, itemName(item) + (equipped ? '  (équipé)' : ''), { fontFamily: 'monospace', fontSize: '10px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 50 } }).setOrigin(0, 0))
     const cur = item.durability ?? item.dur
     this.drawDurBar(reg, x + 44, y + 38, w - 54, item)
@@ -1239,9 +1257,25 @@ export default class UIScene extends Phaser.Scene {
     return inside(this.bagRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect) || inside(this.minimapRect)
   }
 
-  addIcon(x, y, key, fit) {
+  /** Filigrane de RARETÉ : fond teinté (couleur de la rareté) à placer DERRIÈRE l'icône d'un objet. */
+  rarityBg(x, y, size, rarity) {
+    const rc = RARITY[rarity]
+    return this.add.rectangle(x, y, size, size, rc ? rc.tint : 0x000000, rc ? 0.26 : 0)
+  }
+
+  /** Icône d'objet + VOILE de rareté SUR l'icône : une copie teintée de la couleur de rareté est posée
+   *  par-dessus en semi-transparence (comme la teinte de l'eau) -> l'objet prend la couleur de sa rareté. */
+  addItemIcon(reg, x, y, item, fit) {
+    const base = reg(this.addIcon(x, y, item.icon, fit, item.iconTint))
+    const rc = RARITY[item.rarity]
+    if (rc) reg(this.addIcon(x, y, item.icon, fit, rc.tint)).setAlpha(0.42)
+    return base
+  }
+
+  addIcon(x, y, key, fit, tint = null) {
     const img = this.add.image(x, y, key)
     img.setScale(fit / Math.max(img.width, img.height))
+    if (tint != null) img.setTint(tint) // teinte optionnelle (iconTint : tiers d'armure, bâtons soigneur...)
     return img
   }
 
@@ -1512,7 +1546,7 @@ export default class UIScene extends Phaser.Scene {
         } else {
           const rc = RARITY[c.it.rarity]
           reg(this.add.rectangle(ix, iy, cellW, cellW, 0x161b24, 0.95).setStrokeStyle(2, rc ? rc.tint : 0x888888).setDepth(D))
-          reg(this.addIcon(ix, iy, c.it.icon, sz - 8).setDepth(D))
+          reg(this.addIcon(ix, iy, c.it.icon, sz - 8, c.it.iconTint).setDepth(D))
         }
         ix += cellW + gap
       }
