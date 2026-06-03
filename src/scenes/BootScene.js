@@ -102,6 +102,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('boss_tengublue_idle', 'assets/boss/tengublue_idle.png', { frameWidth: 68, frameHeight: 68 })
     this.load.spritesheet('boss_tengublue_walk', 'assets/boss/tengublue_walk.png', { frameWidth: 82, frameHeight: 82 })
     this.load.spritesheet('boss_tengublue_hit', 'assets/boss/tengublue_hit.png', { frameWidth: 68, frameHeight: 68 })
+    this.load.spritesheet('boss_tengublue_attack', 'assets/boss/tengublue_attack.png', { frameWidth: 82, frameHeight: 82 }) // 15 frames (déluge)
+    this.load.spritesheet('boss_tengublue_trans', 'assets/boss/tengublue_trans.png', { frameWidth: 68, frameHeight: 68 }) // 11 frames (transfo)
     // GiantBlueSamurai (Forêt) : figure large et trapue -> frames 96x48 (idle/walk 6 frames, hit 4).
     this.load.spritesheet('boss_samurai_idle', 'assets/boss/samurai_idle.png', { frameWidth: 96, frameHeight: 48 })
     this.load.spritesheet('boss_samurai_walk', 'assets/boss/samurai_walk.png', { frameWidth: 96, frameHeight: 48 })
@@ -133,6 +135,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('boss_tengured_idle', 'assets/boss/tengured_idle.png', { frameWidth: 82, frameHeight: 82 })
     this.load.spritesheet('boss_tengured_walk', 'assets/boss/tengured_walk.png', { frameWidth: 82, frameHeight: 82 })
     this.load.spritesheet('boss_tengured_hit', 'assets/boss/tengured_hit.png', { frameWidth: 82, frameHeight: 82 })
+    this.load.spritesheet('boss_tengured_attack', 'assets/boss/tengured_attack.png', { frameWidth: 82, frameHeight: 82 }) // 15 frames (déluge)
+    this.load.spritesheet('boss_tengured_trans', 'assets/boss/tengured_trans.png', { frameWidth: 82, frameHeight: 82 }) // 11 frames (transfo 50% PV)
     this.load.spritesheet('boss_giantslime2_idle', 'assets/boss/giantslime2_idle.png', { frameWidth: 62, frameHeight: 52 })
     this.load.spritesheet('boss_giantslime2_hit', 'assets/boss/giantslime2_hit.png', { frameWidth: 62, frameHeight: 52 })
     // boss côtier À DISTANCE : Kraken (SquidRed) — anim "shoot" = télégraphe avant chaque projectile
@@ -621,7 +625,7 @@ export default class BootScene extends Phaser.Scene {
    */
   createBossAnimations() {
     const rigs = {
-      tengublue: { idle: 6, walk: 10, hit: 8 },
+      tengublue: { idle: 6, walk: 10, hit: 8, attack: 15, trans: 11 },
       samurai: { idle: 6, walk: 6, hit: 4, charge: 3 }, // charge = pose de ruée (boucle pendant télégraphe+dash)
       democyclop: { idle: 5, walk: 6, hit: 3 },
       giantflam: { idle: 5, hit: 3 }, // pas de walk -> playRig retombe sur idle
@@ -630,7 +634,7 @@ export default class BootScene extends Phaser.Scene {
       giantslime: { idle: 5, hit: 5 }, // pas de walk
       giantspirit: { idle: 5, hit: 3 }, // pas de walk
       redsamurai: { idle: 6, walk: 6, hit: 4, charge: 3 },
-      tengured: { idle: 6, walk: 10, hit: 8 },
+      tengured: { idle: 6, walk: 10, hit: 8, attack: 15, trans: 11 },
       giantslime2: { idle: 5, hit: 5 }, // pas de walk
       squidred: { idle: 4, walk: 4, hit: 4, shoot: 5 }, // shoot = télégraphe (joué une fois) avant chaque tir
       giantfrog: { idle: 5, hit: 3, charge: 7 }, // pas de walk
@@ -644,8 +648,8 @@ export default class BootScene extends Phaser.Scene {
         this.anims.create({
           key,
           frames: this.anims.generateFrameNumbers(`boss_${rig}_${state}`, { start: 0, end: count - 1 }),
-          frameRate: state === 'hit' ? 14 : state === 'shoot' ? 12 : state === 'charge' ? 11 : state === 'walk' ? 10 : 6,
-          repeat: (state === 'hit' || state === 'shoot') ? 0 : -1, // hit/shoot = une fois, idle/walk/charge = boucle
+          frameRate: state === 'hit' ? 14 : state === 'shoot' ? 12 : state === 'attack' ? 14 : state === 'trans' ? 12 : state === 'charge' ? 11 : state === 'walk' ? 10 : 6,
+          repeat: (state === 'hit' || state === 'shoot' || state === 'trans') ? 0 : -1, // hit/shoot/trans = une fois ; idle/walk/charge/attack = boucle
         })
       }
     }

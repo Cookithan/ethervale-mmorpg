@@ -3732,6 +3732,43 @@ export default class GameScene extends Phaser.Scene {
     Audio.sfx(SFX.magic, { vol: 0.5, detune: -300 }) // "blop" magique grave
   }
 
+  /** DÉLUGE d'un boss (Tengu) : une VOLÉE de boules de feu en éventail vers le joueur (sans homing ->
+   *  esquivable en se décalant). Le nombre/écartement/dégâts viennent de def.barrage. */
+  bossFireBarrage(boss, player) {
+    if (!boss?.active || boss.hp <= 0 || !player?.active || player.hp <= 0) return
+    const b = boss.def?.barrage || {}
+    const shots = b.shots ?? 5
+    const gap = b.gap ?? 0.3 // ÉCART angulaire entre deux orbes (radians) -> espace pour se faufiler ENTRE
+    const speed = b.projSpeed ?? 150
+    const dmg = Math.round((b.projDamage ?? 9) * (boss.dmgScale ?? 1))
+    const base = Math.atan2(player.y - boss.y, player.x - boss.x)
+    const fx = { anim: 'fx-fireball', tex: 'fx_fireball', scale: 1.5 }
+    for (let i = 0; i < shots; i++) {
+      const ang = base + (i - (shots - 1) / 2) * gap // orbes régulièrement espacés autour de la visée
+      const proj = this.enemyProjectiles.get(boss.x, boss.y)
+      if (!proj) continue
+      proj.fire(boss.x, boss.y - 6, boss.x + Math.cos(ang) * 200, boss.y + Math.sin(ang) * 200, dmg, this.time.now, null, 0xffffff, fx, speed)
+    }
+    Audio.sfx(SFX.magic, { vol: 0.6, detune: -150 })
+    this.cameras.main.shake(120, 0.004)
+  }
+
+  /** TRANSFORMATION (fureur) d'un boss à 50 % PV : flash rouge + onde + rugissement + annonce. Le boost de
+   *  stats est appliqué côté Monster ; ici on ne fait que le retour visuel/sonore. */
+  bossEnrage(boss) {
+    this.cameras.main.shake(320, 0.009)
+    Audio.sfx('sfx_roar', { vol: 0.95, rate: 0.7, detune: -150 })
+    boss.setTintFill(0xff5030)
+    this.time.delayedCall(170, () => boss.active && boss.clearTint())
+    const ring = this.add.circle(boss.x, boss.y, 10, 0xff5030, 0).setStrokeStyle(4, 0xff5030, 0.9).setDepth(boss.y + 2)
+    this.tweens.add({
+      targets: { v: 0 }, v: 1, duration: 520, ease: 'Cubic.out',
+      onUpdate: (tw, t) => { ring.setRadius(10 + 64 * t.v); ring.setAlpha(0.9 * (1 - t.v)) },
+      onComplete: () => ring.destroy(),
+    })
+    this.scene.get('UIScene')?.showToast?.(`${boss.displayName ?? boss.def?.name ?? 'Le boss'} entre en FUREUR !`, '#ff6b6b')
+  }
+
   /** Petit éclair blanc en arc pour matérialiser le coup d'épée. */
   showSlash(x, y, facing) {
     const ang = { down: 90, up: -90, left: 180, right: 0 }[facing]

@@ -65,6 +65,9 @@ export const MONSTER_TYPES = {
     key: 'boss_tengublue_idle', rig: 'tengublue', raid: true, face: 'face_tengublue',
     hp: 220, speed: 34, damage: 18, xp: 0, aggro: 95, scale: 1.7, body: { w: 26, h: 32 },
     tier: 'epic', loot: { gold: [0, 0] }, name: 'Tengu des Glaces',
+    // RAID : déluge plus large + transfo à 50 % PV (dégâts de raid -> esquive obligatoire).
+    barrage: { range: 340, windup: 650, recover: 420, shots: 7, gap: 0.3, projSpeed: 160, projDamage: 5, cooldown: 2300 },
+    enrage: { hpPct: 0.5, dmgMul: 1.5, cdMul: 0.6, scale: 1.1, dur: 950 },
   },
   samurai: {
     key: 'boss_samurai_idle', rig: 'samurai', raid: true, face: 'face_samurai',
@@ -125,6 +128,9 @@ export const MONSTER_TYPES = {
     key: 'boss_tengured_idle', rig: 'tengured', face: 'face_tengured',
     hp: 84, speed: 36, damage: 18, xp: 38, aggro: 95, scale: 1.7, body: { w: 26, h: 32 },
     tier: 'epic', loot: { gold: [8, 15] }, name: 'Tengu Rouge',
+    // DÉLUGE : volée de boules de feu en éventail (anim Attack) ; TRANSFO à 50 % PV (anim Trans) -> enrage.
+    barrage: { range: 320, windup: 700, recover: 450, shots: 5, gap: 0.34, projSpeed: 150, projDamage: 6, cooldown: 2600 },
+    enrage: { hpPct: 0.5, dmgMul: 1.4, cdMul: 0.62, scale: 1.12, dur: 950 },
   },
   giantslime2: {
     key: 'boss_giantslime2_idle', rig: 'giantslime2', face: 'face_giantslime2',
@@ -268,6 +274,9 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.attackUntil = 0 // fin de la phase d'attaque courante
     this.nextAttackAt = 0 // cooldown avant la prochaine charge
     this.slamming = false // saut-slam en cours (bond) -> le collider joueur est ignoré (le boss passe au-dessus)
+    this.enraged = false // transfo à 50 % PV déclenchée (def.enrage)
+    this.transUntil = 0 // fin de l'anim de transformation (boss figé pendant)
+    this.barrageFireAt = 0 // instant où la volée du déluge part (def.barrage)
     this.attackAngle = 0 // direction verrouillée de la charge (posée au début du télégraphe)
     this.charging = false // en plein dash (dégâts majorés au contact)
     this.chargeHitDone = false // un seul gros coup par dash
@@ -521,6 +530,44 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     return false
   }
 
+  /** DÉLUGE TÉLÉGRAPHIÉ (boss avec def.barrage, ex. Tengu). Cycle : idle -> telegraph (immobile, anim
+   *  Attack ; à ~70 % du geste, une VOLÉE en éventail part vers le joueur) -> recover. En FUREUR (enraged),
+   *  windup et cooldown sont raccourcis. Renvoie true tant qu'une phase occupe le boss. */
+  updateBossBarrage(time, player, dx, dy, dist) {
+    const cfg = this.def.barrage
+    if (this.attackPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      if (this.barrageFireAt && time >= this.barrageFireAt) {
+        this.barrageFireAt = 0
+        this.scene.bossFireBarrage?.(this, player)
+      }
+      if (time >= this.attackUntil) { this.attackPhase = 'recover'; this.attackUntil = time + (cfg.recover ?? 450) }
+      return true
+    }
+    if (this.attackPhase === 'recover') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) { this.attackPhase = 'idle'; this.rigState = null }
+      return true
+    }
+    // idle : déclenche un déluge si le joueur est à portée et le cooldown est écoulé
+    if (time >= this.nextAttackAt && dist <= cfg.range) {
+      const enr = this.enraged ? (this.def.enrage?.cdMul ?? 1) : 1 // en fureur : geste + cooldown raccourcis
+      const windup = cfg.windup * enr
+      this.attackPhase = 'telegraph'
+      this.attackUntil = time + windup
+      this.barrageFireAt = time + windup * 0.7 // la volée part vers la fin du geste
+      this.nextAttackAt = time + windup + (cfg.recover ?? 450) + cfg.cooldown * enr
+      this.setVelocity(0, 0)
+      if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0)
+      this.rigState = null
+      const ak = `boss-${this.rig}-attack`
+      this.anims.play(this.scene.anims.exists(ak) ? ak : `boss-${this.rig}-idle`, true)
+      this.rigState = 'attack'
+      return true
+    }
+    return false
+  }
+
   /** Crée la chaîne de segments + les ailes du dragon. La tête (=`this`) reste l'entité de combat. */
   setupDragon() {
     const sc = this.scaleX
@@ -716,6 +763,39 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // SAUT-SLAM TÉLÉGRAPHIÉ (boss avec def.slam, ex. Gélées) : même principe que la charge, pilote
     // position/anim pendant le bond et l'écrasement -> on saute la nav + le facing normaux.
     if (this.combatEngaged && def.slam && this.updateBossSlam(time, player, dx, dy, dist)) {
+      if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.updateHpBar(time)
+      return
+    }
+
+    // TRANSFO à 50 % PV (boss avec def.enrage, ex. Tengu) : passe en FUREUR une fois -> anim Trans + boost
+    // dégâts/cadence + grossissement. Pendant l'anim, le boss est FIGÉ.
+    if (this.combatEngaged && def.enrage && !this.enraged && this.hp <= this.maxHp * (def.enrage.hpPct ?? 0.5)) {
+      this.enraged = true
+      this.transUntil = time + (def.enrage.dur ?? 950)
+      this.attackPhase = 'idle' // annule un pattern en cours
+      this.damage = Math.round(this.damage * (def.enrage.dmgMul ?? 1.4))
+      this.dmgScale *= def.enrage.dmgMul ?? 1.4
+      this.scene.bossEnrage?.(this)
+      const tk = `boss-${this.rig}-trans`
+      if (this.scene.anims.exists(tk)) { this.rigState = 'trans'; this.anims.play(tk) }
+    }
+    if (time < this.transUntil) { // figé pendant la transformation
+      this.setVelocity(0, 0)
+      if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.updateHpBar(time)
+      return
+    }
+    if (this.enraged && !this._transApplied) { // transfo terminée -> applique le grossissement, reprend
+      this._transApplied = true
+      if (def.enrage?.scale) this.setScale(Math.abs(this.scaleX) * def.enrage.scale, this.scaleY * def.enrage.scale)
+      this.rigState = null
+    }
+
+    // DÉLUGE TÉLÉGRAPHIÉ (boss avec def.barrage, ex. Tengu) : volée de projectiles en éventail.
+    if (this.combatEngaged && def.barrage && this.updateBossBarrage(time, player, dx, dy, dist)) {
       if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
       this.updateHpBar(time)
