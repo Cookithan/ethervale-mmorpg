@@ -50,6 +50,9 @@ export const ITEMS = {
   leather: { id: 'leather', name: 'Tunique de cuir', slot: 'armor', icon: 'eq_armor', iconTint: 0xc89a63, rarity: 'common', price: 90, stats: { hp: 16 }, dur: 50 },
   chainmail: { id: 'chainmail', name: 'Cotte de mailles', slot: 'armor', icon: 'eq_armor', iconTint: 0xb6c0cc, rarity: 'rare', price: 240, stats: { hp: 26, defense: 4 }, dur: 80 },
   plate: { id: 'plate', name: 'Armure de plaques', slot: 'armor', icon: 'eq_armor', iconTint: 0x9fb4d6, rarity: 'epic', price: 560, stats: { hp: 42, defense: 8 }, dur: 120 },
+  // Armures THÉMATIQUES (résistance à la température) : à équiper avant d'explorer neige/désert.
+  furcloak: { id: 'furcloak', name: 'Cape de fourrure', slot: 'armor', icon: 'eq_armor', iconTint: 0xe6f0ff, rarity: 'rare', price: 230, stats: { hp: 22, defense: 2, coldResist: 55 }, dur: 70 },
+  desertgarb: { id: 'desertgarb', name: 'Habit du désert', slot: 'armor', icon: 'eq_armor', iconTint: 0xe8c987, rarity: 'rare', price: 230, stats: { hp: 22, defense: 2, heatResist: 55 }, dur: 70 },
 
   // ===== FOCUS (slot 'focus') -> améliore LA COMPÉTENCE (cooldown -%, effet +%). Parchemins élémentaires. =====
   focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellCd: 0.08, spellPower: 0.08 },
@@ -78,6 +81,9 @@ export const ITEMS = {
   potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, heal: 120 },
   potion_mana: { id: 'potion_mana', name: 'Potion de mana', type: 'consumable', icon: 'pot_mana', rarity: 'common', price: 45, mana: 40 },
   potion_mana_big: { id: 'potion_mana_big', name: 'Grande potion de mana', type: 'consumable', icon: 'pot_mana_big', rarity: 'rare', price: 120, mana: 90 },
+  // potions de TEMPÉRATURE (10 min) : la potion de feu protège du FROID, la potion de givre protège de la CHALEUR.
+  potion_fire: { id: 'potion_fire', name: 'Potion de feu', type: 'consumable', icon: 'pot_fire', iconTint: 0xffb060, rarity: 'rare', price: 150, tempBuff: 'fire', tempDur: 600000, desc: 'Protège du FROID 10 min (immunité gel)' },
+  potion_frost: { id: 'potion_frost', name: 'Potion de givre', type: 'consumable', icon: 'pot_frost', iconTint: 0xa0e6ff, rarity: 'rare', price: 150, tempBuff: 'frost', tempDur: 600000, desc: 'Protège de la CHALEUR 10 min (immunité feu)' },
 
   // ===== MATÉRIAUX (type 'material') — ressources lâchées par les mobs, EMPILABLES dans une poche à part
   // (pas le sac d'équipement). Servent à VENDRE (or) ET à AMÉLIORER l'équipement à la forge. `price` =
@@ -111,7 +117,7 @@ export const SLOTS = ['weapon', 'armor', 'focus', 'ring']
 export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', focus: 'Focus', ring: 'Anneau' }
 
 // abréviations FR des stats (pour l'affichage des bonus)
-export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Mana', manaRegen: 'Mana/s' }
+export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Mana', manaRegen: 'Mana/s', coldResist: 'Rés. froid', heatResist: 'Rés. chaud' }
 
 const CLASS_FR = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank', healer: 'Soigneur' }
 // arme de DÉPART par classe (équipée à la création du perso)

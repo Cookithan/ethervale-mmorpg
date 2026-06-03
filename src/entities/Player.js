@@ -71,6 +71,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // capacités EXCLUSIVES de la classe (verrouillées à la création) + vitesse
     this.abilities = cls.abilities ?? { melee: true, ranged: false, heal: false }
     this.speed = SPEED * (cls.speedMul ?? 1)
+    this.envSpeedMul = 1 // ralenti environnemental (température extrême) ; 1 = normal
+    this.temp = 0 // température courante (-100 grand froid … +100 grosse chaleur), transitoire (non sauvegardée)
+    this.tempBuff = { fire: 0, frost: 0 } // fin (temps absolu) des potions : feu = immunité froid, givre = immunité chaud
     this.attackCdMul = cls.attackCdMul ?? 1 // cadence de l'attaque de base (Tank = plus lent)
     this.meleeKnock = cls.meleeKnock ?? 0 // recul de l'attaque de base : SEUL le Tank repousse (les autres = 0)
     this.shootCdMul = cls.shootCdMul ?? 1 // cadence du tir à distance (Mage = plus lent, tape plus fort)
@@ -185,6 +188,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     let hp = 0
     let mana = 0
     let manaRegen = 0
+    let coldResist = 0
+    let heatResist = 0
     let spellCd = 0
     let spellPower = 0
     for (const slot of Object.keys(this.equipped)) {
@@ -196,9 +201,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       hp += s.hp ?? 0
       mana += s.mana ?? 0 // Anneau -> +Mana max
       manaRegen += s.manaRegen ?? 0 // Focus/Anneau -> +régén de mana/s (pour les casters)
+      coldResist += s.coldResist ?? 0 // résiste au froid (biome neige)
+      heatResist += s.heatResist ?? 0 // résiste à la chaleur (biome désert)
       spellCd += it.spellCd ?? 0 // Focus -> cooldown de compétence réduit
       spellPower += it.spellPower ?? 0 // Focus -> effet de compétence renforcé
     }
+    this.coldResist = coldResist
+    this.heatResist = heatResist
     this.attackPower = this.baseAttack + atk
     this.defense = this.baseDefense + def
     this.maxHp = this.baseMaxHp + hp
@@ -324,6 +333,14 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return true
   }
 
+  /** Dégâts d'ENVIRONNEMENT (gelure / coup de chaud) : ignorent les i-frames ET la défense (l'armure ne
+   *  protège pas du froid/chaud — ce sont les items de résistance qui comptent). Pas de recul ni d'usure. */
+  envHurt(amount) {
+    if (this.hp <= 0) return
+    this.hp = Math.max(0, this.hp - amount)
+    Audio.sfx(SFX.hurt, { vol: 0.35, detune: -250 })
+  }
+
   /** Soigne le héros (plafonné aux PV max). Renvoie les PV réellement rendus. */
   heal(amount) {
     const before = this.hp
@@ -402,7 +419,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    this.setVelocity(vx * this.speed, vy * this.speed)
+    const spd = this.speed * (this.envSpeedMul ?? 1) // ralenti par température extrême (cf. GameScene.updateTemperature)
+    this.setVelocity(vx * spd, vy * spd)
 
     const moving = vx !== 0 || vy !== 0
     // direction = axe DOMINANT (sinon le clic-déplacement, dont vx est presque toujours ≠ 0,
@@ -418,6 +436,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       const stepMs = 320 * (SPEED / this.speed)
       if (time >= (this._stepAt || 0)) {
         Audio.sfx(SFX.step, { vol: 0.32 })
+        this.scene.spawnFootDust?.(this.x, this.y) // petit nuage de poussière sous les pieds (teinté par le biome)
         this._stepAt = time + stepMs
       }
     } else {

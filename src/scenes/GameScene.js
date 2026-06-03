@@ -138,6 +138,17 @@ const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île ->
 const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
 const MONSTER_MAX_LEVEL = 6 // mobs niv 1 (village) -> 6 (zones lointaines = end-game) ; PV ×2/niv, dégâts ×1.6/niv (cf. Monster.js)
+// TEMPÉRATURE (froid neige / chaud désert) : jauge -100…+100. Dérive vers l'extrême du biome, revient à
+// 0 ailleurs. |temp| élevé -> ralenti progressif puis dégâts. Atténuée par les items coldResist/heatResist.
+const TEMP_MAX = 100
+const TEMP_DRIFT = 5.5 // unités/s vers l'extrême (≈18 s d'exposition pour atteindre le max sans résistance)
+const TEMP_RECOVER = 20 // unités/s de retour vers neutre (rapide -> ressortir du biome soulage vite)
+const TEMP_NEAR = 45 // cible DOUCE quand on est à la lisière d'un biome extrême (pont voisin) : on chauffe/refroidit dans le TEMPÉRÉ (< seuil de ralenti 55), sans pénalité tant qu'on n'est pas entré
+const TEMP_SLOW_START = 55 // |temp| où le ralenti commence
+const TEMP_MAX_SLOW = 0.45 // ralenti maxi (-45 % de vitesse au tout froid/chaud)
+const TEMP_CHIP_START = 90 // |temp| où les dégâts (gelure/coup de chaud) commencent
+const TEMP_CHIP_INTERVAL = 1000 // ms entre deux ticks de dégâts
+const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en zone Glacial/Brûlant
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
 const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
@@ -4058,6 +4069,8 @@ export default class GameScene extends Phaser.Scene {
       this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES[biome])
     }
 
+    this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
+
     // musique : un boss engagé impose un thème de combat (tiré au hasard au début du combat,
     // gardé jusqu'au désengagement), sinon la musique de la zone. playMusic court-circuite si
     // le morceau voulu joue déjà -> pas de coût par frame.
@@ -4110,6 +4123,102 @@ export default class GameScene extends Phaser.Scene {
     }
     if (best === Infinity || best > COAST_REACH) return 0
     return Math.pow(1 - best / COAST_REACH, 0.6) // courbe douce : audible plus tôt en approchant (proche ~1)
+  }
+
+  /** Petit nuage de poussière sous les pieds du héros à chaque pas, teinté selon le biome (sable au désert,
+   *  neige en hiver, terre ailleurs). Joué une fois puis détruit. */
+  spawnFootDust(x, y) {
+    const b = this.biomeAt(Math.floor(x / TILE), Math.floor(y / TILE))
+    const tint = b === 'desert' ? 0xe8c987 : b === 'snow' ? 0xeaf3ff : b === 'cursed' ? 0x9a8aa0 : 0xcdbf9a
+    const d = this.add.sprite(x, y + 6, 'fx_dust').setDepth(y - 1).setScale(0.8).setAlpha(0.7).setTint(tint)
+    d.play('fx-dust')
+    d.once('animationcomplete', () => d.destroy())
+  }
+
+  /** TEMPÉRATURE : fait dériver la jauge du joueur vers l'extrême du biome (neige=froid, désert=chaud),
+   *  atténuée par les items de résistance, puis applique le ralenti progressif et les dégâts au max. */
+  updateTemperature(biome, time, delta) {
+    const p = this.player
+    if (!p || p.hp <= 0 || p.sailing) { if (p) p.envSpeedMul = 1; return }
+    const inBiome = biome === 'snow' || biome === 'desert'
+    // potions actives : feu = immunité au FROID, givre = immunité au CHAUD (cf. items potion_fire/frost)
+    const fireOn = time < (p.tempBuff?.fire ?? 0)
+    const frostOn = time < (p.tempBuff?.frost ?? 0)
+    // CIBLE de température : pleine dans un biome extrême (atténuée par la résistance/potions) ; DOUCE
+    // (tempérée) à la LISIÈRE (pont/bordure voisine) -> on sent venir le chaud/froid SANS pénalité.
+    let target
+    if (inBiome) {
+      const raw = biome === 'snow' ? -TEMP_MAX : TEMP_MAX
+      const coldRes = (p.coldResist ?? 0) + (fireOn ? 999 : 0)
+      const heatRes = (p.heatResist ?? 0) + (frostOn ? 999 : 0)
+      target = raw > 0 ? Math.max(0, raw - heatRes) : Math.min(0, raw + coldRes)
+    } else {
+      target = this.nearHostileBiome(Math.floor(p.x / TILE), Math.floor(p.y / TILE)) * TEMP_NEAR // -1 neige / +1 désert / 0
+      if (target < 0 && fireOn) target = 0 // potion de feu -> pas de froid de lisière
+      if (target > 0 && frostOn) target = 0 // potion de givre -> pas de chaleur de lisière
+    }
+    const dt = Math.min(delta, 60) / 1000 // borne le pas (onglet en arrière-plan -> pas de saut géant)
+    let temp = p.temp ?? 0
+    const recovering = Math.abs(target) < Math.abs(temp)
+    const rate = recovering ? TEMP_RECOVER : TEMP_DRIFT
+    if (temp < target) temp = Math.min(target, temp + rate * dt)
+    else if (temp > target) temp = Math.max(target, temp - rate * dt)
+    p.temp = temp
+
+    const a = Math.abs(temp)
+    // ralenti progressif (0 à TEMP_SLOW_START -> max à TEMP_MAX)
+    const slowT = Phaser.Math.Clamp((a - TEMP_SLOW_START) / (TEMP_MAX - TEMP_SLOW_START), 0, 1)
+    p.envSpeedMul = 1 - TEMP_MAX_SLOW * slowT
+    // BRÛLURE : le héros prend FEU seulement quand c'est TRÈS chaud (zone « Brûlant » = dégâts), pas dès « Chaud »
+    this.updateBurnFx(p, temp > 0 && a >= TEMP_CHIP_START ? Phaser.Math.Clamp((a - TEMP_CHIP_START) / (TEMP_MAX - TEMP_CHIP_START), 0, 1) : 0)
+    // DÉGÂTS : uniquement tant qu'on est DANS le biome hostile (en sortant on ne « gèle/brûle » plus, même
+    // si la jauge est encore haute -> à l'abri = plus de dégâts immédiatement).
+    const inDanger = inBiome && a >= TEMP_CHIP_START
+    p.envDanger = inDanger // lu par l'UI pour le bandeau d'alerte
+    if (inDanger) {
+      const cold = temp < 0
+      if (!this._tempDanger) { // entrée en zone critique -> message d'alerte (une fois)
+        this._tempDanger = true
+        this.scene.get('UIScene')?.showToast?.(
+          cold ? '❄ Tu gèles ! Mets-toi à l’abri ou équipe une Cape de fourrure' : '☀ Tu brûles ! Mets-toi à l’abri ou équipe un Habit du désert',
+          cold ? '#8fd0ff' : '#ff9a4a',
+        )
+      }
+      if (time >= (this._tempChipAt ?? 0)) {
+        this._tempChipAt = time + TEMP_CHIP_INTERVAL
+        p.envHurt?.(TEMP_CHIP_DPS)
+        p.setTintFill(cold ? 0x8fd0ff : 0xff6a2a)
+        this.time.delayedCall(110, () => p.active && p.clearTint())
+        this.cameras.main.shake(120, 0.005)
+      }
+    } else {
+      this._tempChipAt = 0 // hors zone de danger -> prêt à re-piquer dès qu'on y retourne
+      if (a < TEMP_SLOW_START) this._tempDanger = false // revenu au calme -> message réarmé
+    }
+  }
+
+  /** Renvoie -1 si de la NEIGE est proche, +1 si du DÉSERT est proche, 0 sinon (échantillonne 8 directions
+   *  à ~3 tuiles). Sert à pré-chauffer/refroidir doucement quand on longe un biome extrême (pont voisin). */
+  nearHostileBiome(tx, ty) {
+    const R = 3
+    let res = 0
+    for (let i = 0; i < 8; i++) {
+      const ang = (i / 8) * Math.PI * 2
+      const b = this.biomeAt(Math.round(tx + Math.cos(ang) * R), Math.round(ty + Math.sin(ang) * R))
+      if (b === 'snow') return -1 // priorité au froid s'il y a les deux
+      if (b === 'desert') res = 1
+    }
+    return res
+  }
+
+  /** Petites flammes qui lèchent les PIEDS du héros quand il a trop chaud (intensité 0→1). Origine en bas
+   *  (montent depuis le sol), petite échelle pour ne pas recouvrir tout le perso. Masquées à intensité 0. */
+  updateBurnFx(p, intensity) {
+    if (intensity <= 0) { this.burnFx?.setVisible(false); return }
+    if (!this.burnFx) {
+      this.burnFx = this.add.sprite(p.x, p.y, 'fx_flam').setOrigin(0.5, 1).setBlendMode(Phaser.BlendModes.ADD).play('fx-flam')
+    }
+    this.burnFx.setVisible(true).setPosition(p.x, p.y + 8).setDepth(p.y + 1).setScale(0.42 + 0.28 * intensity).setAlpha(0.7 + 0.3 * intensity)
   }
 
   handleDeath() {

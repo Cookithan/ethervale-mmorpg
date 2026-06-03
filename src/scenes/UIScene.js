@@ -85,7 +85,7 @@ export default class UIScene extends Phaser.Scene {
     // suivi de QUÊTE (HUD, haut-gauche SOUS le cadre du héros) — panneau lisible, mis à jour chaque frame
     {
       const qx = 10
-      const qy = 86
+      const qy = 116 // sous le cadre héros + le thermomètre (barre + libellé)
       const qw = 214
       const qh = 56
       const D = 120
@@ -231,6 +231,52 @@ export default class UIScene extends Phaser.Scene {
     this.xpBar = reg(this.add.rectangle(0, xpY, 0, xpH, 0xa335ee).setOrigin(0, 0))
     this.xpText = reg(this.add.text(cw / 2, xpY + xpH / 2, '', { fontFamily: 'monospace', fontSize: '10px', color: '#ffffff' }).setOrigin(0.5))
     this.xpRect = new Phaser.Geom.Rectangle(0, xpY, cw, xpH)
+
+    // --- VIGNETTE de bord (effet givre/chaleur sur les BORDS de l'écran, façon LEGO Fortnite) ---
+    // Texture blanche dégradée (opaque au bord -> transparente vers le centre) générée une fois, puis
+    // TEINTÉE bleu/orange et dont l'alpha monte avec la température. Derrière le HUD (depth -5).
+    if (!this.textures.exists('temp_vignette')) {
+      const E = 70
+      const g = this.make.graphics({ add: false })
+      g.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 1, 1, 0, 0); g.fillRect(0, 0, cw, E) // haut
+      g.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 0, 0, 1, 1); g.fillRect(0, ch - E, cw, E) // bas
+      g.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 1, 0, 1, 0); g.fillRect(0, 0, E, ch) // gauche
+      g.fillGradientStyle(0xffffff, 0xffffff, 0xffffff, 0xffffff, 0, 1, 0, 1); g.fillRect(cw - E, 0, E, ch) // droite
+      g.generateTexture('temp_vignette', cw, ch)
+      g.destroy()
+    }
+    this.tempVeil = reg(this.add.image(0, 0, 'temp_vignette').setOrigin(0, 0).setDepth(-5).setAlpha(0))
+
+    // --- THERMOMÈTRE (barre ZONÉE + aiguille coulissante, façon LEGO Fortnite), haut-gauche, toujours visible ---
+    // Zones (gauche->droite) : Glacial · Froid · Tempéré · Chaud · Brûlant, proportionnelles aux paliers (-100…+100).
+    const tgx = 10
+    const tgy = 82
+    const tgw = 214
+    const tgh = 14
+    this.tempBarX = tgx
+    this.tempBarW = tgw
+    this.tempBarMid = tgy + tgh / 2
+    reg(this.add.rectangle(tgx - 1, tgy - 1, tgw + 2, tgh + 2, 0x000000, 0.65).setOrigin(0, 0).setStrokeStyle(2, GOLD, 0.7))
+    const zones = [[0.05, 0x2f6fd6], [0.175, 0x7fc4ec], [0.55, 0x6fcf86], [0.175, 0xf0a23c], [0.05, 0xe0432f]]
+    let zx = tgx
+    for (const [frac, col] of zones) { const w = tgw * frac; reg(this.add.rectangle(zx, tgy, w, tgh, col, 0.92).setOrigin(0, 0)); zx += w }
+    this.tempNeedle = reg(this.add.rectangle(tgx + tgw / 2, this.tempBarMid, 3, tgh + 8, 0xffffff).setOrigin(0.5, 0.5).setStrokeStyle(1, 0x000000, 0.7).setDepth(130))
+    this.tempLabel = reg(this.add.text(tgx + tgw / 2, tgy + tgh + 9, 'Tempéré', { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#9fe6a8', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0.5).setDepth(130))
+
+    // --- PARTICULES d'ambiance température (écran, scrollFactor 0) : flocons qui TOMBENT au froid,
+    // braises qui MONTENT au chaud. Densité pilotée en update ; éteintes en zone tempérée. ---
+    // Froid = flocons qui tombent (le chaud n'a PAS de particules d'écran : le héros BRÛLE à la place, cf. GameScene).
+    this.coldParticles = reg(this.add.particles(0, 0, 'fx_snow', {
+      frame: [0, 1, 2, 3, 4, 5, 6], x: { min: 0, max: cw }, y: -10, lifespan: 4600, speedY: { min: 26, max: 64 },
+      speedX: { min: -18, max: 18 }, rotate: { min: 0, max: 360 }, scale: { min: 0.8, max: 1.8 }, alpha: { start: 0.85, end: 0.2 }, frequency: 120,
+    }).setScrollFactor(0).setDepth(-4))
+    this.coldParticles.stop()
+
+    // --- BANDEAU d'ALERTE central (très visible) quand on est en zone de DÉGÂTS ---
+    this.tempBanner = reg(this.add.text(cw / 2, ch * 0.2, '', {
+      fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: '#ffffff', align: 'center',
+      stroke: '#000000', strokeThickness: 6, shadow: { offsetX: 0, offsetY: 2, color: '#000', blur: 8, fill: true },
+    }).setOrigin(0.5).setDepth(140).setVisible(false))
 
     // --- BOUTONS DE COMBAT (bas-droite, à côté de la hotbar) : ATK + SORT ---
     // Visibles + CLIQUABLES (mobile ET PC). Affichent la TOUCHE, le coût en mana et le cooldown.
@@ -460,6 +506,16 @@ export default class UIScene extends Phaser.Scene {
   useConsumable(item) {
     const p = this.game_.player
     if (this.game_.gameOver) return
+    // POTION DE TEMPÉRATURE (feu = immunité froid, givre = immunité chaud) pendant tempDur (10 min)
+    if (item.tempBuff) {
+      if (!p.tempBuff) p.tempBuff = { fire: 0, frost: 0 }
+      p.tempBuff[item.tempBuff] = this.game_.time.now + (item.tempDur ?? 600000)
+      p.removeItem(item)
+      const label = item.tempBuff === 'fire' ? 'Protégé du froid' : 'Protégé de la chaleur'
+      this.showToast(`${label} — 10 min`, item.tempBuff === 'fire' ? '#ffb060' : '#a0e6ff')
+      Audio.sfx('ui_accept', { detune: 0 })
+      return
+    }
     const wantsHeal = (item.heal ?? 0) > 0
     const wantsMana = (item.mana ?? 0) > 0
     const hpFull = p.hp >= p.maxHp
@@ -1721,6 +1777,58 @@ export default class UIScene extends Phaser.Scene {
     this.showToast(`${prefix} : ${item.name}`, rc ? rc.color : '#ffffff')
   }
 
+  /** Thermomètre LEGO-Fortnite : une AIGUILLE coulisse le long de la barre zonée selon p.temp (-100…+100),
+   *  + une vignette de bord (givre bleu / chaleur orange) qui monte aux extrêmes et pulse en zone de dégâts. */
+  updateTempGauge(p) {
+    if (!this.tempNeedle) return
+    const temp = Phaser.Math.Clamp(p.temp ?? 0, -100, 100)
+    const r01 = (temp + 100) / 200 // -100 -> 0 (extrême gauche), +100 -> 1 (extrême droite)
+    this.tempNeedle.x = this.tempBarX + r01 * this.tempBarW
+    // zone courante (nom + couleur), calée sur les paliers ralenti(55)/dégâts(90)
+    let name = 'Tempéré'
+    let col = '#9fe6a8'
+    if (temp <= -90) { name = 'Glacial'; col = '#cfeaff' }
+    else if (temp <= -55) { name = 'Froid'; col = '#8fd0ff' }
+    else if (temp < 55) { name = 'Tempéré'; col = '#9fe6a8' }
+    else if (temp < 90) { name = 'Chaud'; col = '#ffb060' }
+    else { name = 'Brûlant'; col = '#ff7a5a' }
+    this.tempLabel.setText(name).setColor(col)
+    const a = Math.abs(temp)
+    const cold = temp < 0
+    const now = this.game_?.time?.now ?? 0
+    // vignette de bord : démarre tôt (dès qu'il fait frais/tiède) et pulse en zone de dégâts
+    const past = Phaser.Math.Clamp((a - 30) / 70, 0, 1)
+    let alpha = past * 0.5
+    if (a >= 90) alpha = 0.42 + 0.18 * (0.5 + 0.5 * Math.sin(now / 170)) // pulsation de danger
+    this.tempVeil.setTint(cold ? 0x6fb7ff : 0xff6a2a)
+    this.tempVeil.setAlpha(alpha)
+    // flocons quand il fait FROID (densité ∝ intensité, éteints sinon). Le chaud n'a pas de particules.
+    const inten = Phaser.Math.Clamp((a - 35) / 65, 0, 1)
+    this.setEmitter(this.coldParticles, '_coldP', cold && a >= 35, Phaser.Math.Linear(210, 40, inten))
+    // bandeau d'alerte central, bien visible, tant qu'on est en zone de DÉGÂTS (envDanger posé par GameScene)
+    if (p.envDanger) {
+      this.tempBanner.setVisible(true)
+      this.tempBanner.setText(cold ? '❄ TU GÈLES !\nMets-toi à l’abri' : '☀ TU BRÛLES !\nMets-toi à l’abri')
+      this.tempBanner.setColor(cold ? '#bfe6ff' : '#ffd0a0')
+      this.tempBanner.setAlpha(0.65 + 0.35 * (0.5 + 0.5 * Math.sin(now / 180))) // clignote
+    } else if (this.tempBanner.visible) {
+      this.tempBanner.setVisible(false)
+    }
+  }
+
+  /** Allume/éteint un émetteur de particules selon `on`, en mémorisant l'état dans `this[flag]` pour ne
+   *  (re)démarrer/arrêter qu'aux transitions ; ajuste la fréquence (densité) quand il est actif. */
+  setEmitter(emitter, flag, on, frequency) {
+    if (!emitter) return
+    if (on) {
+      emitter.frequency = frequency
+      if (!this[flag]) { emitter.start(); this[flag] = true }
+    } else if (this[flag]) {
+      emitter.stop()
+      this[flag] = false
+    }
+  }
+
   // ---------- update ----------
 
   update() {
@@ -1728,6 +1836,7 @@ export default class UIScene extends Phaser.Scene {
     if (!p) return
 
     this.updateQuestTracker(p)
+    this.updateTempGauge(p)
     const ratio = Phaser.Math.Clamp(p.hp / p.maxHp, 0, 1)
     this.hpBar.setSize(this.hpBarW * ratio, this.hpBarH)
     this.hpBar.fillColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.25 ? 0xff9800 : 0xe23b3b

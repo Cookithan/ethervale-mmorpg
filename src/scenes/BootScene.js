@@ -182,7 +182,7 @@ export default class BootScene extends Phaser.Scene {
       'eq_armor', 'eq_amulet', 'eq_ring', 'eq_helmet',
       'foc_scroll', 'foc_ice', 'foc_plant', 'foc_thunder', 'foc_fire', // Focus = parchemins élémentaires
       'ring_green', 'ring_yellow', 'ring_purple', 'ring_red', // Anneaux = gemmes colorées
-      'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', // potions (soin / mana)
+      'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', 'pot_fire', 'pot_frost', // potions (soin / mana / température)
       'mat_leather', 'mat_essence', 'mat_crystal', // matériaux empilables (mat_bone réutilise wpn_bone)
     ]) {
       this.load.image(key, `assets/items/${key}.png`)
@@ -203,6 +203,10 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_fireball', 'assets/fx/fireball.png', { frameWidth: 16, frameHeight: 16 }) // 4 frames (projectile feu)
     this.load.spritesheet('fx_shuriken', 'assets/fx/shuriken.png', { frameWidth: 16, frameHeight: 16 }) // 2 frames (shuriken qui tourne)
     this.load.image('fx_kunai', 'assets/fx/kunai.png') // dague de lancer (statique, pointe dans la direction)
+    // particules d'AMBIANCE (température + pas) — spritesheets Ninja/Mystic
+    this.load.spritesheet('fx_snow', 'assets/fx/snow.png', { frameWidth: 8, frameHeight: 8 }) // 7 flocons (froid)
+    this.load.spritesheet('fx_flam', 'assets/fx/flam.png', { frameWidth: 20, frameHeight: 30 }) // 10 frames (le héros brûle au chaud)
+    this.load.spritesheet('fx_dust', 'assets/fx/dust.png', { frameWidth: 12, frameHeight: 12 }) // 4 frames (poussière de pas)
 
     // --- AUDIO (pack Ninja Adventure, CC0) ---
     // musiques de fond (boucle) par zone + combat de boss + menu
@@ -260,6 +264,12 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('fx-shuriken')) {
       this.anims.create({ key: 'fx-shuriken', frames: this.anims.generateFrameNumbers('fx_shuriken', { start: 0, end: 1 }), frameRate: 20, repeat: -1 })
+    }
+    if (!this.anims.exists('fx-dust')) {
+      this.anims.create({ key: 'fx-dust', frames: this.anims.generateFrameNumbers('fx_dust', { start: 0, end: 3 }), frameRate: 14, repeat: 0 }) // poussière de pas (joué 1 fois)
+    }
+    if (!this.anims.exists('fx-flam')) {
+      this.anims.create({ key: 'fx-flam', frames: this.anims.generateFrameNumbers('fx_flam', { start: 0, end: 9 }), frameRate: 16, repeat: -1 }) // flamme qui boucle (héros qui brûle)
     }
     this.createDecoAnimations()
   }
