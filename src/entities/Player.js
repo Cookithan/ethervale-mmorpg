@@ -8,8 +8,19 @@ const ATTACK_MS = 260 // durée de l'animation d'attaque (déplacement bloqué)
 const ATTACK_COOLDOWN = 340 // cadence de l'attaque de base : rapide/spammable mais pas "mitraillette"
 const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
 const SHOOT_COOLDOWN = 360 // délai mini entre deux tirs à distance (ms) — attaque de base à distance
-const MANA_REGEN = 6 // mana régénéré par seconde (régén LENTE, brief §1)
+const MANA_REGEN = 3 // mana/s de BASE (compromis : la mana mord un peu ; des items de régén la complèteront)
 const INV_MAX = 5 // capacité du SAC (cap strict, brief A0) — l'équipement des 4 slots est à part
+
+// Progression « façon WoW » (brief A2) : cap niveau 50, courbe d'XP exponentielle DOUCE.
+// Montée très rapide au début (le joueur accroche), mur de plus en plus raide vers 50 (le farm
+// hardcore est l'end-game, pas le leveling). Chiffres = points de départ à équilibrer.
+const MAX_LEVEL = 50
+const XP_BASE = 90 // XP du niveau 1 -> 2 (quelques kills) — leveling qui se mérite
+const XP_GROWTH = 1.17 // chaque niveau coûte ~+17 % du précédent
+/** XP nécessaire pour passer de `level` à `level+1`. */
+function xpForLevel(level) {
+  return Math.round(XP_BASE * Math.pow(XP_GROWTH, level - 1))
+}
 
 /**
  * Player — héros contrôlé au clavier (ZQSD/WASD/flèches) ET au clic (click-to-move).
@@ -40,9 +51,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
 
     // état combat / progression
     this.level = 1
-    this.maxLevel = 20 // cap de niveau (montée rapide au début, lente vers le haut)
+    this.maxLevel = MAX_LEVEL // cap de niveau (montée rapide au début, mur vers 50)
     this.xp = 0
-    this.xpToNext = 80 // XP pour le niveau 2 (courbe exponentielle, cf. gainXp)
+    this.xpToNext = xpForLevel(1) // XP pour le niveau 2 (courbe exponentielle douce, cf. gainXp)
     this.gold = 0
 
     // stats de BASE selon la CLASSE (augmentent au niveau). Les totaux (maxHp/attackPower/
@@ -107,7 +118,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   applySave(s) {
     this.level = s.level ?? this.level
     this.xp = s.xp ?? 0
-    this.xpToNext = s.xpToNext ?? this.xpToNext
+    this.xpToNext = xpForLevel(this.level) // recalcule sur la courbe actuelle (cap 50) — vaut aussi pour vieilles saves
     this.gold = s.gold ?? 0
     this.baseMaxHp = s.baseMaxHp ?? this.baseMaxHp
     this.baseAttack = s.baseAttack ?? this.baseAttack
@@ -280,7 +291,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return this.hp - before
   }
 
-  /** Ajoute de l'XP, gère le(s) passage(s) de niveau (cap 10). */
+  /** Ajoute de l'XP, gère le(s) passage(s) de niveau (cap 50). */
   gainXp(amount) {
     if (this.level >= this.maxLevel) return
     const startLevel = this.level
@@ -288,12 +299,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     while (this.xp >= this.xpToNext && this.level < this.maxLevel) {
       this.xp -= this.xpToNext
       this.level++
-      this.baseMaxHp += 20
+      this.baseMaxHp += 12
       this.baseAttack += 4
       this.recomputeStats()
       this.hp = this.maxHp // soin complet au level up
-      // courbe EXPONENTIELLE : chaque niveau coûte ~1,6× le précédent (niv2≈80 … niv20≈très cher)
-      this.xpToNext = Math.round(80 * Math.pow(1.6, this.level - 1))
+      this.xpToNext = xpForLevel(this.level) // coût du prochain niveau (×1,16 par palier)
       this.scene.onLevelUp?.()
     }
     if (this.level > startLevel) Audio.sfx('sfx_levelup', { vol: 0.7, detune: 0 }) // jingle de montée de niveau (1 fois)
