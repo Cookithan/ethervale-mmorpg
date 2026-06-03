@@ -2346,7 +2346,7 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(
       this.player, boss,
       () => this.onBossContact(boss),
-      () => !this.player.dashing && !boss.charging,
+      () => !this.player.dashing && !boss.charging && !boss.slamming, // dash joueur / charge / saut-slam = traversée
     )
   }
 
@@ -2460,6 +2460,38 @@ export default class GameScene extends Phaser.Scene {
     this.flashHurt()
     this.cameras.main.shake(220, 0.011)
     Audio.sfx(SFX.hit, { vol: 0.85, detune: -350 })
+  }
+
+  /** Cercle de danger au sol pour un SAUT-SLAM de boss : pulse pendant le télégraphe + le bond, puis
+   *  s'efface à l'impact. Le joueur esquive en quittant le cercle avant que la gélée ne retombe. */
+  bossSlamTelegraph(boss, x, y, cfg) {
+    const r = cfg.hitRadius ?? 60
+    const col = cfg.color ?? 0x7be0c8
+    const zone = this.add.circle(x, y, r, col, 0.16).setDepth(y - 2)
+    const ring = this.add.circle(x, y, r, col, 0).setStrokeStyle(3, col, 0.85).setDepth(y - 1)
+    this.tweens.add({ targets: zone, fillAlpha: 0.42, duration: cfg.windup / 2, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    Audio.sfx(SFX.whoosh, { vol: 0.4, detune: -450 }) // grondement de mise en garde
+    this.time.delayedCall(cfg.windup + cfg.jumpDur, () => {
+      if (!zone.active) return
+      this.tweens.killTweensOf(zone)
+      this.tweens.add({ targets: [zone, ring], alpha: 0, duration: 200, onComplete: () => { zone.destroy(); ring.destroy() } })
+    })
+  }
+
+  /** Impact d'un SAUT-SLAM : onde de choc circulaire qui s'étend + secousse + son lourd. Les dégâts (AoE)
+   *  sont appliqués côté Monster (test de distance au point d'impact) ; ici on ne fait que le rendu. */
+  onBossSlamImpact(boss, x, y, cfg) {
+    const r = cfg.hitRadius ?? 60
+    const col = cfg.color ?? 0x7be0c8
+    const wave = this.add.circle(x, y, 8).setStrokeStyle(6, col, 0.95).setDepth(y + 1)
+    this.tweens.add({
+      targets: { v: 0 }, v: 1, duration: 360, ease: 'Cubic.out',
+      onUpdate: (tw, t) => { wave.setRadius(8 + (r - 8) * t.v); wave.setAlpha(0.95 * (1 - t.v)) },
+      onComplete: () => wave.destroy(),
+    })
+    this.cameras.main.shake(220, 0.012)
+    Audio.sfx(SFX.hit, { vol: 0.8, detune: -400 }) // écrasement lourd
+    if (this.dist(this.player.x, this.player.y, x, y) <= r) this.flashHurt() // n'a flashé QUE si le joueur était dans le cercle
   }
 
   /** Scelle l'arène autour du REPAIRE du boss (centre fixe = clairière dégagée d'arbres). */

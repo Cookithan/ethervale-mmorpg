@@ -103,6 +103,8 @@ export const MONSTER_TYPES = {
     key: 'boss_giantslime_idle', rig: 'giantslime', face: 'face_giantslime',
     hp: 78, speed: 22, damage: 15, xp: 34, aggro: 105, scale: 1.8, body: { w: 34, h: 26 },
     tier: 'epic', loot: { gold: [6, 13] }, name: 'Gelée polaire',
+    // SAUT-SLAM : bondit sur la position du joueur (cercle de danger télégraphié) puis écrase = AoE.
+    slam: { range: 230, windup: 650, jumpDur: 460, hitRadius: 62, dmgMul: 1.6, cooldown: 2200, color: 0x7be0c8 },
   },
   giantspirit: {
     key: 'boss_giantspirit_idle', rig: 'giantspirit', face: 'face_giantspirit',
@@ -124,6 +126,8 @@ export const MONSTER_TYPES = {
     key: 'boss_giantslime2_idle', rig: 'giantslime2', face: 'face_giantslime2',
     hp: 80, speed: 22, damage: 16, xp: 36, aggro: 105, scale: 1.9, body: { w: 34, h: 26 },
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Gelée ancienne',
+    // Gelée ancienne : saut-slam plus rapide, plus large et plus fort.
+    slam: { range: 240, windup: 580, jumpDur: 430, hitRadius: 68, dmgMul: 1.75, cooldown: 1950, color: 0x9fe8ff },
   },
 
   // --- BOSS CÔTIER À DISTANCE (tire des orbes que le joueur ESQUIVE ; mêlée faible -> garde tes distances ou approche) ---
@@ -256,9 +260,10 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.rigShootUntil = 0 // boss à distance : fenêtre du télégraphe d'anim "shoot" (immobile pendant)
     this.shootFireAt = 0 // instant où le projectile part réellement (vers la fin du télégraphe)
     this.nextShootAt = 0 // cooldown entre deux tirs
-    this.attackPhase = 'idle' // charge télégraphiée : idle | telegraph | dash | recover
+    this.attackPhase = 'idle' // pattern télégraphié : idle | telegraph | dash/jump | impact | recover
     this.attackUntil = 0 // fin de la phase d'attaque courante
     this.nextAttackAt = 0 // cooldown avant la prochaine charge
+    this.slamming = false // saut-slam en cours (bond) -> le collider joueur est ignoré (le boss passe au-dessus)
     this.attackAngle = 0 // direction verrouillée de la charge (posée au début du télégraphe)
     this.charging = false // en plein dash (dégâts majorés au contact)
     this.chargeHitDone = false // un seul gros coup par dash
@@ -441,6 +446,70 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       this.anims.play(`boss-${this.rig}-charge`, true)
       if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0)
       this.scene.bossChargeTelegraph?.(this, this.attackAngle, cfg) // zone de danger au sol
+      return true
+    }
+    return false
+  }
+
+  /** SAUT-SLAM TÉLÉGRAPHIÉ (boss avec def.slam, ex. Gélées). Cycle : idle -> telegraph (immobile, cercle
+   *  de danger au sol VERROUILLÉ sur la position du joueur) -> jump (bond en arc vers ce point) ->
+   *  impact (onde de choc + AoE circulaire) -> recover. Esquive = quitter le cercle avant l'impact.
+   *  Renvoie true tant qu'une phase occupe le boss. */
+  updateBossSlam(time, player, dx, dy, dist) {
+    const cfg = this.def.slam
+    if (this.attackPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) {
+        this.attackPhase = 'jump'
+        this.attackUntil = time + cfg.jumpDur
+        this.jumpStart = time
+        this.jumpFromX = this.x
+        this.jumpFromY = this.y
+        this.slamScaleX = Math.abs(this.scaleX)
+        this.slamScaleY = this.scaleY
+        this.slamHitDone = false
+        this.slamming = true // collider joueur ignoré -> le boss passe AU-DESSUS pendant le bond
+      }
+      return true
+    }
+    if (this.attackPhase === 'jump') {
+      const t = Phaser.Math.Clamp((time - this.jumpStart) / cfg.jumpDur, 0, 1)
+      this.setPosition(Phaser.Math.Linear(this.jumpFromX, this.slamX, t), Phaser.Math.Linear(this.jumpFromY, this.slamY, t))
+      this.setVelocity(0, 0)
+      const hop = Math.sin(t * Math.PI) // 0 -> 1 -> 0 : la gélée gonfle au sommet du bond
+      this.setScale(this.slamScaleX * (1 + 0.4 * hop), this.slamScaleY * (1 + 0.4 * hop))
+      if (t >= 1 && !this.slamHitDone) {
+        this.slamHitDone = true
+        this.setScale(this.slamScaleX, this.slamScaleY)
+        const pd = Math.hypot(player.x - this.slamX, player.y - this.slamY)
+        if (pd <= cfg.hitRadius) player.takeDamage(Math.round(this.damage * (cfg.dmgMul ?? 1.6)), time)
+        this.scene.onBossSlamImpact?.(this, this.slamX, this.slamY, cfg)
+        this.attackPhase = 'impact'
+        this.attackUntil = time + 220
+        this.slamming = false
+      }
+      return true
+    }
+    if (this.attackPhase === 'impact') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) { this.attackPhase = 'recover'; this.attackUntil = time + 320 }
+      return true
+    }
+    if (this.attackPhase === 'recover') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) { this.attackPhase = 'idle'; this.rigState = null } // force le rejeu de l'idle
+      return true
+    }
+    // idle : déclenche un slam si le joueur est à portée et le cooldown est écoulé
+    if (time >= this.nextAttackAt && dist <= cfg.range) {
+      this.attackPhase = 'telegraph'
+      this.attackUntil = time + cfg.windup
+      this.slamX = player.x // point d'impact VERROUILLÉ au début du télégraphe -> esquivable
+      this.slamY = player.y
+      this.nextAttackAt = time + cfg.windup + cfg.jumpDur + cfg.cooldown
+      this.setVelocity(0, 0)
+      if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0)
+      this.scene.bossSlamTelegraph?.(this, this.slamX, this.slamY, cfg) // cercle de danger au sol
       return true
     }
     return false
@@ -638,6 +707,15 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       return
     }
 
+    // SAUT-SLAM TÉLÉGRAPHIÉ (boss avec def.slam, ex. Gélées) : même principe que la charge, pilote
+    // position/anim pendant le bond et l'écrasement -> on saute la nav + le facing normaux.
+    if (this.combatEngaged && def.slam && this.updateBossSlam(time, player, dx, dy, dist)) {
+      if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.updateHpBar(time)
+      return
+    }
+
     // biome courant du monstre (sert à la zone sûre prairie ET au verrou de biome ci-dessous)
     const curBiome = this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16))
     // la prairie est une zone sûre : un monstre NORMAL qui y pénètre abandonne et rentre.
@@ -793,6 +871,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
   tryBite(player, now) {
     if (this.isBoss && !this.combatEngaged) return false // boss endormi : ne mord pas tant qu'on ne l'a pas réveillé
     if (this.def.charge) return false // boss à CHARGE : ne blesse QUE par son dash (test de distance) -> mêlée sûre entre 2 charges
+    if (this.isBoss && this.attackPhase !== 'idle') return false // boss en plein pattern (saut-slam) -> pas de morsure en plus, l'AoE fait les dégâts
     if (now < this.nextBiteAt) return false
     let dmg = this.charging ? Math.round(this.damage * (this.def.charge?.dmgMul ?? 1.5)) : this.damage
     if (this.isBoss && !this.charging) dmg = Math.round(dmg * BOSS_BITE_MUL) // contact de boss = soutenable pour la mêlée (le danger = les attaques spéciales)
