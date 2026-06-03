@@ -52,6 +52,8 @@ export function makeSave(player, character) {
     equipped: player.equipped,
     inventory: player.inventory,
     hasBoat: player.hasBoat,
+    deathBag: player.deathBag, // sac de mort en attente de récupération (A1)
+    deathsSinceRecovery: player.deathsSinceRecovery,
     x: Math.round(player.x),
     y: Math.round(player.y),
   }

@@ -68,14 +68,21 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
     // cible proche encore vivante : on courbe la boule vers elle (suivi progressif,
     // pas un verrouillage parfait -> une cible rapide/de côté peut être ratée)
     if (this.target) {
-      if (this.target.active) {
-        const desired = Math.atan2(this.target.y - this.y, this.target.x - this.x)
-        const cur = Math.atan2(this.body.velocity.y, this.body.velocity.x)
-        const a = cur + Phaser.Math.Angle.Wrap(desired - cur) * HOMING_STRENGTH
-        this.setVelocity(Math.cos(a) * SPEED, Math.sin(a) * SPEED)
-        this.setRotation(a)
-      } else {
+      if (!this.target.active) {
         this.target = null // cible morte : la boule continue tout droit
+      } else if (!this.target.charging) {
+        // un boss en DASH (charging) n'est PLUS suivi -> la boule garde son cap et le rate s'il esquive
+        const dx = this.target.x - this.x
+        const dy = this.target.y - this.y
+        // à BOUT PORTANT on ne corrige plus : la boule file tout droit et TRAVERSE (au lieu d'orbiter
+        // autour d'un boss qu'elle ne peut pas toucher, ex. en l'air). Elle meurt à LIFESPAN.
+        if (dx * dx + dy * dy > 18 * 18) {
+          const desired = Math.atan2(dy, dx)
+          const cur = Math.atan2(this.body.velocity.y, this.body.velocity.x)
+          const a = cur + Phaser.Math.Angle.Wrap(desired - cur) * HOMING_STRENGTH
+          this.setVelocity(Math.cos(a) * SPEED, Math.sin(a) * SPEED)
+          this.setRotation(a)
+        }
       }
     }
     this.setDepth(this.y + 40)

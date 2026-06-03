@@ -66,6 +66,7 @@ export default class BootScene extends Phaser.Scene {
     // moulin à eau (Ninja Adventure, maison-moulin ronde, 3 frames de 34x36) -> berge d'une rivière
     this.load.spritesheet('watermill', 'assets/deco/watermill.png', { frameWidth: 34, frameHeight: 36 })
     this.load.image('boat', 'assets/deco/boat.png') // barque (80×32, vue de côté) — monture d'eau achetée au marchand (A3)
+    this.load.image('moneybag', 'assets/items/moneybag.png') // sac de mort (14×15) déposé à l'endroit de la mort (A1)
 
     // nature (arbres, rochers...) en spritesheet 16x16 pour placer des tuiles
     this.load.spritesheet('nature', 'assets/tiles/nature.png', {

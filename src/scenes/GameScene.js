@@ -332,6 +332,11 @@ export default class GameScene extends Phaser.Scene {
     // le pseudo au-dessus du héros est dessiné par UIScene (scène non-zoomée) pour rester net/stable
     // barque (A3) : sprite affiché SOUS le héros quand il navigue sur l'eau (caché par défaut)
     this.boatSprite = this.add.image(spawnX, spawnY, 'boat').setOrigin(0.5, 0.42).setScale(0.5).setVisible(false)
+    if (!this.preview && this.player.deathBag) this.spawnDeathBagSprite() // sac de mort en attente (depuis la save)
+    // CIBLAGE (clic / Tab) : cible verrouillée + réticule rouge ; les tirs et sorts la visent en priorité.
+    this.lockedTarget = null
+    // anneau de sélection PLAT sous les pieds de la cible (ne couvre pas le sprite, même pour un gros boss)
+    this.targetReticle = this.add.ellipse(0, 0, 24, 11, 0xff5050, 0).setStrokeStyle(2, 0xff6464).setVisible(false)
 
     // --- décors ---
     this.obstacles = this.physics.add.staticGroup()
@@ -462,6 +467,8 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-ONE', () => this.castSpell()) // LE sort de la classe (touche 1)
       this.input.keyboard.on('keydown-R', () => this.castSpell()) // alias pratique (R)
       this.input.keyboard.on('keydown-E', () => this.tryInteract())
+      this.input.keyboard.addCapture('TAB') // empêche Tab de changer le focus du navigateur
+      this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
@@ -476,6 +483,12 @@ export default class GameScene extends Phaser.Scene {
         const target = this.npcAt(p.worldX, p.worldY)
         if (target) {
           this.clickNpc(target)
+          return
+        }
+        // clic sur un ENNEMI -> le verrouille comme cible (ne déplace pas)
+        const mob = this.monsterAt(p.worldX, p.worldY)
+        if (mob) {
+          this.setTarget(mob)
           return
         }
         this.pendingNpc = null // clic au sol : annule une interaction en attente
@@ -3056,7 +3069,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     if (p.attacking || p.hp <= 0) return
     if (!p.startShoot(this.time.now)) return
-    const target = this.nearestMonster(p.x, p.y, 220, true)
+    const target = this.currentTarget(220) // cible verrouillée prioritaire
     let tx
     let ty
     if (target) {
@@ -3133,6 +3146,72 @@ export default class GameScene extends Phaser.Scene {
 
   /** Monstre actif le plus proche de (x,y) dans `radius`, sinon null. Si `visibleOnly`, on ignore les
    *  monstres HORS de la vue caméra -> on ne peut pas cibler/toucher un mob qu'on ne voit pas. */
+  /** Ennemi cliqué (boîte du sprite + tolérance de clic généreuse), ou null. */
+  monsterAt(wx, wy) {
+    let best = null
+    let bestD = 28 // tolérance (px) pour viser facilement au clic
+    this.monsters.getChildren().forEach((m) => {
+      if (!m.active || m.hp <= 0) return
+      const halfW = (m.displayWidth || 16) / 2 + 4
+      const halfH = (m.displayHeight || 16) / 2 + 4
+      if (Math.abs(wx - m.x) <= halfW && Math.abs(wy - m.y) <= halfH) { best = m; bestD = -1; return }
+      if (bestD < 0) return // déjà un hit direct
+      const d = Phaser.Math.Distance.Between(wx, wy, m.x, m.y)
+      if (d < bestD) { bestD = d; best = m }
+    })
+    return best
+  }
+
+  /** Verrouille un ennemi comme cible active (clic ou Tab). */
+  setTarget(m) {
+    if (!m || !m.active || m.hp <= 0) return
+    this.lockedTarget = m
+    Audio.sfx('ui_move', { vol: 0.4, detune: 300 }) // petit bip de ciblage
+  }
+
+  /** Lève le verrouillage de cible (cible morte / hors-jeu). */
+  clearTarget() {
+    this.lockedTarget = null
+    this.targetReticle?.setVisible(false)
+  }
+
+  /** Tab : verrouille / cycle vers l'ennemi VISIBLE le plus proche. */
+  cycleTarget() {
+    if (this.uiBusy() || this.gameOver) return
+    const p = this.player
+    const view = this.cameras.main.worldView
+    const vis = this.monsters.getChildren()
+      .filter((m) => m.active && m.hp > 0 && Phaser.Geom.Rectangle.Contains(view, m.x, m.y))
+      .sort((a, b) => Phaser.Math.Distance.Between(p.x, p.y, a.x, a.y) - Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y))
+    if (!vis.length) { this.clearTarget(); return }
+    const idx = vis.indexOf(this.lockedTarget) // -1 si rien/invalide -> (idx+1)%n = 0 = le plus proche
+    this.setTarget(vis[(idx + 1) % vis.length])
+  }
+
+  /** Cible verrouillée si encore valide (peu importe la distance), sinon l'ennemi visible le plus proche. */
+  currentTarget(radius = 300) {
+    const t = this.lockedTarget
+    if (t && t.active && t.hp > 0) return t
+    return this.nearestMonster(this.player.x, this.player.y, radius, true)
+  }
+
+  /** Suit la cible avec le réticule + libère le verrouillage si elle meurt. */
+  updateTarget(time) {
+    const t = this.lockedTarget
+    if (t && (!t.active || t.hp <= 0)) { this.clearTarget(); return }
+    const ret = this.targetReticle
+    if (!ret) return
+    if (t) {
+      // anneau plat sous les pieds : largeur ~ celle de la cible (plafonnée), posé juste DERRIÈRE le sprite
+      const w = Phaser.Math.Clamp((t.displayWidth || 16) * 0.95, 16, 44)
+      const pulse = 1 + 0.08 * Math.sin(time / 200)
+      ret.setScale((w / 24) * pulse)
+      ret.setPosition(t.x, t.y + (t.displayHeight || 16) * 0.3).setVisible(true).setDepth(t.y - 1)
+    } else if (ret.visible) {
+      ret.setVisible(false)
+    }
+  }
+
   nearestMonster(x, y, radius, visibleOnly = false) {
     let best = null
     let bestD = radius
@@ -3156,7 +3235,7 @@ export default class GameScene extends Phaser.Scene {
   shootForward() {
     if (this.uiBusy()) return
     const p = this.player
-    const target = this.nearestMonster(p.x, p.y, HOMING_RANGE, true)
+    const target = this.currentTarget(HOMING_RANGE) // cible verrouillée prioritaire, sinon le plus proche visible
     if (target) {
       this.fireProjectile(target.x, target.y, target)
     } else {
@@ -3294,9 +3373,9 @@ export default class GameScene extends Phaser.Scene {
   spellMeteor() {
     const p = this.player
     if (p.casting) return false // déjà en incantation
-    if (!this.nearestMonster(p.x, p.y, 300, true)) {
+    if (!this.currentTarget(300)) {
       this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a')
-      return false // pas d'ennemi VISIBLE à l'écran -> on n'incante pas (ni mana ni cooldown perdus)
+      return false // pas d'ennemi VISIBLE à l'écran (ni cible verrouillée) -> on n'incante pas
     }
     const CAST = 1300
     const start = this.time.now
@@ -3361,7 +3440,7 @@ export default class GameScene extends Phaser.Scene {
   /** Impact du Météore (fin d'incantation) : AoE sur l'ennemi le plus proche (ou devant si aucun). */
   meteorImpact() {
     const p = this.player
-    const target = this.nearestMonster(p.x, p.y, 280, true)
+    const target = this.currentTarget(280)
     let tx = p.x
     let ty = p.y
     if (target) {
@@ -3738,6 +3817,13 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     p.setDepth(p.y)
     this.updateBoat() // barque sous le héros quand il navigue (A3)
+    this.updateTarget(time) // réticule de la cible verrouillée + libération si elle meurt
+    // récupération du sac de mort (A1) : il faut d'abord s'en éloigner (armement), puis remarcher dessus
+    if (p.deathBag && this.deathBagSprite) {
+      const d = Phaser.Math.Distance.Between(p.x, p.y, this.deathBagSprite.x, this.deathBagSprite.y)
+      if (d > 40) this._bagArmed = true // on s'est éloigné -> le sac est désormais ramassable
+      if (this._bagArmed && d < 14) this.recoverDeathBag()
+    }
 
     this.updateArena() // arène de boss : verrouillage de proximité + mur invisible
 
@@ -3823,17 +3909,100 @@ export default class GameScene extends Phaser.Scene {
   }
 
   handleDeath() {
+    if (this.gameOver) return // évite un double déclenchement
     this.gameOver = true
     this.activeBoss = null // cache la barre de boss
     this.bossTrack = null
-    Audio.stopMusic() // coupure IMMÉDIATE (pas de fondu) pour laisser le jingle de défaite seul
-    Audio.stopAmbient() // coupe aussi le vent pendant le game over
+    Audio.stopMusic() // coupure IMMÉDIATE (pas de fondu) pour laisser le jingle de mort seul
+    Audio.stopAmbient()
     Audio.sfx('sfx_gameover', { vol: 0.9, detune: 0 })
     this.releaseArena() // libère l'arène (le joueur respawn au village, pas piégé)
-    this.player.setVelocity(0, 0)
-    this.player.setTint(0x555555)
+    // DÉSENGAGE les boss engagés : sinon `updateArena` re-verrouille l'arène au respawn et téléporte
+    // le joueur dedans (combatEngaged ne retombait que parce que l'ancienne mort recréait la scène).
+    // Le boss se rendort, repart à son repaire et récupère ses PV (raid intuable solo : pas de grignotage).
+    for (const b of this.bosses || []) {
+      if (!b.active || !b.combatEngaged) continue
+      b.combatEngaged = false
+      b.charging = false
+      b.hp = b.maxHp
+      if (b.leashX != null) b.setPosition(b.leashX, b.leashY) // retour au repaire
+    }
+    const p = this.player
+    p.setVelocity(0, 0)
+    p.setTint(0x555555)
     this.physics.pause()
-    // l'UIScene (non zoomée) affiche l'écran de Game Over
-    this.events.emit('gameover', this.player.level)
+
+    // SAC DE MORT (A1) : or + sac tombent à l'endroit de la mort. On GARDE équipement + niveau.
+    const gold = p.gold
+    const items = p.inventory.slice()
+    p.deathsSinceRecovery = (p.deathsSinceRecovery || 0) + 1
+    this.clearDeathBagSprite() // un seul sac : l'ancien (non récupéré) est perdu
+    const lost = p.deathsSinceRecovery >= 3 // 3e mort sans récupération -> tout est définitivement perdu
+    if (!lost && (gold > 0 || items.length > 0)) {
+      p.deathBag = { gold, items, x: p.x, y: p.y }
+      this.spawnDeathBagSprite()
+    } else {
+      p.deathBag = null
+    }
+    p.gold = 0
+    p.inventory = []
+    p.invVersion++
+
+    // l'UIScene affiche un voile bref (ce qu'on a laissé, avec icônes), puis appelle respawnAtVillage()
+    this.events.emit('died', { gold, items, lost })
+  }
+
+  /** Réapparition au village après le voile de mort (PV pleins). Appelé par UIScene. */
+  respawnAtVillage() {
+    const p = this.player
+    p.setPosition(this.cx * TILE, this.cy * TILE)
+    p.hp = p.maxHp
+    p.clearTint()
+    p.setVelocity(0, 0)
+    p.moveTarget = null
+    this.gameOver = false
+    this.physics.resume()
+    this.cameras.main.centerOn(p.x, p.y)
+    this.saveGame() // persiste le sac de mort + le respawn
+  }
+
+  /** Crée le sprite du sac de mort au sol (pulsation douce, pas de déplacement du corps). */
+  spawnDeathBagSprite() {
+    this.clearDeathBagSprite()
+    const b = this.player.deathBag
+    if (!b) return
+    const s = this.add.image(b.x, b.y, 'moneybag').setDepth(b.y)
+    s.setScale(18 / Math.max(s.width, s.height))
+    this.tweens.add({ targets: s, scale: s.scale * 1.12, duration: 650, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    this.deathBagSprite = s
+    this._bagArmed = false // ne se ramasse qu'APRÈS s'en être éloigné une fois (sinon respawn dessus = pickup instantané)
+  }
+
+  /** Retire le sprite du sac de mort (récupéré, perdu, ou remplacé). */
+  clearDeathBagSprite() {
+    if (this.deathBagSprite) {
+      this.tweens.killTweensOf(this.deathBagSprite)
+      this.deathBagSprite.destroy()
+      this.deathBagSprite = null
+    }
+  }
+
+  /** Récupère le sac de mort (or + objets) quand le héros marche dessus. */
+  recoverDeathBag() {
+    const p = this.player
+    const b = p.deathBag
+    if (!b) return
+    p.gold += b.gold
+    for (const it of b.items) p.inventory.push(it) // on récupère TOUT (peut dépasser 5 le temps de gérer/vendre)
+    p.invVersion++
+    p.deathBag = null
+    p.deathsSinceRecovery = 0
+    this.clearDeathBagSprite()
+    const parts = []
+    if (b.gold > 0) parts.push(`${b.gold} or`)
+    if (b.items.length) parts.push(`${b.items.length} objet${b.items.length > 1 ? 's' : ''}`)
+    this.scene.get('UIScene')?.showToast?.('Sac récupéré : ' + (parts.join(' + ') || 'rien'), '#7cfc9a')
+    Audio.sfx('sfx_loot', { vol: 0.6, detune: 0 })
+    this.saveGame()
   }
 }

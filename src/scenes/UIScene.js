@@ -114,8 +114,8 @@ export default class UIScene extends Phaser.Scene {
     })
 
     // mort
-    this.game_.events.on('gameover', this.showGameOver, this)
-    this.events.once('shutdown', () => this.game_.events.off('gameover', this.showGameOver, this))
+    this.game_.events.on('died', this.showDeath, this)
+    this.events.once('shutdown', () => this.game_.events.off('died', this.showDeath, this))
 
     // reconstruit l'UI au redimensionnement
     this.scale.on('resize', () => this.rebuildHud())
@@ -987,6 +987,8 @@ export default class UIScene extends Phaser.Scene {
 
   closeMap() {
     this.mapOpen = false
+    this.mapBagPulse?.remove() // stoppe la pulsation du sac (sinon tween sur objet détruit)
+    this.mapBagPulse = null
     this.mapObjects.forEach((o) => o.destroy())
     this.mapObjects = []
     Audio.sfx('ui_cancel', { detune: 0 })
@@ -1075,6 +1077,18 @@ export default class UIScene extends Phaser.Scene {
     const vy = oy + g.cy * cell
     reg(this.add.star(vx, vy, 5, 3, 6, 0xffe066).setDepth(303).setStrokeStyle(1, 0x5a4a10))
     reg(this.add.text(vx, vy - 10, 'Village', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
+
+    // marqueur SAC DE MORT (A1) : gros POINT BLEU pulsant + contour blanc -> très repérable
+    const bag = g.player?.deathBag
+    if (bag) {
+      const bx = ox + (bag.x / g.tile) * cell
+      const by = oy + (bag.y / g.tile) * cell
+      const halo = reg(this.add.circle(bx, by, 7, 0x2f8bff, 0.5).setDepth(304))
+      this.mapBagPulse?.remove()
+      this.mapBagPulse = this.tweens.add({ targets: halo, scale: 2.2, alpha: 0, duration: 900, repeat: -1, ease: 'Sine.out' })
+      reg(this.add.circle(bx, by, 5, 0x2f8bff).setStrokeStyle(2, 0xffffff).setDepth(305))
+      reg(this.add.text(bx, by - 11, 'Ton sac', { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#bfe0ff', stroke: '#001022', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(305))
+    }
 
     // marqueurs des REPAIRES DE BOSS (plusieurs par zone) : un ☠ par repaire, nom court du boss
     for (const [biome, lairs] of Object.entries(g.bossLairs ?? {})) {
@@ -1427,6 +1441,16 @@ export default class UIScene extends Phaser.Scene {
           mobs.fillCircle(sx, sy, 1.8)
         }
       })
+      // sac de mort (A1) : pastille BLEUE cerclée de blanc, si dans la fenêtre de la minimap
+      const b = g.player?.deathBag
+      if (b) {
+        const sx = cx + ((b.x - p.x) / tile) * scale
+        const sy = cy + ((b.y - p.y) / tile) * scale
+        if (Math.abs(sx - cx) <= half && Math.abs(sy - cy) <= half) {
+          mobs.fillStyle(0x2f8bff, 1).fillCircle(sx, sy, 3)
+          mobs.lineStyle(1.4, 0xffffff).strokeCircle(sx, sy, 3)
+        }
+      }
     }
   }
 
@@ -1445,44 +1469,64 @@ export default class UIScene extends Phaser.Scene {
     np.setPosition(sx, sy).setVisible(true)
   }
 
-  showGameOver(level) {
+  /** Voile de mort BREF (A1) : montre AVEC ICÔNES ce qu'on a laissé (or + objets), puis réapparition
+   *  automatique au village. `summary` = { gold, items (tableau d'objets), lost (true = tout perdu) }. */
+  showDeath(summary) {
     const cw = this.scale.width
     const ch = this.scale.height
+    const items = summary.items || []
+    const objs = []
+    const reg = (o) => { objs.push(o); return o }
+    const D = 151
 
-    const veil = this.add.rectangle(0, 0, cw, ch, 0x000000, 0).setOrigin(0, 0).setDepth(150)
-    this.tweens.add({ targets: veil, fillAlpha: 0.7, duration: 500 })
+    const veil = reg(this.add.rectangle(0, 0, cw, ch, 0x2a0606, 0).setOrigin(0, 0).setDepth(150))
+    this.tweens.add({ targets: veil, fillAlpha: 0.74, duration: 350 })
 
-    const panel = this.add.rectangle(cw / 2, ch / 2, 260, 180, 0x1a1a1a, 0.96).setDepth(150)
-    panel.setStrokeStyle(2, 0xe23b3b)
+    const title = reg(this.add
+      .text(cw / 2, ch / 2 - 78, 'Tu es tombé…', { fontFamily: 'Georgia, serif', fontSize: '30px', fontStyle: 'bold', color: '#ff6b6b', stroke: '#000', strokeThickness: 5 })
+      .setOrigin(0.5).setDepth(D))
+    this.tweens.add({ targets: title, scale: { from: 0.7, to: 1 }, ease: 'Back.out', duration: 400 })
 
-    const title = this.add
-      .text(cw / 2, ch / 2 - 60, 'GAME OVER', {
-        fontFamily: 'monospace',
-        fontSize: '26px',
-        fontStyle: 'bold',
-        color: '#ff4444',
-        stroke: '#000',
-        strokeThickness: 4,
-      })
-      .setOrigin(0.5)
-      .setDepth(151)
-    this.tweens.add({ targets: title, scale: { from: 0.6, to: 1 }, ease: 'Back.out', duration: 450 })
+    if (summary.lost) {
+      // 3e mort sans récupérer : tout est perdu
+      reg(this.add.text(cw / 2, ch / 2 - 36, 'Tes affaires sont PERDUES', { fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold', color: '#ff8a8a', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(D))
+      reg(this.add.text(cw / 2, ch / 2 - 14, '(3 morts sans récupérer ton sac)', { fontFamily: 'monospace', fontSize: '11px', color: '#caa' }).setOrigin(0.5).setDepth(D))
+    } else if (summary.gold > 0 || items.length) {
+      reg(this.add.text(cw / 2, ch / 2 - 44, 'Laissé sur place', { fontFamily: 'monospace', fontSize: '13px', color: '#ffd1d1' }).setOrigin(0.5).setDepth(D))
 
-    this.add
-      .text(cw / 2, ch / 2 - 30, `Niveau atteint : ${level}`, { fontFamily: 'monospace', fontSize: '12px', color: '#dddddd' })
-      .setOrigin(0.5)
-      .setDepth(151)
+      // RANGÉE D'ICÔNES centrée : pièce d'or (+ montant) puis une icône par objet (cadre = couleur de rareté)
+      const sz = 30
+      const gap = 8
+      const chips = []
+      if (summary.gold > 0) chips.push({ gold: true })
+      for (const it of items) chips.push({ it })
+      const cellW = sz + 8
+      const totalW = chips.length * cellW + (chips.length - 1) * gap
+      let ix = cw / 2 - totalW / 2 + cellW / 2
+      const iy = ch / 2 - 2
+      for (const c of chips) {
+        if (c.gold) {
+          reg(this.add.rectangle(ix, iy, cellW, cellW, 0x161b24, 0.95).setStrokeStyle(2, GOLD).setDepth(D))
+          reg(this.addIcon(ix, iy - 3, 'drop_gold', sz - 8).setDepth(D))
+          reg(this.add.text(ix, iy + cellW / 2 - 4, `${summary.gold}`, { fontFamily: 'monospace', fontSize: '10px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(D))
+        } else {
+          const rc = RARITY[c.it.rarity]
+          reg(this.add.rectangle(ix, iy, cellW, cellW, 0x161b24, 0.95).setStrokeStyle(2, rc ? rc.tint : 0x888888).setDepth(D))
+          reg(this.addIcon(ix, iy, c.it.icon, sz - 8).setDepth(D))
+        }
+        ix += cellW + gap
+      }
+      reg(this.add.text(cw / 2, ch / 2 + 34, 'Récupère ton sac (repère BLEU sur la carte)', { fontFamily: 'monospace', fontSize: '11px', color: '#9fd0ff' }).setOrigin(0.5).setDepth(D))
+    } else {
+      reg(this.add.text(cw / 2, ch / 2 - 20, 'Tu ne portais rien à laisser.', { fontFamily: 'monospace', fontSize: '12px', color: '#ffd1d1' }).setOrigin(0.5).setDepth(D))
+    }
 
-    // boutons (depth élevé pour passer au-dessus du voile)
-    const reg = (o) => o.setDepth(151)
-    this.menuButton(reg, cw / 2, ch / 2 + 6, 'Recommencer', () => {
-      this.game_.scene.restart({ character: this.game_.character })
-      this.scene.restart()
-    })
-    this.menuButton(reg, cw / 2, ch / 2 + 52, 'Menu principal', () => {
-      this.game_.scene.stop('GameScene')
-      this.scene.start('MenuScene')
-      this.scene.stop()
+    reg(this.add.text(cw / 2, ch / 2 + 60, 'Réapparition au village…', { fontFamily: 'monospace', fontSize: '11px', color: '#bcd' }).setOrigin(0.5).setDepth(D))
+
+    // après le voile : respawn au village, puis on efface l'overlay
+    this.time.delayedCall(1900, () => {
+      this.game_.respawnAtVillage()
+      this.tweens.add({ targets: objs, alpha: 0, duration: 350, onComplete: () => objs.forEach((o) => o.destroy()) })
     })
   }
 }
