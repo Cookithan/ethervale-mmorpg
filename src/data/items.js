@@ -53,16 +53,16 @@ export const ITEMS = {
 
   // ===== FOCUS (slot 'focus') -> améliore LA COMPÉTENCE (cooldown -%, effet +%). Parchemins élémentaires. =====
   focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellCd: 0.08, spellPower: 0.08 },
-  focus2: { id: 'focus2', name: 'Parchemin de givre', slot: 'focus', icon: 'foc_ice', rarity: 'rare', price: 260, spellCd: 0.15, spellPower: 0.18 },
-  focus_plant: { id: 'focus_plant', name: 'Parchemin de vie', slot: 'focus', icon: 'foc_plant', rarity: 'rare', price: 250, spellCd: 0.14, spellPower: 0.2 },
-  focus3: { id: 'focus3', name: 'Parchemin de foudre', slot: 'focus', icon: 'foc_thunder', rarity: 'epic', price: 580, spellCd: 0.24, spellPower: 0.3 },
+  focus2: { id: 'focus2', name: 'Parchemin de givre', slot: 'focus', icon: 'foc_ice', rarity: 'rare', price: 260, spellCd: 0.15, spellPower: 0.18, stats: { manaRegen: 2 } },
+  focus_plant: { id: 'focus_plant', name: 'Parchemin de vie', slot: 'focus', icon: 'foc_plant', rarity: 'rare', price: 250, spellCd: 0.14, spellPower: 0.2, stats: { manaRegen: 2 } },
+  focus3: { id: 'focus3', name: 'Parchemin de foudre', slot: 'focus', icon: 'foc_thunder', rarity: 'epic', price: 580, spellCd: 0.24, spellPower: 0.3, stats: { manaRegen: 3 } },
   focus_fire: { id: 'focus_fire', name: 'Parchemin de flammes', slot: 'focus', icon: 'foc_fire', rarity: 'epic', price: 600, spellCd: 0.2, spellPower: 0.38 },
 
   // ===== ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire). Gemmes colorées. =====
-  amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring', rarity: 'common', price: 90, stats: { mana: 16 } },
+  amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring', rarity: 'common', price: 90, stats: { mana: 16, manaRegen: 1 } },
   ring: { id: 'ring', name: "Anneau d'émeraude", slot: 'ring', icon: 'ring_green', rarity: 'rare', price: 220, stats: { mana: 34, attack: 3 } },
   ring_topaz: { id: 'ring_topaz', name: 'Anneau de topaze', slot: 'ring', icon: 'ring_yellow', rarity: 'rare', price: 230, stats: { mana: 28, hp: 14 } },
-  signet: { id: 'signet', name: "Anneau d'améthyste", slot: 'ring', icon: 'ring_purple', rarity: 'epic', price: 520, stats: { mana: 58, defense: 3 } },
+  signet: { id: 'signet', name: "Anneau d'améthyste", slot: 'ring', icon: 'ring_purple', rarity: 'epic', price: 520, stats: { mana: 58, defense: 3, manaRegen: 3 } },
 
   // ===== LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand/butin normal, cf. SHOP_STOCK / equipmentOfTier) =====
   legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
@@ -70,8 +70,8 @@ export const ITEMS = {
   legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
   legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', iconTint: 0xffe6a0, rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_armor', iconTint: 0xffd27a, rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
-  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellCd: 0.42, spellPower: 0.65 },
-  legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'ring_red', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8 } },
+  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellCd: 0.42, spellPower: 0.65, stats: { manaRegen: 4 } },
+  legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'ring_red', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
 
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'pot_heal', rarity: 'common', price: 40, heal: 45 },
@@ -111,7 +111,7 @@ export const SLOTS = ['weapon', 'armor', 'focus', 'ring']
 export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', focus: 'Focus', ring: 'Anneau' }
 
 // abréviations FR des stats (pour l'affichage des bonus)
-export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Mana' }
+export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Mana', manaRegen: 'Mana/s' }
 
 const CLASS_FR = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank', healer: 'Soigneur' }
 // arme de DÉPART par classe (équipée à la création du perso)

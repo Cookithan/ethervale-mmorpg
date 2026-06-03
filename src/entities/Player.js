@@ -184,6 +184,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     let def = 0
     let hp = 0
     let mana = 0
+    let manaRegen = 0
     let spellCd = 0
     let spellPower = 0
     for (const slot of Object.keys(this.equipped)) {
@@ -194,6 +195,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       def += s.defense ?? 0
       hp += s.hp ?? 0
       mana += s.mana ?? 0 // Anneau -> +Mana max
+      manaRegen += s.manaRegen ?? 0 // Focus/Anneau -> +régén de mana/s (pour les casters)
       spellCd += it.spellCd ?? 0 // Focus -> cooldown de compétence réduit
       spellPower += it.spellPower ?? 0 // Focus -> effet de compétence renforcé
     }
@@ -201,6 +203,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.defense = this.baseDefense + def
     this.maxHp = this.baseMaxHp + hp
     this.maxMana = (this.baseMana ?? 0) + mana
+    this.manaRegen = MANA_REGEN + manaRegen // régén de base + bonus des items équipés (mana/s)
     this.spellCdMul = Math.max(0.3, 1 - spellCd) // -X% cooldown (jamais sous 30 % du cd)
     this.spellPowerMul = 1 + spellPower // +X% effet du sort
     if (this.hp > this.maxHp) this.hp = this.maxHp // si on retire un bonus de PV max
@@ -353,7 +356,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // régénération LENTE de mana (tourne aussi pendant l'attaque)
     if (this.maxMana > 0 && this.mana < this.maxMana) {
       const dt = this._lastT ? time - this._lastT : 16
-      this.mana = Math.min(this.maxMana, this.mana + (MANA_REGEN * dt) / 1000)
+      this.mana = Math.min(this.maxMana, this.mana + ((this.manaRegen ?? MANA_REGEN) * dt) / 1000)
     }
     this._lastT = time
     // incantation (Météore) : le mage est ENRACINÉ (ne bouge pas) tant qu'il incante
