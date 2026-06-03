@@ -4,6 +4,7 @@ import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY } from '../data/items.js'
+import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 import { DEFAULT_CHARACTER, KNIGHT_CHARACTER } from '../data/classes.js'
 import { makeSave, writeSave, hasSave, loadSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
@@ -2227,13 +2228,20 @@ export default class GameScene extends Phaser.Scene {
     const names = ['Edda', 'Rurik', 'Sylvane', 'Bram', 'Oona', 'Tibert', 'Maelis', 'Joran', 'Cwen', 'Hadric', 'Niamh', 'Osric', 'Veya', 'Doran', 'Liesel']
     // apparences DISTINCTES (ni villageois du bourg, ni perso de classe) -> une UNIQUE par PNJ = pas de doublon
     const texes = ['npc_noble', 'npc_princess', 'npc_oldman', 'npc_oldman2', 'npc_monk', 'npc_monk2', 'npc_hunter', 'npc_inspector', 'npc_master', 'npc_shaman', 'npc_mangreen', 'npc_eskimo', 'npc_fighterwhite', 'npc_fighterred']
+    // dialogues d'AMBIANCE : chaque baladeur évoque une facette du monde d'Iroas (lore, pas de tuto)
     const pool = [
-      ['Bonjour, voyageur. La route est sûre tant qu\'on y reste.'],
-      ['Plus tu t\'éloignes du village, plus les bêtes sont coriaces.'],
-      ['On raconte qu\'un monstre colossal rôde au fond de cette contrée...'],
-      ['Le marchand du village rachète tout ce que tu ramasses.'],
-      ['Suis les chemins : ils mènent quelque part, l\'eau non.'],
-      ['Repose-toi un instant, l\'aventurier. Puis repars plus fort.'],
+      // Edda — le désert du sud
+      ['Au sud, le désert brûle sous un soleil sans pitié.', 'Les araignées y sont grosses comme des chiens, et un cyclope borgne hante les dunes. Beaucoup sont partis le chasser... peu sont revenus.'],
+      // Rurik — le pic gelé du nord
+      ['Le pic gelé du nord n\'est pas pour les âmes tièdes.', 'Là-haut, un Tengu des glaces déchaîne les tempêtes, et une gelée ancienne rampe entre les congères. Le froid mord plus fort que les bêtes.'],
+      // Sylvane — la forêt ancienne
+      ['La forêt qui nous entoure est vieille comme le monde.', 'Ses chênes ont vu passer des héros... et les ont vus tomber. Un samouraï sylvestre veille en son cœur ; on ne le défie pas seul.'],
+      // Bram — la mer et le kraken
+      ['La mer cache un kraken sur ses rivages ; ses tentacules ont coulé plus d\'un marin imprudent.', 'On dit que le marchand vend une barque. Avec elle, on pourrait enfin franchir les flots et voir ce qu\'il y a de l\'autre côté.'],
+      // Oona — l'île maudite
+      ['À l\'horizon sud-ouest, une île maudite flotte dans la brume.', 'Dargoth y règne sur les âmes damnées. Nul n\'en est jamais revenu — c\'est là-bas que finissent les légendes... ou qu\'elles commencent.'],
+      // Tibert — l'histoire d'Iroas
+      ['Iroas était jadis un grand royaume ; il n\'en reste que ce village et des ruines au loin.', 'Les anciens parlent d\'un dragon endormi sous les vagues. Réveille-le, dit-on, et le monde entier tremblera.'],
     ]
     // 6 baladeurs : 3 à GAUCHE du village, 3 à DROITE. On pioche dans toute la moitié correspondante de la
     // PRAIRIE (côté = signe de tx-cx) -> beaucoup de spots valides, donc les 6 se placent bien espacés.
@@ -2625,10 +2633,9 @@ export default class GameScene extends Phaser.Scene {
       {
         hx: cx + 3, hy: cy + 4, key: 'cottage', tex: 'npc_boy', name: 'Tom',
         lines: [
-          'Franchis les ponts pour sortir de la prairie et explorer le monde !',
-          'À l\'est et au sud : la forêt puis le désert. Au nord : les terres gelées.',
-          'Plus tu t\'éloignes du village, plus les monstres sont coriaces.',
-          'Au-delà du grand lac noir, les terres maudites... personne n\'en revient !',
+          'Tu as vu le grand serpent de mer qui tourne au large ? Mon père dit que c\'est un dragon endormi depuis mille ans.',
+          'Quand je serai grand, je traverserai les flots jusqu\'à l\'île maudite. Là où finissent les légendes !',
+          'On raconte qu\'un Tengu garde un trésor dans la neige du nord. Un jour, j\'irai voir...',
         ],
       },
     ]
@@ -2908,9 +2915,122 @@ export default class GameScene extends Phaser.Scene {
   interactWith(t) {
     if (this.uiBusy()) return
     const ui = this.scene.get('UIScene')
+    if (this.handleQuestInteraction(t)) return // offre/rendu de quête -> court-circuite l'interaction normale
     if (t === this.merchant) ui.openShop()
     else if (t.role === 'forge') ui.openForge()
     else ui.openDialogue(t.name, t.lines, t.texture)
+  }
+
+  // ---------- quêtes (brief §10) ----------
+
+  /** Quête active (objet QUESTS) ou null. */
+  activeQuest() {
+    return this.player.quest ? QUESTS[this.player.quest.id] : null
+  }
+
+  /** Marqueur au-dessus d'un PNJ : '?' (quête à rendre), '!' (quête dispo), '' sinon. */
+  questMark(npcName) {
+    const p = this.player
+    const aq = this.activeQuest()
+    if (aq && aq.giver === npcName && questComplete(p, aq)) return '?'
+    const nid = nextQuestId(p)
+    if (nid && QUESTS[nid].giver === npcName) return '!'
+    return ''
+  }
+
+  /** Côté quêtes : progresse un objectif TALK, ou offre/rend chez le donneur. true = interaction consommée. */
+  handleQuestInteraction(t) {
+    const p = this.player
+    const aq = this.activeQuest()
+    // progression d'une quête PARLER dont la cible est ce PNJ (ne consomme pas l'interaction)
+    if (aq && aq.type === 'talk' && aq.target === t.name && (p.quest.progress ?? 0) < 1) {
+      p.quest.progress = 1
+      this.saveGame()
+    }
+    // RENDU : donneur de la quête active terminée
+    if (aq && aq.giver === t.name && questComplete(p, aq)) {
+      this.claimQuest(t)
+      return true
+    }
+    // OFFRE : donneur de la prochaine quête disponible
+    const nid = nextQuestId(p)
+    if (nid && QUESTS[nid].giver === t.name) {
+      this.acceptQuest(nid, t)
+      return true
+    }
+    return false
+  }
+
+  acceptQuest(id, npc) {
+    const q = QUESTS[id]
+    if (!q) return
+    this.player.quest = { id, progress: 0 }
+    this.saveGame()
+    Audio.sfx('ui_accept', { detune: 0 })
+    this.scene.get('UIScene')?.openDialogue?.(q.giver + ' — ' + q.title, [q.desc, 'Objectif : ' + this.objectiveText(q) + '\nRécompense : ' + this.rewardText(q)], npc?.texture)
+  }
+
+  claimQuest(npc) {
+    const p = this.player
+    const q = this.activeQuest()
+    if (!q || !questComplete(p, q)) return
+    if (q.type === 'collect') p.removeResource(q.target, q.count) // on rend les matériaux
+    const r = q.reward ?? {}
+    if (r.gold) p.gold += r.gold
+    let extra = ''
+    if (r.item && ITEMS[r.item]) {
+      const it = cloneItem(ITEMS[r.item])
+      if (!p.addItem(it)) { this.dropItemOnGround(it); extra = ' (sac plein → posé au sol)' }
+    }
+    if (r.xp) p.gainXp(r.xp) // en dernier (peut déclencher un level up + son)
+    p.questsDone.push(q.id)
+    p.quest = null
+    this.saveGame()
+    Audio.sfx('sfx_levelup', { vol: 0.5, detune: -200 })
+    this.scene.get('UIScene')?.openDialogue?.(q.giver + ' — Quête accomplie !', ['« ' + q.title + ' » terminée.', 'Récompense : ' + this.rewardText(q) + extra], npc?.texture)
+  }
+
+  objectiveText(q) {
+    if (q.type === 'talk') return 'parler à ' + q.target
+    if (q.type === 'kill') return 'tuer ' + q.count + ' ' + q.targetName
+    if (q.type === 'collect') return 'rapporter ' + q.count + ' ' + q.targetName
+    return ''
+  }
+
+  rewardText(q) {
+    const r = q.reward ?? {}
+    const parts = []
+    if (r.xp) parts.push(r.xp + ' XP')
+    if (r.gold) parts.push(r.gold + ' or')
+    if (r.item && ITEMS[r.item]) parts.push(ITEMS[r.item].name)
+    return parts.join(', ') || '—'
+  }
+
+  /** Progression d'une quête TUER au moment d'un kill. */
+  questKill(mon) {
+    const p = this.player
+    const aq = this.activeQuest()
+    if (!aq || aq.type !== 'kill' || mon.def !== MONSTER_TYPES[aq.target]) return
+    if ((p.quest.progress ?? 0) >= aq.count) return
+    p.quest.progress = (p.quest.progress ?? 0) + 1
+    this.saveGame()
+    const ui = this.scene.get('UIScene')
+    if (p.quest.progress >= aq.count) ui?.showToast?.(`Objectif accompli ! Retourne voir ${aq.giver}`, '#7cfc9a')
+    else ui?.showToast?.(`${aq.targetName} ${p.quest.progress}/${aq.count}`, '#cfe2ff')
+  }
+
+  /** Met à jour le marqueur de quête '!'/'?' au-dessus d'un PNJ : petit BADGE sombre cerclé (lisible sur
+   *  n'importe quel sol) + symbole net, placé juste au-dessus du nom. */
+  updateQuestMark(npc, s) {
+    const mark = this.questMark(npc.name)
+    if (!mark) { npc.qmark?.setVisible(false); return }
+    const ready = mark === '?'
+    if (!npc.qmark) {
+      // « ! » / « ? » doré épais + GROS contour sombre -> lisible sur n'importe quel sol (vert, sable, neige)
+      npc.qmark = this.add.text(0, 0, '', { fontFamily: 'Georgia, serif', fontSize: '13px', fontStyle: 'bold', stroke: '#1a1206', strokeThickness: 4 }).setOrigin(0.5, 1).setResolution(3).setDepth(60003)
+    }
+    npc.qmark.setText(mark).setColor(ready ? '#6dfca0' : '#ffd21a').setVisible(true)
+    npc.qmark.setPosition(s.x, s.y - 18 + Math.sin(this.time.now / 360) * 1.5)
   }
 
   /** Oriente les villageois vers le héros à portée + affiche l'indice "(E)" de proximité.
@@ -2929,6 +3049,7 @@ export default class GameScene extends Phaser.Scene {
         npc.label.setPosition(s.x, s.y - 14)
         npc.hint.setPosition(s.x, s.y - 23)
         npc.hint.setVisible(near <= HINT_RANGE)
+        this.updateQuestMark(npc, s)
         continue
       }
       let dir = 'down'
@@ -2942,6 +3063,7 @@ export default class GameScene extends Phaser.Scene {
         s.anims.play(`${npc.texture}-idle-${dir}`, true)
       }
       npc.hint.setVisible(near <= HINT_RANGE) // indice "(E)" seulement quand on est collé
+      this.updateQuestMark(npc, s)
     }
 
     // interaction AUTO : on a cliqué un interlocuteur, on l'a rejoint -> on ouvre le panneau
@@ -3615,6 +3737,7 @@ export default class GameScene extends Phaser.Scene {
       return
     }
     this.spawnDrop(mon)
+    this.questKill(mon) // progression d'une quête TUER
     // respawn de CAMP : le monstre réapparaît dans SON biome, près de là où il est mort
     // (la zone se repeuple comme dans un MMORPG ; fallback ailleurs si l'endroit est pris).
     const near = {

@@ -98,6 +98,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.invMax = INV_MAX // taille max du sac (loot/achat refusés quand plein)
     this.hasBoat = false // bateau acheté au marchand -> peut naviguer sur l'eau (A3)
     this.sailing = false // en navigation (sur l'eau en bateau) -> attaques bloquées (mis à jour par GameScene)
+    // QUÊTES (brief §10) : quête active { id, progress } ou null + ids des quêtes terminées (chaîne).
+    this.quest = null
+    this.questsDone = []
     // SAC DE MORT (A1) : à la mort, or + sac tombent ici {gold, items, x, y} ; 1 seul à la fois.
     this.deathBag = null
     this.deathsSinceRecovery = 0 // remourir sans récupérer remplace l'ancien sac ; 3 = tout perdu
@@ -141,6 +144,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (s.inventory) this.inventory = s.inventory
     this.hasBoat = s.hasBoat ?? false
     this.resources = s.resources ?? {}
+    this.quest = s.quest ?? null
+    this.questsDone = s.questsDone ?? []
     this.deathBag = s.deathBag ?? null
     this.deathsSinceRecovery = s.deathsSinceRecovery ?? 0
     this.recomputeStats()

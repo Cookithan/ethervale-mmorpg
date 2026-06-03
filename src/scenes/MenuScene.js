@@ -31,7 +31,7 @@ export default class MenuScene extends Phaser.Scene {
     // --- titre en haut (SANS bandeau : contour + ombre suffisent à le détacher du village) ---
     const titleSize = Math.round(Phaser.Math.Clamp(cw / 13, 26, 52))
     this.add
-      .text(cw / 2, Math.max(46, ch * 0.09), 'Un Monde MMORPG', {
+      .text(cw / 2, Math.max(46, ch * 0.09), 'The Last Adventure', {
         fontFamily: 'Georgia, "Times New Roman", serif',
         fontSize: `${titleSize}px`,
         fontStyle: 'bold',
@@ -45,7 +45,7 @@ export default class MenuScene extends Phaser.Scene {
 
     // --- boutons ---
     // Nouvelle partie : on NE coupe PAS le village -> il reste en fond de la création (continuité)
-    const buttons = [{ label: 'Nouvelle partie', cb: () => this.scene.start('CharacterScene') }]
+    const buttons = [{ label: 'Nouvelle partie', cb: () => this.scene.start('IntroScene') }]
     if (hasSave()) {
       const s = loadSave()
       const who = s?.character?.name ? `Continuer — ${s.character.name} (Niv.${s.level ?? 1})` : 'Continuer'

@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
+import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
 // palette UI (style WoW lisible)
 const GOLD = 0xc8a24a
@@ -37,6 +38,8 @@ export default class UIScene extends Phaser.Scene {
     this.pauseObjects = []
     this.mapOpen = false
     this.mapObjects = []
+    this.journalOpen = false
+    this.journalObjects = []
     this.shopTab = 'buy'
     this.toast = null
     this.zoneBanner = null
@@ -79,6 +82,26 @@ export default class UIScene extends Phaser.Scene {
     this.dropBtn.on('pointerout', () => this.hideTip())
     this.dropBtn.on('pointerdown', () => this._dropTarget && this.dropItem(this._dropTarget))
 
+    // suivi de QUÊTE (HUD, haut-gauche SOUS le cadre du héros) — panneau lisible, mis à jour chaque frame
+    {
+      const qx = 10
+      const qy = 86
+      const qw = 214
+      const qh = 56
+      const D = 120
+      this.qt = {}
+      this.qt.bg = this.add.rectangle(qx, qy, qw, qh, PANEL, 0.88).setOrigin(0, 0).setStrokeStyle(2, GOLD).setDepth(D)
+      this.qt.accent = this.add.rectangle(qx, qy, 4, qh, 0xffcf2a).setOrigin(0, 0).setDepth(D + 1)
+      this.qt.header = this.add.text(qx + 12, qy + 6, '✦ QUÊTE', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: '#ffcf2a' }).setOrigin(0, 0).setDepth(D + 1)
+      this.qt.title = this.add.text(qx + 12, qy + 18, '', { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0, 0).setDepth(D + 1)
+      this.qt.obj = this.add.text(qx + 12, qy + 35, '', { fontFamily: 'monospace', fontSize: '11px', color: '#cfe2ff' }).setOrigin(0, 0).setDepth(D + 1)
+      this.qt.barBg = this.add.rectangle(qx + 12, qy + qh - 8, qw - 24, 5, 0x000000, 0.5).setOrigin(0, 0.5).setDepth(D + 1)
+      this.qt.bar = this.add.rectangle(qx + 12, qy + qh - 8, 0, 5, 0x7cc4ff).setOrigin(0, 0.5).setDepth(D + 2)
+      this.qt.w = qw - 24
+      this.qtAll = [this.qt.bg, this.qt.accent, this.qt.header, this.qt.title, this.qt.obj, this.qt.barBg, this.qt.bar]
+      this.qtAll.forEach((o) => o.setVisible(false))
+    }
+
     this.buildHud()
 
     // pseudo du héros : dessiné ICI (scène non-zoomée) puis projeté depuis la caméra de GameScene
@@ -94,12 +117,14 @@ export default class UIScene extends Phaser.Scene {
 
     // entrées UI
     this.input.keyboard.on('keydown-C', () => this.toggleChar())
+    this.input.keyboard.on('keydown-J', () => this.toggleJournal()) // J : journal de quêtes
     this.input.keyboard.on('keydown-ESC', () => {
       if (this.dialogueOpen) this.closeDialogue()
       else if (this.forgeOpen) this.closeForge()
       else if (this.charOpen) this.closeChar()
       else if (this.shopOpen) this.closeShop()
       else if (this.mapOpen) this.closeMap()
+      else if (this.journalOpen) this.closeJournal()
       else if (this.pauseOpen) this.closePause()
       else this.openPause() // rien d'ouvert -> menu pause
     })
@@ -1193,6 +1218,98 @@ export default class UIScene extends Phaser.Scene {
     this.scene.resume('GameScene')
   }
 
+  // ---------- quêtes : suivi HUD + journal (J) ----------
+
+  updateQuestTracker(p) {
+    const q = p.quest ? QUESTS[p.quest.id] : null
+    if (!q || this.game_.gameOver) { this.qtAll?.forEach((o) => o.setVisible(false)); return }
+    const goal = questGoal(q)
+    const prog = questProgress(p, q)
+    const ready = questComplete(p, q)
+    this.qtAll.forEach((o) => o.setVisible(true))
+    this.qt.title.setText(q.title)
+    // objectif lisible + couleur (vert quand prêt à rendre)
+    const obj = ready
+      ? '→ Retourne voir ' + q.giver
+      : (q.type === 'talk' ? 'Parler à ' + q.target : `${q.targetName}  ${prog}/${goal}`)
+    this.qt.obj.setText(obj).setColor(ready ? '#7cfc9a' : '#cfe2ff')
+    // barre de progression
+    const ratio = goal > 0 ? prog / goal : 0
+    this.qt.bar.width = Math.max(0, this.qt.w * Phaser.Math.Clamp(ratio, 0, 1))
+    this.qt.bar.fillColor = ready ? 0x7cfc9a : 0x7cc4ff
+    const ring = ready ? 0x7cfc9a : 0xffcf2a
+    this.qt.bg.setStrokeStyle(2, ring)
+    this.qt.accent.fillColor = ring
+  }
+
+  refreshQuest() { const p = this.game_?.player; if (p) this.updateQuestTracker(p) }
+
+  questRewardText(q) {
+    const r = q.reward ?? {}
+    const parts = []
+    if (r.xp) parts.push(r.xp + ' XP')
+    if (r.gold) parts.push(r.gold + ' or')
+    if (r.item && ITEMS[r.item]) parts.push(ITEMS[r.item].name)
+    return parts.join(', ') || '—'
+  }
+
+  toggleJournal() {
+    if (this.game_.gameOver || this.pauseOpen) return
+    if (this.journalOpen) this.closeJournal()
+    else if (!this.dialogueOpen && !this.shopOpen && !this.forgeOpen && !this.charOpen && !this.mapOpen) this.openJournal()
+  }
+
+  openJournal() {
+    this.journalOpen = true
+    this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
+    this.buildJournal()
+  }
+
+  closeJournal() {
+    this.journalOpen = false
+    this.journalObjects.forEach((o) => o.destroy())
+    this.journalObjects = []
+    Audio.sfx('ui_cancel', { detune: 0 })
+    this.scene.resume('GameScene')
+  }
+
+  buildJournal() {
+    const p = this.game_.player
+    if (!p) return
+    this.journalObjects.forEach((o) => o.destroy())
+    this.journalObjects = []
+    const reg = (o) => { this.journalObjects.push(o); return o }
+    const cw = this.scale.width
+    const ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.55).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeJournal()))
+    const W = 400
+    const H = 300
+    const x0 = cw / 2 - W / 2
+    const y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD).setInteractive())
+    reg(this.add.text(cw / 2, y0 + 14, 'Journal de quêtes', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5, 0))
+
+    const q = p.quest ? QUESTS[p.quest.id] : null
+    const y = y0 + 54
+    if (q) {
+      const ready = questComplete(p, q)
+      reg(this.add.text(x0 + 20, y, '✦ ' + q.title, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: ready ? '#7cfc9a' : '#ffe9a8' }).setOrigin(0, 0))
+      reg(this.add.text(x0 + 20, y + 22, q.desc, { fontFamily: 'monospace', fontSize: '11px', color: '#cfe2ff', wordWrap: { width: W - 40 }, lineSpacing: 2 }).setOrigin(0, 0))
+      const oy = y + 76
+      const obj = q.type === 'talk' ? (ready ? '✓ Parler accompli' : 'Parler à ' + q.target) : `${q.targetName} : ${questProgress(p, q)}/${questGoal(q)}`
+      reg(this.add.text(x0 + 20, oy, 'Objectif : ' + obj, { fontFamily: 'monospace', fontSize: '12px', color: ready ? '#7cfc9a' : '#ffd24a' }).setOrigin(0, 0))
+      reg(this.add.text(x0 + 20, oy + 18, 'Récompense : ' + this.questRewardText(q), { fontFamily: 'monospace', fontSize: '11px', color: '#9fb6cc' }).setOrigin(0, 0))
+      if (ready) reg(this.add.text(x0 + 20, oy + 38, '→ Retourne voir ' + q.giver + ' (icône ?).', { fontFamily: 'monospace', fontSize: '11px', color: '#7cfc9a' }).setOrigin(0, 0))
+    } else {
+      const nid = nextQuestId(p)
+      const msg = nid ? `Une quête t'attend chez ${QUESTS[nid].giver} — cherche l'icône « ! » au village.` : 'Toutes les quêtes sont terminées. Bravo, aventurier !'
+      reg(this.add.text(cw / 2, y + 30, msg, { fontFamily: 'monospace', fontSize: '12px', color: '#cfe2ff', align: 'center', wordWrap: { width: W - 50 } }).setOrigin(0.5, 0))
+    }
+    reg(this.add.text(cw / 2, y0 + H - 32, `Quêtes accomplies : ${(p.questsDone ?? []).length} / ${Object.keys(QUESTS).length}`, { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066' }).setOrigin(0.5, 0))
+    reg(this.add.text(cw / 2, y0 + H - 15, 'J / Échap / clic dehors : fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5, 0))
+  }
+
   /** Dessine tout le continent (océan + biomes) échantillonné depuis GameScene, façon carte papier,
    *  avec les marqueurs village + joueur. Vue d'ensemble plein écran (jeu en pause). */
   buildWorldMap() {
@@ -1352,12 +1469,30 @@ export default class UIScene extends Phaser.Scene {
     if (this.forgeOpen) this.closeForge()
     this.dialogueOpen = true
     this.dlgName = name
-    this.dlgLines = lines && lines.length ? lines : ['...']
+    this.dlgLines = this.paginateLines(lines && lines.length ? lines : ['...'])
     this.dlgTexture = texture
     this.dlgIndex = 0
     this.dlgOpenAt = this.time.now // anti-rebond : la touche d'ouverture ne doit pas avancer
     this.scene.pause('GameScene')
     this.buildDialogue()
+  }
+
+  /** Découpe les phrases trop longues en plusieurs pages (clic pour continuer) -> elles tiennent dans la boîte. */
+  paginateLines(lines, maxLen = 88) {
+    const out = []
+    for (const raw of lines) {
+      for (const seg of String(raw).split('\n')) { // chaque '\n' = nouvelle page
+        if (seg.length <= maxLen) { out.push(seg); continue }
+        const words = seg.split(' ')
+        let cur = ''
+        for (const w of words) {
+          if (cur && (cur + ' ' + w).length > maxLen) { out.push(cur); cur = w }
+          else cur = cur ? cur + ' ' + w : w
+        }
+        if (cur) out.push(cur)
+      }
+    }
+    return out.length ? out : ['...']
   }
 
   buildDialogue() {
@@ -1368,50 +1503,38 @@ export default class UIScene extends Phaser.Scene {
     }
     const cw = this.scale.width
     const ch = this.scale.height
-    const W = Math.min(460, cw - 40)
-    const H = 132
-    const cx = cw / 2
-    const y0 = ch - H - 24 // ancré en bas de l'écran (style RPG)
+    // boîte de dialogue Ninja (source 300×58 : case portrait à gauche + zone crème) mise à l'échelle (AGRANDIE)
+    const boxW = Math.min(560, cw - 16)
+    const s = boxW / 300
+    const boxH = 58 * s
+    const boxX = (cw - boxW) / 2
+    const boxY = ch - boxH - 16
 
-    // overlay plein écran (invisible) : clic EN DEHORS de la barre = passer (skip) le dialogue
+    // overlay plein écran (invisible) : clic EN DEHORS de la boîte = passer (skip) le dialogue
     reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.001).setOrigin(0, 0).setInteractive().on('pointerdown', () => { if (this.time.now > this.dlgOpenAt + 150) this.closeDialogue() }))
 
-    // clic sur le panneau -> phrase suivante
-    const hit = reg(this.add.rectangle(cx, y0 + H / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
-    hit.setInteractive({ useHandCursor: true })
-    hit.on('pointerdown', () => this.advanceDialogue())
+    // la boîte (asset) ; clic dessus = phrase suivante
+    const box = reg(this.add.image(boxX, boxY, 'dialogbox').setOrigin(0, 0).setScale(s))
+    box.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.advanceDialogue())
 
-    const x0 = cx - W / 2
-    // portrait du PNJ (1re frame du spritesheet)
-    reg(this.add.rectangle(x0 + 36, y0 + 38, 52, 52, 0x000000, 0.4).setStrokeStyle(2, GOLD))
-    if (this.dlgTexture && this.textures.exists(this.dlgTexture)) {
-      const port = reg(this.add.image(x0 + 36, y0 + 38, this.dlgTexture, 0))
-      port.setScale(44 / Math.max(port.width, port.height))
+    // portrait du PNJ dans la case de gauche : FACESET (portrait dédié) si dispo, sinon sprite (frame 0)
+    const faceKey = this.dlgTexture ? 'face_' + this.dlgTexture : null
+    const useFace = faceKey && this.textures.exists(faceKey)
+    const portKey = useFace ? faceKey : this.dlgTexture
+    if (portKey && this.textures.exists(portKey)) {
+      const port = reg(useFace ? this.add.image(boxX + 28 * s, boxY + 30 * s, portKey) : this.add.image(boxX + 28 * s, boxY + 31 * s, portKey, 0))
+      port.setScale((useFace ? 40 * s : 34 * s) / Math.max(port.width, port.height))
     }
-    // nom (or) + phrase courante
-    reg(this.add.text(x0 + 72, y0 + 14, this.dlgName, { fontFamily: 'monospace', fontSize: '14px', color: '#ffe066' }).setOrigin(0, 0))
-    reg(
-      this.add
-        .text(x0 + 72, y0 + 40, this.dlgLines[this.dlgIndex], {
-          fontFamily: 'monospace',
-          fontSize: '11px',
-          color: '#ffffff',
-          lineSpacing: 4,
-          wordWrap: { width: W - 90 },
-        })
-        .setOrigin(0, 0)
-    )
-    // progression + invite
-    const last = this.dlgIndex >= this.dlgLines.length - 1
-    reg(
-      this.add
-        .text(cx, y0 + H - 13, `${this.dlgIndex + 1}/${this.dlgLines.length}   ·   ${last ? '✓ Fermer' : '▶ Suivant'}  (E / clic)`, {
-          fontFamily: 'monospace',
-          fontSize: '10px',
-          color: '#9fb6cc',
-        })
-        .setOrigin(0.5)
-    )
+
+    // NOM (majuscules, brun, plus grand) + phrase (texte sombre) sur le crème
+    const tx = boxX + 58 * s
+    reg(this.add.text(tx, boxY + 7 * s, (this.dlgName || '').toUpperCase(), { fontFamily: 'monospace', fontSize: Math.round(12 * s) + 'px', fontStyle: 'bold', color: '#7a4516' }).setOrigin(0, 0).setResolution(2))
+    reg(this.add.text(tx, boxY + 22 * s, this.dlgLines[this.dlgIndex], { fontFamily: 'monospace', fontSize: Math.round(9.5 * s) + 'px', color: '#33271a', lineSpacing: 2, wordWrap: { width: 234 * s } }).setOrigin(0, 0).setResolution(2))
+
+    // flèche « suivant » en bas à droite, qui rebondit
+    const arrow = reg(this.add.image(boxX + 286 * s, boxY + 46 * s, 'arrow_next').setScale(s))
+    this.dlgArrowTween?.remove()
+    this.dlgArrowTween = this.tweens.add({ targets: arrow, y: arrow.y + 3 * s, duration: 480, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
   }
 
   advanceDialogue() {
@@ -1429,6 +1552,8 @@ export default class UIScene extends Phaser.Scene {
   }
 
   destroyDialogue() {
+    this.dlgArrowTween?.remove()
+    this.dlgArrowTween = null
     this.dialogueObjects.forEach((o) => o.destroy())
     this.dialogueObjects = []
   }
@@ -1595,6 +1720,7 @@ export default class UIScene extends Phaser.Scene {
     const p = this.game_?.player
     if (!p) return
 
+    this.updateQuestTracker(p)
     const ratio = Phaser.Math.Clamp(p.hp / p.maxHp, 0, 1)
     this.hpBar.setSize(this.hpBarW * ratio, this.hpBarH)
     this.hpBar.fillColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.25 ? 0xff9800 : 0xe23b3b

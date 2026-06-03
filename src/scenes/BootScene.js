@@ -158,14 +158,17 @@ export default class BootScene extends Phaser.Scene {
 
     // logo du menu (titre "NINJA ADVENTURE" extrait de la cover du pack)
     this.load.image('title_logo', 'assets/ui/title.png')
+    this.load.image('dialogbox', 'assets/ui/dialogbox.png') // boîte de dialogue Ninja (300×58 : portrait à gauche + crème)
+    this.load.image('arrow_next', 'assets/ui/arrow_next.png') // flèche « suivant » (13×13)
 
     // marchand : spritesheet 16x16 (on n'utilise que la frame 0 = face) + portrait
     this.load.spritesheet('npc_merchant', 'assets/sprites/npc_merchant.png', { frameWidth: 16, frameHeight: 16 })
     this.load.image('merchant_face', 'assets/items/merchant_face.png')
 
-    // PNJ (villageois + civils baladeurs) : spritesheets 16x16 (4×7)
+    // PNJ (villageois + civils baladeurs) : spritesheets 16x16 (4×7) + FACESET (portrait 38×38, dialogues)
     for (const n of NPC_SPRITES) {
       this.load.spritesheet(n, `assets/sprites/${n}.png`, { frameWidth: 16, frameHeight: 16 })
+      this.load.image('face_' + n, `assets/faces/face_${n}.png`)
     }
 
     // sprites d'objets ramassables (pack Ninja Adventure)
