@@ -83,10 +83,7 @@ export default class UIScene extends Phaser.Scene {
       else this.openPause() // rien d'ouvert -> menu pause
     })
     // M : carte du monde plein écran (toggle)
-    this.input.keyboard.on('keydown-M', () => {
-      if (this.mapOpen) this.closeMap()
-      else if (!this.dialogueOpen && !this.forgeOpen && !this.charOpen && !this.shopOpen && !this.pauseOpen) this.openMap()
-    })
+    this.input.keyboard.on('keydown-M', () => this.toggleMap())
     // E / Espace : avance le dialogue (et le ferme à la dernière phrase)
     this.input.keyboard.on('keydown-E', () => {
       if (this.dialogueOpen) this.advanceDialogue()
@@ -239,6 +236,9 @@ export default class UIScene extends Phaser.Scene {
     this.minimapMobs = reg(this.add.graphics().setMask(mmMask)) // points des mobs (redessinés chaque frame)
     reg(this.add.rectangle(mmX, mmY, mmSize, mmSize, 0x000000, 0).setOrigin(0, 0).setStrokeStyle(2, GOLD)) // cadre
     this.minimapDot = reg(this.add.circle(mmX + mmSize / 2, mmY + mmSize / 2, 3.5, 0x53e0ff).setStrokeStyle(1.5, 0x06243a))
+    // CLIC sur la minimap -> ouvre la carte du monde (et le clic n'est pas relayé au déplacement)
+    this.minimapRect = new Phaser.Geom.Rectangle(mmX, mmY, mmSize, mmSize)
+    reg(this.add.rectangle(mmX, mmY, mmSize, mmSize, 0x000000, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.toggleMap()))
     // boussole N / S / E / O
     const compass = (tx, ty, label, ox, oy) => reg(this.add.text(tx, ty, label, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#ffe8c2', stroke: '#000', strokeThickness: 3 }).setOrigin(ox, oy))
     compass(mmX + mmSize / 2, mmY + 1, 'N', 0.5, 0)
@@ -903,6 +903,12 @@ export default class UIScene extends Phaser.Scene {
 
   // ---------- carte du monde (touche M) ----------
 
+  /** Ouvre/ferme la carte du monde (touche M ET clic sur la minimap). */
+  toggleMap() {
+    if (this.mapOpen) this.closeMap()
+    else if (!this.dialogueOpen && !this.forgeOpen && !this.charOpen && !this.shopOpen && !this.pauseOpen) this.openMap()
+  }
+
   openMap() {
     if (this.game_.gameOver) return
     this.mapOpen = true
@@ -935,22 +941,33 @@ export default class UIScene extends Phaser.Scene {
 
     const mw = g.mapW
     const mh = g.mapH
-    // zone d'affichage : on garde le ratio de la map, marge autour + place pour le titre
+    // CADRAGE sur l'île : on n'affiche pas toute la grille d'océan, juste les terres + une marge
+    // (bornes `landBounds` calculées dans GameScene.setupMinimap), zoomées pour remplir l'écran.
+    const lb = g.landBounds
+    const pad = 12
+    const minX = lb ? Math.max(0, lb.minX - pad) : 0
+    const minY = lb ? Math.max(0, lb.minY - pad) : 0
+    const maxX = lb ? Math.min(mw, lb.maxX + pad) : mw
+    const maxY = lb ? Math.min(mh, lb.maxY + pad) : mh
+    const boxW = maxX - minX
+    const boxH = maxY - minY
     const availW = cw * 0.86
     const availH = ch * 0.78
-    const cell = Math.min(availW / mw, availH / mh)
-    const mapPxW = cell * mw
-    const mapPxH = cell * mh
-    const ox = (cw - mapPxW) / 2
-    const oy = (ch - mapPxH) / 2 + 10
+    const cell = Math.min(availW / boxW, availH / boxH)
+    const mapPxW = cell * boxW
+    const mapPxH = cell * boxH
+    const leftX = (cw - mapPxW) / 2
+    const topY = (ch - mapPxH) / 2 + 10
+    const ox = leftX - minX * cell // -> ox + tx*cell = position écran (cadrée) de la tuile tx
+    const oy = topY - minY * cell
 
     const COLOR = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72, cursed: 0x7c4a63 }
     const gfx = reg(this.add.graphics().setDepth(301))
-    // cadre + fond océan
-    gfx.fillStyle(COLOR.ocean, 1).fillRect(ox, oy, mapPxW, mapPxH)
-    const S = 2 // pas d'échantillonnage (perf : ~12k cases)
-    for (let ty = 0; ty < mh; ty += S) {
-      for (let tx = 0; tx < mw; tx += S) {
+    // fond océan (sur la zone cadrée seulement)
+    gfx.fillStyle(COLOR.ocean, 1).fillRect(leftX, topY, mapPxW, mapPxH)
+    const S = 2 // pas d'échantillonnage (perf)
+    for (let ty = minY; ty < maxY; ty += S) {
+      for (let tx = minX; tx < maxX; tx += S) {
         if (g.isOcean(tx, ty)) continue // déjà peint en océan
         gfx.fillStyle(COLOR[g.biomeAt(tx, ty)] ?? COLOR.forest, 1)
         gfx.fillRect(ox + tx * cell, oy + ty * cell, cell * S + 0.6, cell * S + 0.6)
@@ -983,7 +1000,7 @@ export default class UIScene extends Phaser.Scene {
         pg.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.6, cell + 0.6)
       }
     }
-    reg(this.add.rectangle(ox + mapPxW / 2, oy + mapPxH / 2, mapPxW, mapPxH).setStrokeStyle(2, GOLD).setDepth(302))
+    reg(this.add.rectangle(leftX + mapPxW / 2, topY + mapPxH / 2, mapPxW, mapPxH).setStrokeStyle(2, GOLD).setDepth(302))
 
     // marqueur VILLAGE
     const vx = ox + g.cx * cell
@@ -1007,6 +1024,23 @@ export default class UIScene extends Phaser.Scene {
       reg(this.add.circle(ox + npc.tx * cell, oy + npc.ty * cell, 2.5, 0xffe9a8).setDepth(303).setStrokeStyle(1, 0x6a5212))
     }
 
+    // MONSTRES (instantané : jeu en pause -> positions figées) ; rouge, boss = orange plus gros
+    if (g.monsters) {
+      const mg = reg(this.add.graphics().setDepth(303.5))
+      g.monsters.getChildren().forEach((m) => {
+        if (!m.active) return
+        const mx = ox + (m.x / g.tile) * cell
+        const my = oy + (m.y / g.tile) * cell
+        if (m.isBoss) {
+          mg.fillStyle(0xff7a1f, 1)
+          mg.fillCircle(mx, my, 3)
+        } else {
+          mg.fillStyle(m.elite ? 0xffd24a : 0xff4444, 1) // élite = jaune
+          mg.fillCircle(mx, my, m.elite ? 2.6 : 1.8)
+        }
+      })
+    }
+
     // marqueur JOUEUR
     const p = g.player
     if (p) {
@@ -1016,11 +1050,11 @@ export default class UIScene extends Phaser.Scene {
     }
 
     // titre + aide + légende
-    reg(this.add.text(cw / 2, oy - 24, 'Carte du monde', { fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(303))
-    reg(this.add.text(cw / 2, oy + mapPxH + 20, 'M / Échap : fermer', { fontFamily: 'monospace', fontSize: '12px', color: '#bcd' }).setOrigin(0.5).setDepth(303))
+    reg(this.add.text(cw / 2, topY - 24, 'Carte du monde', { fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(303))
+    reg(this.add.text(cw / 2, topY + mapPxH + 20, 'M / Échap : fermer', { fontFamily: 'monospace', fontSize: '12px', color: '#bcd' }).setOrigin(0.5).setDepth(303))
     const legend = [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Maudit', COLOR.cursed], ['Océan', COLOR.ocean]]
     let lx = cw / 2 - (legend.length * 78) / 2
-    const ly = oy + mapPxH + 40
+    const ly = topY + mapPxH + 40
     for (const [name, col] of legend) {
       reg(this.add.rectangle(lx, ly, 12, 12, col, 1).setOrigin(0, 0.5).setStrokeStyle(1, 0x000000).setDepth(303))
       reg(this.add.text(lx + 16, ly, name, { fontFamily: 'monospace', fontSize: '11px', color: '#dfe6f0' }).setOrigin(0, 0.5).setDepth(303))
@@ -1120,7 +1154,7 @@ export default class UIScene extends Phaser.Scene {
 
   pointerOverInventory(x, y) {
     const inside = (r) => r && Phaser.Geom.Rectangle.Contains(r, x, y)
-    return inside(this.bagRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect)
+    return inside(this.bagRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect) || inside(this.minimapRect)
   }
 
   addIcon(x, y, key, fit) {

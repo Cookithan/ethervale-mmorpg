@@ -8,8 +8,14 @@ import { DEFAULT_CHARACTER, KNIGHT_CHARACTER } from '../data/classes.js'
 import { makeSave, writeSave, hasSave, loadSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
 
-const MONSTER_COUNT = 110 // nombre de monstres sur la map (répartis ISOLÉS, couverture uniforme)
-const MONSTER_GAP = 6 // distance mini entre deux monstres au spawn (en tuiles) -> répartition régulière
+const MONSTER_COUNT = 170 // base de population (répartie par surface de biome × mult ci-dessous)
+const MONSTER_GAP = 7 // distance mini entre deux monstres au spawn/respawn (en tuiles)
+// réglage par biome : forêt (jungle) = PLUS dense ; tous bien espacés (pas de paquets).
+const BIOME_SPAWN = {
+  forest: { mult: 1.5, gap: 7 }, // jungle : densité augmentée, espacée
+  desert: { mult: 1.2, gap: 8 }, // plus aéré
+  snow: { mult: 1.2, gap: 8 },
+}
 // Budget de mobs par biome proportionnel à sa surface jouable (aucune zone vide/surchargée),
 // puis placés en ISOLÉS bien espacés (pas de camps -> pas de zones vides, élites jamais en nid).
 const POND_COUNT = 13 // petits lacs (eau) dans forêt/neige/prairie
@@ -522,16 +528,38 @@ export default class GameScene extends Phaser.Scene {
     if (this.textures.exists('mmtex')) this.textures.remove('mmtex')
     const g = this.make.graphics({ x: 0, y: 0, add: false })
     const COL = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72, cursed: 0x7c4a63 }
+    // assombrit/éclaircit une couleur d'un facteur f (texture par tuile -> moins plat)
+    const shade = (hex, f) => {
+      const r = Math.max(0, Math.min(255, Math.round(((hex >> 16) & 255) * f)))
+      const gg = Math.max(0, Math.min(255, Math.round(((hex >> 8) & 255) * f)))
+      const b = Math.max(0, Math.min(255, Math.round((hex & 255) * f)))
+      return (r << 16) | (gg << 8) | b
+    }
+    let minX = MAP_W; let minY = MAP_H; let maxX = 0; let maxY = 0
     for (let ty = 0; ty < MAP_H; ty++) {
       for (let tx = 0; tx < MAP_W; tx++) {
-        g.fillStyle(this.isOcean(tx, ty) ? COL.ocean : COL[this.biomeAt(tx, ty)] ?? COL.forest, 1)
+        const ocean = this.isOcean(tx, ty)
+        let base
+        if (ocean) {
+          base = COL.ocean
+        } else {
+          base = COL[this.biomeAt(tx, ty)] ?? COL.forest
+          if (tx < minX) minX = tx
+          if (ty < minY) minY = ty
+          if (tx > maxX) maxX = tx
+          if (ty > maxY) maxY = ty
+        }
+        // VARIATION par tuile (3 paliers de bruit) -> relief/texture au lieu d'aplats unis
+        const n = tileNoise(tx, ty, 9)
+        const f = n < 0.34 ? 0.88 : n < 0.67 ? 1.0 : 1.12
+        g.fillStyle(shade(base, f), 1)
         g.fillRect(tx, ty, 1, 1)
       }
     }
     for (const k of this.waterCells) {
       const [x, y] = k.split(',').map(Number)
       if (this.isOcean(x, y)) continue // garde la couleur d'océan ; on ne repeint que les rivières
-      g.fillStyle(0x3f7fc0, 1)
+      g.fillStyle(this.iceCells?.has(k) ? 0xcfe6f5 : 0x3f7fc0, 1) // glace = bleu pâle, rivière = bleu
       g.fillRect(x, y, 1, 1)
     }
     for (const k of this.pathCells) {
@@ -539,8 +567,12 @@ export default class GameScene extends Phaser.Scene {
       g.fillStyle(0xb5915c, 1)
       g.fillRect(x, y, 1, 1)
     }
+    // repère VILLAGE (point doré 2×2) pour s'orienter
+    g.fillStyle(0xffe066, 1)
+    g.fillRect(this.cx - 1, this.cy - 1, 2, 2)
     g.generateTexture('mmtex', MAP_W, MAP_H)
     g.destroy()
+    this.landBounds = { minX, minY, maxX, maxY } // pour cadrer la carte du monde (M) sur l'île
   }
 
   // ---------- mode aperçu (fond vivant de l'écran d'accueil) ----------
@@ -1883,17 +1915,19 @@ export default class GameScene extends Phaser.Scene {
       }
     const total = land.forest + land.desert + land.snow || 1
     for (const biome of ['forest', 'desert', 'snow']) {
-      this.populateBiome(biome, Math.round((MONSTER_COUNT * land[biome]) / total))
+      const conf = BIOME_SPAWN[biome] || { mult: 1, gap: MONSTER_GAP }
+      const budget = Math.round((MONSTER_COUNT * land[biome] * conf.mult) / total)
+      this.populateBiome(biome, budget, conf.gap)
     }
   }
 
   /** Peuple UN biome avec `budget` monstres ISOLÉS, bien espacés (couverture uniforme de la zone,
    *  pas de regroupement en camps -> pas de zones vides, et les élites restent seules). */
-  populateBiome(biome, budget) {
+  populateBiome(biome, budget, gap = MONSTER_GAP) {
     if (budget <= 0) return
-    for (let placed = 0, guard = 0; placed < budget && guard < budget * 16; guard++) {
-      const t = this.findTileInBiome(biome, { gap: MONSTER_GAP })
-      if (!t) break
+    for (let placed = 0, guard = 0; placed < budget && guard < budget * 20; guard++) {
+      const t = this.findTileInBiome(biome, { gap })
+      if (!t) continue // un échec ne doit PAS abandonner tout le budget (forêt dense)
       this.placeMonsterAt(t.tx, t.ty, biome, {})
       placed++
     }
@@ -1908,6 +1942,36 @@ export default class GameScene extends Phaser.Scene {
     )
   }
 
+  /** Variante FORÊT : on autorise les mobs SOUS les canopées (occupées mais walk-behind) ; on évite
+   *  seulement les collisions réelles (troncs/rochers via previewBlocked), l'eau, le spawn et les arènes.
+   *  -> la forêt dense ne bloque plus le peuplement (sinon budget abandonné, biome quasi vide). */
+  spawnableForest(tx, ty) {
+    return (
+      tx >= 2 && ty >= 2 && tx <= MAP_W - 3 && ty <= MAP_H - 3 &&
+      !this.nearSpawn(tx, ty, 8) && !this.onWater(tx, ty, 1) && !this.nearBossLair(tx, ty) &&
+      !this.previewBlocked(tx * TILE + 8, ty * TILE + 8) // évite troncs/rochers, pas les canopées
+    )
+  }
+
+  /** MUR INVISIBLE réservé aux MOBS au bord de la prairie : un monstre qui entre dans la prairie
+   *  (zone sûre du village) voit sa vitesse radiale forcée vers l'EXTÉRIEUR (composante tangentielle
+   *  gardée -> il longe le bord en suivant le joueur, sans jamais entrer). Le joueur n'est PAS affecté. */
+  keepMonsterOutOfPrairie(mon) {
+    if (!mon.body || !mon.active) return
+    const cxp = this.cx * TILE
+    const cyp = this.cy * TILE
+    const dx = mon.x - cxp
+    const dy = mon.y - cyp
+    const ang = Math.atan2(dy, dx)
+    const wallR = 14 * (1 + 0.25 * Math.sin(ang * 2 + 1)) + 2 // bord externe de la prairie (en tuiles)
+    if (Math.hypot(dx, dy) / TILE >= wallR) return // déjà dehors -> rien
+    const nx = Math.cos(ang) // direction VERS L'EXTÉRIEUR
+    const ny = Math.sin(ang)
+    const vIn = mon.body.velocity.x * nx + mon.body.velocity.y * ny // vitesse radiale (négatif = entrant)
+    mon.body.velocity.x += (-vIn + 26) * nx // radial forcé à +26 (sortie), tangentiel conservé
+    mon.body.velocity.y += (-vIn + 26) * ny
+  }
+
   /** true si un monstre vivant est à moins de `gap` tuiles de (tx,ty). */
   monsterTooClose(tx, ty, gap) {
     for (const m of this.monsters.getChildren())
@@ -1918,10 +1982,11 @@ export default class GameScene extends Phaser.Scene {
   /** Tire une tuile valide AU HASARD dans un biome donné (espacée des autres mobs, et
    *  optionnellement loin de centres `awayFrom`). Renvoie {tx,ty} ou null après N essais. */
   findTileInBiome(biome, { gap = MONSTER_GAP, awayFrom = null, awayDist = 0 } = {}) {
+    const okTile = biome === 'forest' ? (x, y) => this.spawnableForest(x, y) : (x, y) => this.spawnableTile(x, y)
     for (let tries = 0; tries < 120; tries++) {
       const tx = Phaser.Math.Between(2, MAP_W - 3)
       const ty = Phaser.Math.Between(2, MAP_H - 3)
-      if (!this.spawnableTile(tx, ty) || this.biomeAt(tx, ty) !== biome) continue
+      if (this.biomeAt(tx, ty) !== biome || !okTile(tx, ty)) continue
       if (awayFrom && awayFrom.some((c) => this.dist(tx, ty, c.tx, c.ty) < awayDist)) continue
       if (this.monsterTooClose(tx, ty, gap)) continue
       return { tx, ty }
@@ -3615,6 +3680,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.monsters.getChildren().forEach((mon) => {
       mon.update(time, p)
+      this.keepMonsterOutOfPrairie(mon) // mur invisible (MOBS only) au bord de la prairie
       mon.setDepth(mon.y)
     })
     this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
