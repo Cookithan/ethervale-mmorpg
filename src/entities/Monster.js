@@ -722,6 +722,14 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       this.updateHpBar(time)
       return
     }
+    // ÉTOURDISSEMENT (Charge de bouclier du Tank) : immobile et passif tant que `stunnedUntil` n'est pas écoulé.
+    if (time < this.stunnedUntil) {
+      this.setVelocity(0, 0)
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.aura?.setPosition(this.x, this.y + (this.auraY ?? 4))
+      this.updateHpBar(time)
+      return
+    }
     // BOSS ENDORMI : tant qu'on ne lui a pas infligé de DÉGÂTS (combatEngaged, posé par hitMonster), il
     // DORT sur son repaire — immobile, idle, ne mord pas, n'aggro pas. Passer à côté ne le réveille plus :
     // seule une ATTAQUE le réveille. À la mort/respawn, combatEngaged retombe -> il se rendort.
@@ -739,8 +747,13 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.showSleep(time, false) // réveillé (ou monstre normal) : pas de "Zzz"
 
     const def = this.def
-    const dx = player.x - this.x
-    const dy = player.y - this.y
+    // LEURRE (Image miroir du Mage) : le monstre POURSUIT le clone qui l'a touché (mon.lureTarget, posé à
+    // l'impact d'un projectile de clone). Tant que ce clone vit, il vise le clone au lieu du joueur.
+    if (this.lureTarget && !this.lureTarget.active) this.lureTarget = null
+    const lure = !this.isBoss ? this.lureTarget : null
+    const tgt = lure || player
+    const dx = tgt.x - this.x
+    const dy = tgt.y - this.y
     const dist = Math.hypot(dx, dy)
 
     // direction visée : où il VEUT aller (vers le joueur en poursuite, sinon errance).

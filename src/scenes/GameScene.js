@@ -385,6 +385,8 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
     this.physics.add.collider(this.monsters, this.monsters)
     this.physics.add.overlap(this.player, this.monsters, (pl, mon) => {
+      // CHARGE du Tank en cours : percuter un ennemi déclenche le coup d'élan (et termine la charge)
+      if (pl.charging2) { this.tankChargeHit(mon); return }
       // le contact NE réveille PAS un boss endormi (il faut l'ATTAQUER -> combatEngaged via hitMonster) ;
       // tryBite est verrouillé tant qu'il dort, donc un boss assoupi ne te mord pas si tu le frôles.
       if (mon.tryBite(pl, this.time.now)) {
@@ -393,6 +395,13 @@ export default class GameScene extends Phaser.Scene {
       }
     })
 
+    // CLONES du Mage (Image miroir) : leurres physiques avec PV. Les monstres les mordent (overlap) ->
+    // ils soakent les coups + détournent l'aggro (cf. Monster.update -> scene.nearestLure).
+    this.mageClones = this.physics.add.group()
+    this.physics.add.overlap(this.mageClones, this.monsters, (clone, mon) => this.monsterBiteClone(clone, mon))
+    this.physics.add.collider(this.mageClones, this.obstacles) // les clones ne traversent PAS arbres/maisons
+    this.physics.add.collider(this.mageClones, this.waterLayer) // ni l'eau (sauf ponts -> collision retirée)
+
     // --- projectiles (attaque à distance) ---
     this.projectiles = this.physics.add.group({ classType: Projectile, runChildUpdate: true })
     this.physics.add.overlap(this.projectiles, this.monsters, (proj, mon) => {
@@ -400,9 +409,12 @@ export default class GameScene extends Phaser.Scene {
       const px = proj.x
       const py = proj.y
       const dmg = proj.damage
+      const fromClone = proj.fromClone // tir d'un CLONE du Mage -> le mob doit le poursuivre
       proj.kill()
       Audio.sfx(SFX.hit, { vol: 0.4 }) // impact du projectile
       this.hitMonster(mon, dmg, px, py, 0) // pas de recul (seul le Tank repousse) ; dégâts seuls
+      // un clone qui TOUCHE un mob l'oblige à changer de cible (poursuit le 1er clone qui l'a touché)
+      if (fromClone && fromClone.active && (!mon.lureTarget || !mon.lureTarget.active)) mon.lureTarget = fromClone
     })
     // les projectiles s'arrêtent sur le décor
     this.physics.add.collider(this.projectiles, this.obstacles, (proj) => proj.kill())
@@ -483,6 +495,7 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-F', () => this.shootForward())
       this.input.keyboard.on('keydown-ONE', () => this.castSpell()) // LE sort de la classe (touche 1)
       this.input.keyboard.on('keydown-R', () => this.castSpell()) // alias pratique (R)
+      this.input.keyboard.on('keydown-TWO', () => this.castSpell2()) // 2e compétence (touche 2, déverrouillée niv 10)
       this.input.keyboard.on('keydown-E', () => this.tryInteract())
       this.input.keyboard.addCapture('TAB') // empêche Tab de changer le focus du navigateur
       this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
@@ -1536,6 +1549,9 @@ export default class GameScene extends Phaser.Scene {
       const t = this.waterLayer.putTileAt(Math.floor(tileNoise(x, y, 3) * 4), x, y) // eau VISIBLE sous le pont
       if (t) t.setCollision(false) // ...mais marchable (on passe dessus)
     }
+    // IMPORTANT : recalcule les "faces" de collision de la couche d'eau APRÈS avoir retiré la collision des
+    // gués/ponts. Sans ça, Arcade garde les anciennes faces et le pont reste INFRANCHISSABLE (piège Phaser).
+    this.waterLayer.calculateFacesWithin(0, 0, MAP_W, MAP_H)
     for (const r of this.fordBridgeRects || []) {
       this.add.image(r.px, r.py, 'bridge_wood', 'vbridge').setOrigin(0, 0).setDisplaySize(r.w, r.h).setDepth(-7)
     }
@@ -3302,6 +3318,7 @@ export default class GameScene extends Phaser.Scene {
     else p.facing = dy < 0 ? 'up' : 'down'
     const proj = this.projectiles.get(p.x, p.y)
     if (!proj) return
+    proj.fromClone = null // tir du JOUEUR (réinitialise un éventuel marquage de clone du pool)
     proj.fire(p.x, p.y, tx, ty, p.attackPower, this.time.now, target, 0xffffff, weapon.proj)
   }
 
@@ -3484,7 +3501,7 @@ export default class GameScene extends Phaser.Scene {
     if (p.mana < sp.cost) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
     const effects = {
       charge: () => this.spellCharge(),
-      shield: () => this.spellShield(),
+      shieldcharge: () => this.spellShieldCharge(), // Tank : sort principal = Charge
       meteor: () => this.spellMeteor(),
       heal: () => this.spellHeal(),
     }
@@ -3492,6 +3509,30 @@ export default class GameScene extends Phaser.Scene {
     if (!fn || fn() === false) return // sort inconnu / non exécuté -> on ne consomme ni mana ni cd
     p.spendMana(sp.cost)
     p.nextSpellAt = now + sp.cd * (p.spellCdMul ?? 1) // Focus -> cooldown réduit
+  }
+
+  /** 2e COMPÉTENCE (touche 2), déverrouillée au niveau `spell2.level` (10). Mêmes règles que castSpell
+   *  (cooldown propre `nextSpell2At`, coût mana, Focus réduit le cooldown). */
+  castSpell2() {
+    if (this.uiBusy() || this.gameOver) return
+    if (this.sailBlocked()) return
+    const p = this.player
+    const sp = p.spell2
+    if (!sp || p.hp <= 0) return
+    if (p.level < (sp.level ?? 10)) return this.floatingText(p.x, p.y - 18, `Niv ${sp.level ?? 10}`, '#ffd27a')
+    const now = this.time.now
+    if (now < p.nextSpell2At) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
+    if (p.mana < sp.cost) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
+    const effects = {
+      whirlwind: () => this.spellWhirlwind(),
+      provoke: () => this.spellProvoke(), // Tank : 2e compétence = Provocation (niv 10)
+      mirror: () => this.spellMirrorImage(),
+      sanctuary: () => this.spellSanctuary(),
+    }
+    const fn = effects[sp.id]
+    if (!fn || fn() === false) return
+    p.spendMana(sp.cost)
+    p.nextSpell2At = now + sp.cd * (p.spellCdMul ?? 1)
   }
 
   /** Jeu de sons magiques (cast/proj/impact + detune) selon l'APPARENCE du héros (feu/lumière/ombre/arcane). */
@@ -3572,22 +3613,319 @@ export default class GameScene extends Phaser.Scene {
     return true
   }
 
-  /** BOUCLIER (Tank) : le bouclier absorbe 80 % des dégâts (le héros n'en subit que 20 %) pendant 4 s
-   *  (cf. Player.takeDamage) + aura bleue qui suit le héros. */
-  spellShield() {
+  /** PROVOCATION (Tank, sort principal) : 2-EN-1 -> active le Bouclier (-80 % dégâts 4 s, cf. takeDamage)
+   *  ET provoque tous les ennemis proches (les force à t'attaquer, ignore le plafond de poursuivants). */
+  spellProvoke() {
     const p = this.player
-    const dur = 4000 * (p.spellPowerMul ?? 1) // Focus -> bouclier plus long
-    p.shieldUntil = this.time.now + dur
+    const now = this.time.now
+    // 1) BOUCLIER : bulle animée qui suit le héros (5 s)
+    const dur = 5000 * (p.spellPowerMul ?? 1)
+    p.shieldUntil = now + dur
     Audio.sfx(SFX.shield, { vol: 0.6 })
-    // bulle de bouclier ANIMÉE (FX du pack) qui suit le héros pendant la durée
     const bubble = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 60).setScale(1.7).setAlpha(0.9)
     bubble.play('fx-shield')
     const ev = this.time.addEvent({ delay: 30, loop: true, callback: () => bubble.setPosition(p.x, p.y).setDepth(p.y + 60) })
-    this.time.delayedCall(dur, () => {
-      ev.remove()
-      bubble.destroy()
+    this.time.delayedCall(dur, () => { ev.remove(); bubble.destroy() })
+    // 2) PROVOCATION : aggro forcé des mobs proches + onde + "!" au-dessus d'eux
+    const R = 150
+    this.monsters.getChildren().forEach((m) => {
+      if (m.active && !m.isBoss && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
+        m.engage?.(true) // force l'aggro (frappé=force -> ignore le plafond MAX_CHASERS)
+        m.showAlert?.(now)
+      }
     })
-    this.floatingText(p.x, p.y - 18, 'Bouclier !', '#99ddff')
+    const ring = this.add.circle(p.x, p.y, 12, 0xffcf6b, 0).setStrokeStyle(3, 0xffcf6b, 0.85).setDepth(p.y + 1)
+    this.tweens.add({ targets: { v: 0 }, v: 1, duration: 420, ease: 'Cubic.out', onUpdate: (tw, t) => { ring.setRadius(12 + (R - 12) * t.v); ring.setAlpha(0.85 * (1 - t.v)) }, onComplete: () => ring.destroy() })
+    this.floatingText(p.x, p.y - 18, 'Provocation !', '#ffcf6b')
+    return true
+  }
+
+  /** TOURBILLON (Guerrier, 2e compétence) : tournoie sur place -> 2 salves de dégâts AoE à TOUS les ennemis
+   *  autour (+ léger recul). Complète la Charge (mono-cible). */
+  spellWhirlwind() {
+    const p = this.player
+    const now = this.time.now
+    const DUR = 750
+    p.attacking = true
+    p.attackUntil = now + DUR
+    p.setVelocity(0, 0)
+    p.anims.play(`${p.heroKey}-attack-` + p.facing, true)
+    Audio.sfx(SFX.whoosh, { vol: 0.6 })
+    // le GUERRIER TOURNE physiquement sur lui-même pendant le tourbillon
+    this.tweens.add({ targets: p, rotation: Math.PI * 4, duration: DUR, ease: 'Sine.inOut', onComplete: () => p.setRotation(0) })
+    const fx = this.add.sprite(p.x, p.y, 'fx_circslash').setDepth(p.y + 60).setScale(2.8)
+    fx.play('fx-circslash')
+    const ev = this.time.addEvent({ delay: 30, loop: true, callback: () => { fx.setPosition(p.x, p.y).setDepth(p.y + 60); fx.rotation += 0.5 } })
+    const R = 58
+    const dmg = p.attackPower * 1.7
+    const tick = () => this.monsters.getChildren().forEach((m) => {
+      const half = m.body ? (m.body.halfWidth + m.body.halfHeight) / 2 : 0
+      if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R + half) this.hitMonster(m, dmg, p.x, p.y, 90)
+    })
+    tick()
+    this.time.delayedCall(250, tick)
+    this.time.delayedCall(500, tick)
+    this.time.delayedCall(DUR, () => { ev.remove(); fx.destroy(); p.attacking = false; p.setRotation(0) })
+    return true
+  }
+
+  /** CHARGE DE BOUCLIER (Tank, 2e compétence) : BUFF de vitesse -> le Tank passe de LENT à RAPIDE (déplacement
+   *  libre au clavier/clic). Dure jusqu'à 4 s OU jusqu'à ce qu'il PERCUTE un ennemi. Le coup d'impact fait
+   *  d'autant PLUS de dégâts que la distance parcourue depuis le départ est grande (élan). */
+  spellShieldCharge() {
+    const p = this.player
+    const now = this.time.now
+    p.charging2 = true
+    p.chargeSpeedMul = 1.8 // Tank lent (×0,6) -> rapide mais CONTRÔLABLE (passe les ponts étroits)
+    p.chargeStartX = p.x
+    p.chargeStartY = p.y
+    p.chargeUntil = now + 4000 // 4 s
+    Audio.sfx(SFX.shield, { vol: 0.55 })
+    Audio.sfx(SFX.whoosh, { vol: 0.4, detune: -200 })
+    // bulle de bouclier qui suit le héros pendant la charge (suivie/détruite dans update / endTankCharge)
+    this.tankChargeFx?.destroy()
+    this.tankChargeFx = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 61).setScale(1.5).setAlpha(0.85)
+    this.tankChargeFx.play('fx-shield')
+    this.floatingText(p.x, p.y - 18, 'Charge !', '#9fd0ff')
+    return true
+  }
+
+  /** Le Tank en charge percute un ennemi : dégâts ∝ distance parcourue (élan) + recul + étourdissement, puis
+   *  la charge se termine. */
+  tankChargeHit(mon) {
+    const p = this.player
+    if (!p.charging2 || !mon.active || mon.hp <= 0) return
+    if (mon.isBoss && !mon.combatEngaged) return // ne réveille pas un boss endormi par simple contact
+    const dist = Phaser.Math.Distance.Between(p.chargeStartX, p.chargeStartY, p.x, p.y)
+    const mult = 1.3 + Phaser.Math.Clamp(dist / 350, 0, 1) * 3.2 // ×1,3 (court) -> ×4,5 (longue charge)
+    this.hitMonster(mon, p.attackPower * mult, p.x, p.y, 340)
+    if (!mon.isBoss) mon.stunnedUntil = this.time.now + 1500
+    this.showSlash(p.x, p.y, p.facing)
+    this.cameras.main.shake(170, 0.009)
+    this.endTankCharge()
+  }
+
+  /** Termine la charge du Tank (impact ou fin des 4 s) : retire le boost de vitesse + la bulle. */
+  endTankCharge() {
+    const p = this.player
+    if (!p.charging2) return
+    p.charging2 = false
+    p.chargeSpeedMul = 1
+    this.tankChargeFx?.destroy()
+    this.tankChargeFx = null
+  }
+
+  /** IMAGE MIROIR (Mage, 2e compétence) : 1 s d'INCANTATION (le mage est enraciné) puis invoque les clones. */
+  spellMirrorImage() {
+    return this.incant(1000, 'Image miroir…', this.player.magicColor, () => this.spawnMirrorClones())
+  }
+
+  /** Incantation générique : enracine le héros `ms` ms avec une barre au-dessus de la tête, puis `onDone`.
+   *  Annulée s'il prend un coup (castInterrupted). Renvoie true si elle DÉMARRE (-> paie mana + cooldown). */
+  incant(ms, label, color, onDone) {
+    const p = this.player
+    if (p.casting) return false
+    const start = this.time.now
+    p.casting = true
+    p.castInterrupted = false
+    p.setVelocity(0, 0)
+    const s = this.spellSfx()
+    Audio.sfx(s.cast, { vol: 0.6, detune: s.castDetune ?? 0 })
+    const W = 30
+    const yOff = 24
+    const bg = this.add.rectangle(p.x, p.y - yOff, W + 2, 6, 0x000000, 0.65).setDepth(99998)
+    const bar = this.add.rectangle(p.x - W / 2, p.y - yOff, 0, 4, color).setOrigin(0, 0.5).setDepth(99999)
+    const lbl = this.add.text(p.x, p.y - yOff - 7, label, { fontFamily: 'monospace', fontSize: '8px', color: '#ffd27a', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(99999).setResolution(3)
+    // ANIMATION DE CANALISATION : aura magique qui pulse au sol + anneau + arme brandie qui tourne
+    const aura = this.add.circle(p.x, p.y + 4, 15, color, 0.22).setDepth(p.y - 2)
+    const ring = this.add.circle(p.x, p.y + 4, 17, color, 0).setStrokeStyle(2, color, 0.85).setDepth(p.y - 2)
+    this.tweens.add({ targets: [aura, ring], scale: 1.35, duration: ms / 2, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    const wIcon = p.equipped?.weapon?.icon
+    const staff = wIcon && this.textures.exists(wIcon) ? this.add.image(p.x + 5, p.y - 4, wIcon).setDepth(p.y + 60).setScale(0.9).setRotation(-0.3) : null
+    const cleanup = () => { bg.destroy(); bar.destroy(); lbl.destroy(); this.tweens.killTweensOf([aura, ring]); aura.destroy(); ring.destroy(); staff?.destroy(); p.casting = false }
+    const ev = this.time.addEvent({
+      delay: 16, loop: true,
+      callback: () => {
+        if (!p.active || p.castInterrupted || this.gameOver) {
+          if (p.castInterrupted) this.floatingText(p.x, p.y - 18, 'Incantation interrompue', '#ff8a8a')
+          ev.remove(); cleanup(); return
+        }
+        const t = Phaser.Math.Clamp((this.time.now - start) / ms, 0, 1)
+        bg.setPosition(p.x, p.y - yOff)
+        lbl.setPosition(p.x, p.y - yOff - 7)
+        bar.setPosition(p.x - W / 2, p.y - yOff).setSize(W * t, 4)
+        aura.setPosition(p.x, p.y + 4).setDepth(p.y - 2)
+        ring.setPosition(p.x, p.y + 4).setDepth(p.y - 2)
+        if (staff) staff.setPosition(p.x + 5, p.y - 4).setDepth(p.y + 60).rotation += 0.25 // l'arme tourne pendant la canalisation
+        if (t >= 1) { ev.remove(); cleanup(); onDone() }
+      },
+    })
+    return true
+  }
+
+  /** Crée les clones (après l'incantation) + une ZONE de la couleur du perso qui délimite leur rayon max. */
+  spawnMirrorClones() {
+    const p = this.player
+    const now = this.time.now
+    const DUR = 6000
+    const N = 3
+    const LEASH = 78
+    const cloneHp = Math.max(20, Math.round(p.maxHp * 0.35))
+    const col = p.magicColor || 0x9fd8ff
+    Audio.sfx(SFX.magic, { vol: 0.6, detune: 120 })
+    Audio.sfx(SFX.whoosh, { vol: 0.4, detune: 300 })
+    this.floatingText(p.x, p.y - 18, 'Image miroir !', '#bfe0ff')
+    // ZONE (couleur du perso) : cercle qui SUIT le joueur et borne le rayon des clones (cf. updateMageClones)
+    this.mirrorZone?.destroy()
+    this.mirrorZone = this.add.circle(p.x, p.y, LEASH, col, 0.08).setStrokeStyle(2, col, 0.55).setDepth(p.y - 3)
+    // onde de mana à l'invocation
+    const wave = this.add.circle(p.x, p.y, 8, col, 0).setStrokeStyle(3, col, 0.9).setDepth(p.y + 2)
+    this.tweens.add({ targets: { v: 0 }, v: 1, duration: 420, ease: 'Cubic.out', onUpdate: (tw, t) => { wave.setRadius(8 + 46 * t.v); wave.setAlpha(0.9 * (1 - t.v)) }, onComplete: () => wave.destroy() })
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + 0.5
+      const cx = p.x + Math.cos(a) * 34
+      const cy = p.y + Math.sin(a) * 34
+      const c = this.mageClones.create(cx, cy, p.heroKey, 0)
+      c.setTint(col).setDepth(cy)
+      c.hp = cloneHp
+      c.maxHp = cloneHp
+      c.facing = p.facing
+      c.expireAt = now + DUR
+      c.nextShot = now + 250 + i * 180
+      // ENTRÉE : surgit du héros (part de sa position), grandit depuis 0, devient translucide
+      c.setPosition(p.x, p.y).setAlpha(0).setScale(0.2)
+      this.tweens.add({ targets: c, x: cx, y: cy, alpha: 0.62, scale: 1, duration: 260, ease: 'Back.out' })
+      if (this.textures.exists('fx_spirit')) {
+        const poof = this.add.sprite(cx, cy, 'fx_spirit').setDepth(cy + 2).setScale(0.9).setTint(col)
+        poof.play('fx-spirit')
+        poof.once('animationcomplete', () => poof.destroy())
+      }
+      c.barBg = this.add.rectangle(cx, cy - 14, 18, 3, 0x000000, 0.6).setDepth(cy + 50)
+      c.barFg = this.add.rectangle(cx - 8, cy - 14, 16, 1.5, 0x6fd8ff).setOrigin(0, 0.5).setDepth(cy + 51)
+    }
+  }
+
+  /** Mise à jour des clones du Mage (chaque frame). IA d'ALLIÉ INDÉPENDANT à PORTÉE LIMITÉE : chaque clone
+   *  choisit la cible du joueur (assist) si elle est à portée, sinon le mob proche le plus dangereux ;
+   *  il S'EN RAPPROCHE (les mobs le prennent alors pour cible = protège le joueur) puis tire à portée.
+   *  Sans cible, il revient près du joueur. Barre de vie + expiration gérées ici. */
+  updateMageClones(time) {
+    if (!this.mageClones) return
+    const p = this.player
+    const ENGAGE_R = 190 // portée d'engagement (ne snipe PAS tout l'écran)
+    const SHOOT_R = 110 // distance idéale de tir
+    const TOO_CLOSE = 60 // si un mob est plus près que ça -> le clone RECULE (kite)
+    const SPEED = 45 // déplacement LENT et fluide (anti-"téléport")
+    const LEASH = 78 // rayon max autour du joueur : un clone ne s'éloigne pas plus (suit le joueur)
+    const RETURN_SPEED = 78 // hors zone : accélère un peu pour revenir vite vers le joueur
+    // ZONE (couleur du perso) : suit le joueur tant que des clones existent, sinon disparaît
+    if (this.mirrorZone) {
+      if (this.mageClones.countActive(true) === 0) { this.mirrorZone.destroy(); this.mirrorZone = null }
+      else this.mirrorZone.setPosition(p.x, p.y).setDepth(p.y - 3)
+    }
+    const pt = this.currentTarget ? this.currentTarget(360) : null // cible commune du joueur
+    for (const c of this.mageClones.getChildren()) {
+      if (!c.active) continue
+      if (time >= c.expireAt || c.hp <= 0) { this.removeMageClone(c); continue }
+      c.setDepth(c.y)
+      c.barBg.setPosition(c.x, c.y - 14)
+      c.barFg.setPosition(c.x - 8, c.y - 14).setSize(16 * Phaser.Math.Clamp(c.hp / c.maxHp, 0, 1), 1.5)
+      // cible de TIR : celle du joueur si à portée (assist), sinon le mob le plus proche dans la portée
+      let target = pt && pt.active && Phaser.Math.Distance.Between(c.x, c.y, pt.x, pt.y) <= ENGAGE_R ? pt : null
+      if (!target) {
+        let bd = ENGAGE_R
+        this.monsters.getChildren().forEach((m) => {
+          if (!m.active || m.hp <= 0 || (m.isBoss && !m.combatEngaged)) return
+          const d = Phaser.Math.Distance.Between(c.x, c.y, m.x, m.y)
+          if (d < bd) { bd = d; target = m }
+        })
+      }
+      // menace la plus proche (pour kiter) : un mob qui poursuit CE clone, ou n'importe quel mob trop près
+      let threat = null
+      let td = TOO_CLOSE
+      this.monsters.getChildren().forEach((m) => {
+        if (!m.active || m.hp <= 0) return
+        const d = Phaser.Math.Distance.Between(c.x, c.y, m.x, m.y)
+        if (d < td) { td = d; threat = m }
+      })
+      const distP = Phaser.Math.Distance.Between(c.x, c.y, p.x, p.y) // distance au joueur (pour le tether)
+      let vx = 0
+      let vy = 0
+      let moving = false
+      if (distP > LEASH) { // TETHER : a touché la limite -> revient un peu PLUS VITE vers le joueur
+        vx = ((p.x - c.x) / distP) * RETURN_SPEED; vy = ((p.y - c.y) / distP) * RETURN_SPEED; moving = true
+      } else if (threat) { // RECULE pour garder ses distances (kite)
+        const dx = c.x - threat.x
+        const dy = c.y - threat.y
+        const d = Math.hypot(dx, dy) || 1
+        vx = (dx / d) * SPEED; vy = (dy / d) * SPEED; moving = true
+      } else if (target) {
+        const dx = target.x - c.x
+        const dy = target.y - c.y
+        const d = Math.hypot(dx, dy) || 1
+        if (d > SHOOT_R) { vx = (dx / d) * SPEED; vy = (dy / d) * SPEED; moving = true } // s'approche (dans le leash)
+      } else if (distP > 72) { // pas de cible -> se replace près du joueur
+        vx = ((p.x - c.x) / distP) * SPEED; vy = ((p.y - c.y) / distP) * SPEED; moving = true
+      }
+      c.setVelocity(vx, vy)
+      // TIR (que le clone bouge ou kite) : oblige le mob à le poursuivre (cf. overlap projectile->lureTarget)
+      if (target && time >= c.nextShot && Phaser.Math.Distance.Between(c.x, c.y, target.x, target.y) <= ENGAGE_R) {
+        c.nextShot = time + 800
+        const pr = this.projectiles.get(c.x, c.y)
+        if (pr) { pr.fromClone = c; pr.fire(c.x, c.y, target.x, target.y, Math.round(p.attackPower * 0.55), time, target, p.magicColor, p.projFx) }
+      }
+      if (moving) {
+        c.facing = Math.abs(vx) > Math.abs(vy) ? (vx < 0 ? 'left' : 'right') : (vy < 0 ? 'up' : 'down')
+        c.anims.play(`${p.heroKey}-walk-${c.facing}`, true)
+      } else {
+        c.anims.play(`${p.heroKey}-idle-${c.facing || 'down'}`, true)
+      }
+    }
+  }
+
+  /** Un monstre mord un clone du Mage (overlap) : le clone perd des PV (cooldown par monstre), meurt à 0. */
+  monsterBiteClone(clone, mon) {
+    if (!clone.active || !mon.active || mon.hp <= 0) return
+    if (mon.isBoss && !mon.combatEngaged) return // boss endormi ne mord pas
+    const now = this.time.now
+    if (now < (mon.nextCloneBiteAt || 0)) return
+    mon.nextCloneBiteAt = now + 700
+    clone.hp -= mon.damage
+    clone.setTintFill(0xffffff)
+    this.time.delayedCall(80, () => clone.active && clone.setTint(0x9fd8ff))
+    if (clone.hp <= 0) this.removeMageClone(clone)
+  }
+
+  /** Retire un clone du Mage (PV épuisés ou expiré) : barre + sprite, avec un petit fondu. */
+  removeMageClone(clone) {
+    if (!clone.active) return
+    clone.barBg?.destroy()
+    clone.barFg?.destroy()
+    this.tweens.add({ targets: clone, alpha: 0, duration: 180, onComplete: () => clone.destroy() })
+  }
+
+  /** SANCTUAIRE (Soigneur, 2e compétence) : pose une zone de lumière au sol qui SOIGNE sur la durée (~6 s)
+   *  le héros qui s'y tient (tic chaque seconde). */
+  spellSanctuary() {
+    const p = this.player
+    const x = p.x
+    const y = p.y
+    const R = 52
+    const heal = Math.max(15, Math.round(p.maxHp * 0.08 * (p.spellPowerMul ?? 1))) // par tic (1 s) : au moins +15
+    Audio.sfx(SFX.heal, { vol: 0.6 })
+    const zone = this.add.circle(x, y, R, 0x8ef0a0, 0.16).setDepth(y - 2)
+    const ring = this.add.circle(x, y, R, 0x8ef0a0, 0).setStrokeStyle(2, 0x8ef0a0, 0.7).setDepth(y - 1)
+    this.tweens.add({ targets: [zone, ring], alpha: 0.4, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    const ev = this.time.addEvent({
+      delay: 1000, repeat: 5, // 6 tics (~6 s)
+      callback: () => {
+        if (Phaser.Math.Distance.Between(p.x, p.y, x, y) > R) return
+        const h = p.heal(heal)
+        if (h > 0) { this.floatingText(p.x, p.y - 6, `+${h}`, '#7CFC9A'); this.showHealEffect(p.x, p.y) }
+      },
+    })
+    this.time.delayedCall(6200, () => { this.tweens.killTweensOf([zone, ring]); zone.destroy(); ring.destroy() })
+    this.floatingText(x, y - 18, 'Sanctuaire !', '#9bf0a8')
     return true
   }
 
@@ -3741,6 +4079,7 @@ export default class GameScene extends Phaser.Scene {
 
     const proj = this.projectiles.get(p.x, p.y)
     if (!proj) return
+    proj.fromClone = null // tir du JOUEUR (réinitialise un éventuel marquage de clone du pool)
     // tir propre à l'élément (feu = whoosh enflammé, lumière/ombre/arcane = magie teintée)
     const s = this.spellSfx()
     Audio.sfx(s.proj, { vol: 0.45, detune: s.projDetune ?? 0 })
@@ -4121,6 +4460,11 @@ export default class GameScene extends Phaser.Scene {
       mon.setDepth(mon.y)
     })
     this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
+    this.updateMageClones(time) // clones du Mage (Image miroir) : tir + barre de vie + expiration
+    if (p.charging2) { // Charge du Tank : la bulle suit, fin au bout de 4 s
+      this.tankChargeFx?.setPosition(p.x, p.y).setDepth(p.y + 61)
+      if (time >= p.chargeUntil) this.endTankCharge()
+    }
 
     // barre de boss + musique de boss = UNIQUEMENT pendant le COMBAT réel (`combatEngaged` : tu l'as
     // tapé ou il t'a touché), comme l'arène. Passer DEVANT un boss sans l'engager ne déclenche plus rien
@@ -4297,6 +4641,7 @@ export default class GameScene extends Phaser.Scene {
   handleDeath() {
     if (this.gameOver) return // évite un double déclenchement
     this.gameOver = true
+    this.endTankCharge() // coupe un éventuel buff de Charge du Tank
     this.activeBoss = null // cache la barre de boss
     this.bossTrack = null
     Audio.stopMusic() // coupure IMMÉDIATE (pas de fondu) pour laisser le jingle de mort seul

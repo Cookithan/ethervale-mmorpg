@@ -91,7 +91,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.mana = this.maxMana
     this.spell = cls.spell ?? null // { id, name, cost, cd }
     this.nextSpellAt = 0 // fin du cooldown du sort de classe
-    this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -50 % dégâts reçus
+    this.spell2 = cls.spell2 ?? null // 2e compétence (déverrouillée à `spell2.level`, défaut niv 10)
+    this.nextSpell2At = 0 // fin du cooldown du 2e sort
+    this.charging2 = false // Charge du Tank en cours (buff de vitesse jusqu'à 4 s / impact)
+    this.chargeSpeedMul = 1 // multiplicateur de vitesse pendant la Charge du Tank
+    this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -80 % dégâts reçus
 
     // équipement 4 SLOTS (Arme/Armure/Focus/Anneau) + sac. Départ = SEULEMENT l'arme de base de la classe
     // (rien d'autre : ni armure, ni anneau -> tout le reste se gagne/s'achète).
@@ -419,7 +423,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
-    const spd = this.speed * (this.envSpeedMul ?? 1) // ralenti par température extrême (cf. GameScene.updateTemperature)
+    const spd = this.speed * (this.envSpeedMul ?? 1) * (this.chargeSpeedMul ?? 1) // ralenti température / boost Charge du Tank
     this.setVelocity(vx * spd, vy * spd)
 
     const moving = vx !== 0 || vy !== 0

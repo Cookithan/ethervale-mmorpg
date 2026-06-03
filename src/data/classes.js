@@ -22,6 +22,7 @@ export const CLASSES = {
     // GAINS PAR NIVEAU (identité de rôle, style trinité) : DPS mêlée équilibré.
     hpPerLevel: 20, defPerLevel: 0, manaPerLevel: 0,
     spell: { id: 'charge', name: 'Charge', cost: 25, cd: 6000, desc: 'Bond/esquive ; blesse les ennemis traversés' }, // bond + dégâts
+    spell2: { id: 'whirlwind', name: 'Tourbillon', cost: 45, cd: 12000, level: 10, desc: 'Tournoie : dégâts à TOUS les ennemis autour (déverrouillé niv 10)' },
     abilities: { melee: true, ranged: false, heal: false },
     kit: 'Épée (Espace) · Charge (1)',
     heroes: [
@@ -39,6 +40,7 @@ export const CLASSES = {
     shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec)
     rangedDmgMul: 1.1, // ...mais qui tape MOINS fort par boule
     spell: { id: 'meteor', name: 'Météore', cost: 45, cd: 8000, desc: 'Incantation puis grosse zone de dégâts' }, // AoE incantée
+    spell2: { id: 'mirror', name: 'Image miroir', cost: 55, cd: 18000, level: 10, desc: 'Invoque des copies qui tirent et détournent les coups (déverrouillé niv 10)' },
     abilities: { melee: false, ranged: true, heal: false },
     kit: 'Boule (F) · Météore incanté (1)',
     // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
@@ -57,9 +59,10 @@ export const CLASSES = {
     hpPerLevel: 30, defPerLevel: 1, manaPerLevel: 0,
     attackCdMul: 2.0, // attaque de base nettement plus LENTE (coup lourd de tank)
     meleeKnock: 200, // son coup REPOUSSE l'ennemi
-    spell: { id: 'shield', name: 'Bouclier', cost: 30, cd: 10000, desc: '-80% dégâts reçus pendant 4s' }, // absorbe 80%
+    spell: { id: 'shieldcharge', name: 'Charge de bouclier', cost: 40, cd: 13000, desc: 'Fonce (vitesse) ; gros dégâts d\'impact selon la distance parcourue' }, // sort PRINCIPAL (niv 1)
+    spell2: { id: 'provoke', name: 'Provocation', cost: 50, cd: 14000, level: 10, desc: 'Provoque les ennemis proches ET active le Bouclier (-80% dégâts) pendant 5 s (déverrouillé niv 10)' },
     abilities: { melee: true, ranged: false, heal: false },
-    kit: 'Coup lent qui repousse (Espace) · Bouclier (1) · lent',
+    kit: 'Coup lent qui repousse (Espace) · Charge (1) · Provocation+Bouclier (2, niv 10) · lent',
     heroes: [
       { key: 'hero_knight', name: 'Chevalier' },
       { key: 'hero_robot', name: 'Golem de fer' }, // au MILIEU
@@ -73,6 +76,7 @@ export const CLASSES = {
     // Soutien : PV moyens, beaucoup de mana pour soigner sur la durée.
     hpPerLevel: 14, defPerLevel: 0, manaPerLevel: 4,
     spell: { id: 'heal', name: 'Soin', cost: 30, cd: 4000, desc: 'Rend 35% de tes PV' }, // soin (soi / allié blessé)
+    spell2: { id: 'sanctuary', name: 'Sanctuaire', cost: 50, cd: 16000, level: 10, desc: 'Zone de lumière au sol : soigne sur la durée (déverrouillé niv 10)' },
     abilities: { melee: false, ranged: true, heal: true },
     kit: 'Projectile (F) · Soin (1)',
     heroes: [

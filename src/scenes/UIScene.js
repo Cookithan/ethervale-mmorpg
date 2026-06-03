@@ -313,6 +313,23 @@ export default class UIScene extends Phaser.Scene {
       this.game_.castSpell?.()
     })
 
+    // bouton SORT 2 (2e compétence, déverrouillée au niv `spell2.level`) — à GAUCHE de ATK, voilé par un CADENAS avant déblocage
+    const spell2 = this.game_?.player?.spell2
+    if (spell2) {
+      const s2Cx = atkCx - btn - bgap
+      this.skillsRect = new Phaser.Geom.Rectangle(s2Cx - btn / 2 - 2, byc - btn / 2 - 2, btn * 3 + bgap * 2 + 4, btn + 4) // zone cliquable étendue aux 3 boutons
+      reg(this.add.rectangle(s2Cx, byc, btn, btn, 0x271a3e, 0.95).setStrokeStyle(2, 0xb07fff))
+      reg(this.add.text(s2Cx, byc - 16, spell2.name, { fontFamily: 'monospace', fontSize: '9px', color: '#e3d4ff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
+      this.sort2CostText = reg(this.add.text(s2Cx, byc + 2, `${spell2.cost} mana`, { fontFamily: 'monospace', fontSize: '9px', color: '#b69bff' }).setOrigin(0.5))
+      reg(this.add.text(s2Cx, byc + 15, 'Touche 2', { fontFamily: 'monospace', fontSize: '8px', color: '#ffe066' }).setOrigin(0.5))
+      this.sort2CdVeil = reg(this.add.rectangle(s2Cx, byc - btn / 2, btn, 0, 0x000000, 0.62).setOrigin(0.5, 0))
+      this.sort2Lock = reg(this.add.rectangle(s2Cx, byc, btn, btn, 0x000000, 0.7))
+      this.sort2LockText = reg(this.add.text(s2Cx, byc, `🔒\nNiv ${spell2.level ?? 10}`, { fontFamily: 'monospace', fontSize: '10px', color: '#ffd27a', align: 'center', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
+      this.sort2BtnSize = btn
+      const sort2Hit = reg(this.add.rectangle(s2Cx, byc, btn, btn, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
+      sort2Hit.on('pointerdown', (po, lx, ly, ev) => { ev?.stopPropagation?.(); this.game_.castSpell2?.() })
+    }
+
     // --- MINIMAP (haut-droite) : image schématique de la map ('mmtex'), fenêtre ZOOMÉE qui suit le joueur ---
     const mmSize = 150
     const mmMargin = 12
@@ -1851,6 +1868,20 @@ export default class UIScene extends Phaser.Scene {
       const ratio = Phaser.Math.Clamp(rem / p.spell.cd, 0, 1)
       this.sortCdVeil.setSize(this.sortBtnSize, this.sortBtnSize * ratio)
       this.sortCostText?.setColor(p.mana >= p.spell.cost ? '#7fb3ff' : '#ff6b6b')
+    }
+    // bouton SORT 2 : cadenas tant que niv < déblocage, sinon voile de cooldown + coût
+    if (this.sort2CdVeil && p.spell2) {
+      const unlocked = p.level >= (p.spell2.level ?? 10)
+      this.sort2Lock?.setVisible(!unlocked)
+      this.sort2LockText?.setVisible(!unlocked)
+      if (unlocked) {
+        const rem = Math.max(0, p.nextSpell2At - this.game_.time.now)
+        const ratio = Phaser.Math.Clamp(rem / p.spell2.cd, 0, 1)
+        this.sort2CdVeil.setSize(this.sort2BtnSize, this.sort2BtnSize * ratio)
+        this.sort2CostText?.setColor(p.mana >= p.spell2.cost ? '#b69bff' : '#ff6b6b')
+      } else {
+        this.sort2CdVeil.setSize(this.sort2BtnSize, 0)
+      }
     }
     const maxLvl = p.maxLevel ?? 50
     this.lvlText.setText(p.level >= maxLvl ? `Niveau ${maxLvl} (MAX)` : `Niveau ${p.level}`)
