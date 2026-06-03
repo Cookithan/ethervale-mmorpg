@@ -94,6 +94,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // (les armes à LANCER ne sont pas de départ : trop fortes -> uniquement achetables au marché)
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
     this.invMax = INV_MAX // taille max du sac (loot/achat refusés quand plein)
+    this.hasBoat = false // bateau acheté au marchand -> peut naviguer sur l'eau (A3)
+    this.sailing = false // en navigation (sur l'eau en bateau) -> attaques bloquées (mis à jour par GameScene)
 
     this.hp = this.baseMaxHp
     this.recomputeStats() // initialise maxHp / attackPower / defense
@@ -132,6 +134,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
     if (s.inventory) this.inventory = s.inventory
+    this.hasBoat = s.hasBoat ?? false
     this.recomputeStats()
     this.hp = Math.min(s.hp ?? this.maxHp, this.maxHp)
     this.mana = this.maxMana
@@ -370,8 +373,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       else this.facing = vy < 0 ? 'up' : 'down'
     }
 
-    // bruits de pas pendant la marche : alternés, cadence calée sur la vitesse (lent = pas espacés)
-    if (moving) {
+    // bruits de pas pendant la marche : alternés, cadence calée sur la vitesse (lent = pas espacés).
+    // En navigation (bateau) : pas de pas — le héros est assis (this.sailing posé par GameScene).
+    if (moving && !this.sailing) {
       const stepMs = 320 * (SPEED / this.speed)
       if (time >= (this._stepAt || 0)) {
         Audio.sfx(SFX.step, { vol: 0.32 })

@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
+import { SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
 
 // palette UI (style WoW lisible)
@@ -574,6 +574,38 @@ export default class UIScene extends Phaser.Scene {
     }
   }
 
+  /** Carte spéciale d'achat du bateau (onglet « Bateau ») — déverrouille la navigation sur l'eau. */
+  drawBoatCard(reg, x, y, w) {
+    const p = this.game_.player
+    const owned = p.hasBoat
+    const cardW = (w - 16) / 3 // même largeur qu'une carte de la grille (3 colonnes)
+    const footer = owned
+      ? { text: '✓ Possédé', color: '#7cfc9a' }
+      : { text: `${BOAT_ITEM.price} or`, color: p.gold >= BOAT_ITEM.price ? '#ffd84d' : '#e06666', onClick: () => this.buyBoat() }
+    this.drawCard(reg, x, y, cardW, 62, BOAT_ITEM, footer)
+    reg(this.add.text(x + cardW + 18, y + 2,
+      owned
+        ? "Tu possèdes la barque.\nMarche sur l'eau pour embarquer\net rejoindre les Terres maudites."
+        : "Achat unique. Une fois acquise,\nmarche sur l'eau pour embarquer\nautomatiquement et explorer le large\n(Terres maudites = end-game).",
+      { fontFamily: 'monospace', fontSize: '11px', color: '#cfe8ff', lineSpacing: 4 }).setOrigin(0, 0))
+  }
+
+  /** Achat UNIQUE du bateau : pose le flag `hasBoat` (pas d'objet de sac). */
+  buyBoat() {
+    const p = this.game_.player
+    if (p.hasBoat) return
+    if (p.gold < BOAT_ITEM.price) {
+      this.showToast("Pas assez d'or pour la barque", '#e06666')
+      this.playDenied()
+      return
+    }
+    p.gold -= BOAT_ITEM.price
+    p.hasBoat = true
+    Audio.sfx('ui_accept', { detune: 0 })
+    this.showToast("Barque achetée ! Marche sur l'eau pour naviguer.", '#7cfc9a')
+    this.buildShop()
+  }
+
   buildShop() {
     const p = this.game_.player
     if (!p) return
@@ -599,6 +631,7 @@ export default class UIScene extends Phaser.Scene {
       { key: 'focus', label: 'Focus' },
       { key: 'ring', label: 'Anneaux' },
       { key: 'potion', label: 'Potions' },
+      { key: 'boat', label: 'Bateau' },
       { key: 'sell', label: 'Vendre' },
     ]
     if (!cats.some((c) => c.key === this.shopTab)) this.shopTab = 'weapon'
@@ -606,22 +639,25 @@ export default class UIScene extends Phaser.Scene {
     const tabW = (W - 32) / cats.length
     cats.forEach((c, i) => this.drawTab(reg, x0 + 16 + i * tabW, tabY, c.label, this.shopTab === c.key, () => { this.shopTab = c.key; this.buildShop() }, tabW - 4))
 
-    // items selon la catégorie (armes = uniquement celles utilisables par la classe -> on s'y retrouve)
-    let items
-    if (this.shopTab === 'sell') items = p.inventory
-    else if (this.shopTab === 'potion') items = SHOP_STOCK.filter((it) => it.type === 'consumable')
-    else items = SHOP_STOCK.filter((it) => it.slot === this.shopTab && (this.shopTab !== 'weapon' || canEquip(it, p.className)))
     const gridY = tabY + 32
-    if (items.length === 0) {
-      reg(this.add.text(cw / 2, gridY + 50, this.shopTab === 'sell' ? '(sac vide)' : '(rien dans cette catégorie)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
-    }
-    this.drawCardGrid(reg, x0 + 16, gridY, W - 32, items, (item) => {
-      if (this.shopTab === 'buy') {
+    if (this.shopTab === 'boat') {
+      // onglet spécial : achat UNIQUE du bateau (déverrouille la navigation, A3) — pas un objet de sac
+      this.drawBoatCard(reg, x0 + 16, gridY, W - 32)
+    } else {
+      // items selon la catégorie (armes = uniquement celles utilisables par la classe -> on s'y retrouve)
+      let items
+      if (this.shopTab === 'sell') items = p.inventory
+      else if (this.shopTab === 'potion') items = SHOP_STOCK.filter((it) => it.type === 'consumable')
+      else items = SHOP_STOCK.filter((it) => it.slot === this.shopTab && (this.shopTab !== 'weapon' || canEquip(it, p.className)))
+      if (items.length === 0) {
+        reg(this.add.text(cw / 2, gridY + 50, this.shopTab === 'sell' ? '(sac vide)' : '(rien dans cette catégorie)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
+      }
+      this.drawCardGrid(reg, x0 + 16, gridY, W - 32, items, (item) => {
+        if (this.shopTab === 'sell') return { text: `+${sellPrice(item)} or`, color: '#ffd84d', onClick: () => this.sellItem(item) }
         const aff = p.gold >= item.price
         return { text: `${item.price} or`, color: aff ? '#ffd84d' : '#e06666', onClick: () => this.buyItem(item) }
-      }
-      return { text: `+${sellPrice(item)} or`, color: '#ffd84d', onClick: () => this.sellItem(item) }
-    })
+      })
+    }
     reg(this.add.text(cw / 2, y0 + H - 14, 'Clic une carte = acheter / vendre  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5))
   }
 

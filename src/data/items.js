@@ -73,6 +73,18 @@ export const ITEMS = {
 // stock du marchand = tout le catalogue SAUF les légendaires (exclusifs aux boss, brief §8)
 export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary')
 
+// BATEAU (brief A3) : achat SPÉCIAL au marchand (onglet dédié) — déverrouille la navigation sur l'eau
+// (le héros embarque dès qu'il marche sur l'eau) → accès aux Terres maudites end-game. Pas un objet de
+// sac/équipement : l'achat pose juste le flag `player.hasBoat`. Cher mais accessible (puits à or).
+export const BOAT_ITEM = {
+  id: 'boat',
+  name: 'Barque du large',
+  icon: 'boat',
+  rarity: 'epic',
+  price: 3000,
+  desc: "Navigue sur l'eau et atteins les Terres maudites.",
+}
+
 // 4 slots d'équipement : Arme(+ATQ) / Armure(+DEF) / Focus(améliore la compétence) / Anneau(+Mana)
 export const SLOTS = ['weapon', 'armor', 'focus', 'ring']
 export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', focus: 'Focus', ring: 'Anneau' }
@@ -142,6 +154,7 @@ export function itemName(item) {
 
 /** Texte descriptif d'un objet (consommable = soin ; équipement = stats + durabilité). */
 export function describeItem(item) {
+  if (item.desc) return item.desc // objet spécial décrit en clair (ex. bateau)
   if (item.type === 'consumable') return item.heal ? `Rend ${item.heal} PV (clic = boire)` : 'Consommable'
   let txt = describeStats(effectiveStats(item))
   if (item.spellCd || item.spellPower) {

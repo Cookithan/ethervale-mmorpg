@@ -330,6 +330,8 @@ export default class GameScene extends Phaser.Scene {
     const spawnY = this.saveData ? this.saveData.y : this.cy * TILE
     this.player = new Player(this, spawnX, spawnY, { character: this.character, save: this.saveData })
     // le pseudo au-dessus du héros est dessiné par UIScene (scène non-zoomée) pour rester net/stable
+    // barque (A3) : sprite affiché SOUS le héros quand il navigue sur l'eau (caché par défaut)
+    this.boatSprite = this.add.image(spawnX, spawnY, 'boat').setOrigin(0.5, 0.42).setScale(0.5).setVisible(false)
 
     // --- décors ---
     this.obstacles = this.physics.add.staticGroup()
@@ -346,7 +348,9 @@ export default class GameScene extends Phaser.Scene {
     // spawnDecor() retiré : plus de buissons/touffes d'herbe en prairie (demandé)
     this.spawnBiomeProps() // props par biome (cactus, cristaux, souches, congères...)
     this.physics.add.collider(this.player, this.obstacles)
-    this.physics.add.collider(this.player, this.waterLayer) // l'eau bloque (sauf ponts)
+    // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
+    // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
+    this.physics.add.collider(this.player, this.waterLayer, null, () => !this.player.hasBoat)
 
     // --- monstres --- (PAS en mode aperçu d'accueil : on garde le décor mais sans mobs -> moins lourd)
     this.monsters = this.physics.add.group()
@@ -3038,6 +3042,7 @@ export default class GameScene extends Phaser.Scene {
   basicAttack() {
     const p = this.player
     if (!p) return
+    if (this.sailBlocked()) return // pas d'attaque en navigation
     const w = p.equipped?.weapon
     if (w?.ranged) this.throwWeapon(w) // arme à LANCER (couteau/shuriken)
     else if (p.abilities.melee) this.doAttack()
@@ -3167,6 +3172,7 @@ export default class GameScene extends Phaser.Scene {
    */
   castSpell() {
     if (this.uiBusy() || this.gameOver) return
+    if (this.sailBlocked()) return // pas de sort en navigation
     const p = this.player
     const sp = p.spell
     if (!sp || p.hp <= 0) return
@@ -3420,6 +3426,7 @@ export default class GameScene extends Phaser.Scene {
    */
   fireProjectile(tx, ty, target) {
     const p = this.player
+    if (this.sailBlocked()) return // pas de tir en navigation
     if (!p.abilities.ranged) return // classe sans sort à distance (Guerrier/Tank)
     if (p.attacking || p.hp <= 0) return
     if (!p.startShoot(this.time.now)) return
@@ -3640,6 +3647,45 @@ export default class GameScene extends Phaser.Scene {
     this.floatingText(p.x, p.y - 4, 'Lâché', '#cdd6e0')
   }
 
+  /** Vrai si (x,y) est sur une tuile d'eau qui bloque (océan/rivière, hors pont). */
+  isOnWater(x, y) {
+    const t = this.waterLayer?.getTileAtWorldXY(x, y)
+    return !!(t && t.collides)
+  }
+
+  /** Affiche la barque sous le héros quand il a le bateau ET navigue sur l'eau (sinon la cache).
+   *  Met aussi à jour `player.sailing` (= en navigation -> attaques bloquées) et l'orientation du bateau. */
+  updateBoat() {
+    if (!this.boatSprite) return
+    const p = this.player
+    p.sailing = p.hasBoat && this.isOnWater(p.x, p.y)
+    if (p.sailing) {
+      // ORIENTATION 4 DIRECTIONS selon le cap du héros (bateau vu de côté, proue à droite par défaut) :
+      // gauche = miroir (reste à l'endroit), haut/bas = rotation ±90°.
+      if (p.facing === 'left') this.boatSprite.setFlipX(true).setRotation(0)
+      else if (p.facing === 'right') this.boatSprite.setFlipX(false).setRotation(0)
+      else if (p.facing === 'up') this.boatSprite.setFlipX(false).setRotation(-Math.PI / 2)
+      else this.boatSprite.setFlipX(false).setRotation(Math.PI / 2) // down
+      this.boatSprite.setVisible(true).setPosition(p.x, p.y + 5).setDepth(p.y - 1)
+      // le héros reste ASSIS dans la barque : pose idle figée (ni marche ni pas — voir Player.update)
+      p.anims.play(`${p.heroKey}-idle-${p.facing}`, true)
+    } else if (this.boatSprite.visible) {
+      this.boatSprite.setVisible(false).setRotation(0).setFlipX(false)
+    }
+  }
+
+  /** Vrai (et affiche un message throttlé) si le joueur NAVIGUE : aucune attaque possible en bateau
+   *  (sinon on pourrait battre les boss depuis l'eau, hors de leur portée). */
+  sailBlocked() {
+    if (!this.player?.sailing) return false
+    const now = this.time.now
+    if (now >= (this._sailMsgAt || 0)) {
+      this._sailMsgAt = now + 1500
+      this.scene.get('UIScene')?.showToast?.('Impossible d\'attaquer en bateau', '#9fc4e0')
+    }
+    return true
+  }
+
   /** Petit texte qui monte et s'efface (ramassage, soin...). */
   floatingText(x, y, text, color) {
     const t = this.add
@@ -3691,6 +3737,7 @@ export default class GameScene extends Phaser.Scene {
     this.player.update(time)
     const p = this.player
     p.setDepth(p.y)
+    this.updateBoat() // barque sous le héros quand il navigue (A3)
 
     this.updateArena() // arène de boss : verrouillage de proximité + mur invisible
 

@@ -51,6 +51,7 @@ export function makeSave(player, character) {
     hp: player.hp,
     equipped: player.equipped,
     inventory: player.inventory,
+    hasBoat: player.hasBoat,
     x: Math.round(player.x),
     y: Math.round(player.y),
   }
