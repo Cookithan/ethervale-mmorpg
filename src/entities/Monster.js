@@ -9,51 +9,53 @@ import Phaser from 'phaser'
 // `tier` = rareté FIXE du butin de ce type (déterministe, pas de hasard de rareté) :
 // chaque mort lâche un équipement de cette rareté. `gold` = fourchette d'or lâchée.
 export const MONSTER_TYPES = {
+  // `loot` (table par ESPÈCE) : gold [min,max] ; mat = MATÉRIAU empilable lâché (id, drop fréquent) ;
+  // matChance = proba du matériau ; gear = proba d'un ÉQUIPEMENT (rareté pondérée + scaling de zone).
   mushroom: {
     key: 'mon_mushroom', hp: 90, speed: 22, damage: 24, xp: 36, aggro: 70, scale: 1.5, name: 'Champignon',
-    tier: 'rare', loot: { gold: [4, 9] },
+    tier: 'rare', loot: { gold: [4, 9], mat: 'mat_essence', matChance: 0.5, gear: 0.14 },
   },
   lizard: {
     key: 'mon_lizard', hp: 30, speed: 72, damage: 5, xp: 8, aggro: 130, scale: 0.9, name: 'Lézard',
-    tier: 'common', loot: { gold: [1, 3] },
+    tier: 'common', loot: { gold: [1, 3], mat: 'mat_leather', matChance: 0.45, gear: 0.1 },
   },
   racoon: {
     key: 'mon_racoon', hp: 55, speed: 46, damage: 8, xp: 16, aggro: 105, scale: 1.1, name: 'Raton',
-    tier: 'common', loot: { gold: [2, 5] },
+    tier: 'common', loot: { gold: [2, 5], mat: 'mat_leather', matChance: 0.45, gear: 0.12 },
   },
 
   // --- désert ---
   snake: {
     key: 'mon_snake', hp: 40, speed: 82, damage: 10, xp: 18, aggro: 135, scale: 1.0, name: 'Serpent',
-    tier: 'common', loot: { gold: [2, 6] },
+    tier: 'common', loot: { gold: [2, 6], mat: 'mat_leather', matChance: 0.45, gear: 0.12 },
   },
   spider: {
     key: 'mon_spider', hp: 60, speed: 56, damage: 12, xp: 22, aggro: 110, scale: 1.1, name: 'Araignée',
-    tier: 'rare', loot: { gold: [3, 7] },
+    tier: 'rare', loot: { gold: [3, 7], mat: 'mat_essence', matChance: 0.5, gear: 0.16 },
   },
 
   // --- neige ---
   owl: {
     key: 'mon_owl', hp: 55, speed: 70, damage: 14, xp: 26, aggro: 120, scale: 1.0, name: 'Hibou',
-    tier: 'rare', loot: { gold: [3, 8] },
+    tier: 'rare', loot: { gold: [3, 8], mat: 'mat_essence', matChance: 0.5, gear: 0.16 },
   },
   bear: {
     key: 'mon_bear', hp: 130, speed: 30, damage: 22, xp: 42, aggro: 80, scale: 1.5, name: 'Ours',
-    tier: 'epic', loot: { gold: [5, 11] },
+    tier: 'epic', loot: { gold: [5, 11], mat: 'mat_leather', matChance: 0.55, gear: 0.2 },
   },
 
   // --- terres maudites ---
   skull: {
     key: 'mon_skull', hp: 80, speed: 50, damage: 18, xp: 34, aggro: 115, scale: 1.1, name: 'Crâne',
-    tier: 'rare', loot: { gold: [5, 10] },
+    tier: 'rare', loot: { gold: [5, 10], mat: 'mat_bone', matChance: 0.5, gear: 0.18 },
   },
   spirit: {
     key: 'mon_spirit', hp: 50, speed: 92, damage: 16, xp: 30, aggro: 140, scale: 1.0, name: 'Esprit',
-    tier: 'rare', loot: { gold: [4, 9] },
+    tier: 'rare', loot: { gold: [4, 9], mat: 'mat_bone', matChance: 0.5, gear: 0.18 },
   },
   flam: {
     key: 'mon_flam', hp: 105, speed: 40, damage: 26, xp: 48, aggro: 100, scale: 1.3, name: 'Démon de feu',
-    tier: 'epic', loot: { gold: [7, 14] },
+    tier: 'epic', loot: { gold: [7, 14], mat: 'mat_crystal', matChance: 0.5, gear: 0.22 },
   },
 
   // --- BOSS DE RAID (intuables en solo, contenu verrouillé / multijoueur Phase 4) ---

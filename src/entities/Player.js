@@ -92,6 +92,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.spellCdMul = 1 // <1 = cooldown de compétence réduit (Focus)
     this.spellPowerMul = 1 // >1 = effet de compétence renforcé (Focus)
     this.inventory = [] // sac vide au départ
+    this.resources = {} // poche de MATÉRIAUX empilables {id: quantité} (à part du sac, pour vendre/forger)
     // (les armes à LANCER ne sont pas de départ : trop fortes -> uniquement achetables au marché)
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
     this.invMax = INV_MAX // taille max du sac (loot/achat refusés quand plein)
@@ -139,6 +140,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
     if (s.inventory) this.inventory = s.inventory
     this.hasBoat = s.hasBoat ?? false
+    this.resources = s.resources ?? {}
     this.deathBag = s.deathBag ?? null
     this.deathsSinceRecovery = s.deathsSinceRecovery ?? 0
     this.recomputeStats()
@@ -197,6 +199,21 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   /** Vrai s'il reste de la place dans le sac. */
   bagFull() {
     return this.inventory.length >= this.invMax
+  }
+
+  /** Ajoute `n` matériaux à la poche de ressources (empilable, sans limite de sac). */
+  addResource(id, n = 1) {
+    this.resources[id] = (this.resources[id] ?? 0) + n
+    this.invVersion++
+  }
+
+  /** Retire `n` matériaux. Renvoie false s'il n'y en a pas assez. */
+  removeResource(id, n = 1) {
+    if ((this.resources[id] ?? 0) < n) return false
+    this.resources[id] -= n
+    if (this.resources[id] <= 0) delete this.resources[id]
+    this.invVersion++
+    return true
   }
 
   /** Ajoute un objet au sac. Renvoie false si le sac est PLEIN (cap strict). */

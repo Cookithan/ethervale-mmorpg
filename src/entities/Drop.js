@@ -65,14 +65,26 @@ export default class Drop extends Phaser.Physics.Arcade.Sprite {
       })
     }
 
-    // pop à l'apparition + flottement vertical doux
+    // OMBRE fixe au sol : l'objet flotte AU-DESSUS d'elle (et au-dessus de son halo) = effet de lévitation
+    this.shadow = scene.add.ellipse(x, y + target * 0.36, target * 0.82, target * 0.34, 0x000000, 0.26).setDepth(y - 2)
+
+    // pop à l'apparition + flottement vertical NET : seul l'objet monte/descend (ombre + halo restent au sol)
     this.setScale(0)
     scene.tweens.add({ targets: this, scale: baseScale, duration: 200, ease: 'Back.out' })
-    // le drop ET son halo flottent ensemble (le halo reste 2px plus bas, posé au sol)
     this.bob = scene.tweens.add({
-      targets: this.glow ? [this, this.glow] : this,
-      y: '-=3',
-      duration: 600,
+      targets: this,
+      y: '-=5',
+      duration: 820,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.inOut',
+    })
+    // l'ombre « respire » légèrement (plus petite quand l'objet est haut) pour renforcer la lévitation
+    this.shadowTween = scene.tweens.add({
+      targets: this.shadow,
+      scaleX: 0.7,
+      scaleY: 0.7,
+      duration: 820,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.inOut',
@@ -92,6 +104,8 @@ export default class Drop extends Phaser.Physics.Arcade.Sprite {
     this.bob?.stop()
     this.blinkTween?.stop()
     this.glowPulse?.stop()
+    this.shadowTween?.stop()
+    this.shadow?.destroy()
     this.glow?.destroy()
     this.blink?.remove()
     this.expire?.remove()

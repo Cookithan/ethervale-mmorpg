@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
+import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
 
 // palette UI (style WoW lisible)
@@ -385,6 +385,9 @@ export default class UIScene extends Phaser.Scene {
         if (item.type === 'consumable') {
           this.useConsumable(item)
           Audio.sfx('ui_accept', { detune: 0 })
+        } else if (item.type === 'material') {
+          this.showToast('Matériau — vends-le ou forge avec', '#e0a866')
+          this.playDenied()
         } else if (!canEquip(item, p.className)) {
           this.showToast(classRestrictionLabel(item), '#e0a866')
           this.playDenied()
@@ -402,6 +405,29 @@ export default class UIScene extends Phaser.Scene {
     }
     if (overflow > 0) {
       reg(this.add.text(panelX + panelW + 6, gy, `+${overflow}`, { fontFamily: 'monospace', fontSize: '13px', color: '#ffe066' }).setOrigin(0, 0.5))
+    }
+
+    // POCHE DE MATÉRIAUX : petite bande collée À GAUCHE de la hotbar, toujours visible (icône + quantité)
+    const owned = MATERIALS.filter((id) => (p.resources[id] ?? 0) > 0)
+    this.matRect = null
+    if (owned.length) {
+      const mc = 30
+      const mgap = 4
+      const my = panelY + (panelH - mc) / 2
+      const stripW = owned.length * mc + (owned.length - 1) * mgap
+      let mx = panelX - 10 - mc // on part juste à gauche de la hotbar et on s'étend vers la gauche
+      for (let i = owned.length - 1; i >= 0; i--) {
+        const it = ITEMS[owned[i]]
+        reg(this.add.rectangle(mx, my, mc, mc, PANEL, 0.82).setOrigin(0, 0).setStrokeStyle(2, RARITY[it.rarity]?.tint ?? GOLD))
+        reg(this.rarityBg(mx + mc / 2, my + mc / 2, mc - 6, it.rarity))
+        reg(this.addIcon(mx + mc / 2, my + mc / 2, it.icon, mc - 12))
+        reg(this.add.text(mx + mc - 2, my + mc - 1, `${p.resources[owned[i]]}`, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 1))
+        const z = reg(this.add.rectangle(mx, my, mc, mc, 0xffffff, 0.001).setOrigin(0, 0).setInteractive())
+        z.on('pointerover', () => this.showTip(it, mx + mc / 2, my))
+        z.on('pointerout', () => this.hideTip())
+        mx -= mc + mgap
+      }
+      this.matRect = new Phaser.Geom.Rectangle(panelX - 10 - stripW, my, stripW, mc)
     }
   }
 
@@ -483,7 +509,7 @@ export default class UIScene extends Phaser.Scene {
 
     reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.55).setOrigin(0, 0))
     const W = 320
-    const H = 336
+    const H = 388
     const x0 = cw / 2 - W / 2
     const y0 = ch / 2 - H / 2
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.97).setStrokeStyle(2, GOLD))
@@ -533,6 +559,30 @@ export default class UIScene extends Phaser.Scene {
       }
     })
 
+    // POCHE DE RESSOURCES (matériaux empilés : icône + quantité) — vendables/forgeables
+    const owned = MATERIALS.filter((id) => (p.resources[id] ?? 0) > 0)
+    reg(this.add.text(cx, y0 + 196, 'Ressources', { fontFamily: 'monospace', fontSize: '11px', color: '#9fb6cc' }).setOrigin(0.5, 0))
+    if (!owned.length) {
+      reg(this.add.text(cx, y0 + 218, '(aucun matériau — tue des monstres)', { fontFamily: 'monospace', fontSize: '9px', color: '#6c7b8c' }).setOrigin(0.5, 0))
+    } else {
+      const sz = 30
+      const gap = 12
+      const totalW = owned.length * sz + (owned.length - 1) * gap
+      let rx = cx - totalW / 2 + sz / 2
+      const ry = y0 + 226
+      for (const id of owned) {
+        const it = ITEMS[id]
+        reg(this.add.rectangle(rx, ry, sz, sz, CELL, 1).setStrokeStyle(2, RARITY[it.rarity]?.tint ?? CELL_BORDER))
+        reg(this.rarityBg(rx, ry, sz - 6, it.rarity))
+        reg(this.addIcon(rx, ry, it.icon, sz - 10))
+        reg(this.add.text(rx + sz / 2 - 2, ry + sz / 2 - 1, `${p.resources[id]}`, { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 1))
+        const z = reg(this.add.rectangle(rx, ry, sz, sz, 0xffffff, 0.001).setInteractive())
+        z.on('pointerover', () => this.showTip(it, rx, ry - sz / 2))
+        z.on('pointerout', () => this.hideTip())
+        rx += sz + gap
+      }
+    }
+
     // stats (totaux base + équipement), Mana inclus
     const sY = y0 + H - 62
     reg(this.add.text(cx, sY, `Attaque ${p.attackPower}      Défense ${p.defense}`, { fontFamily: 'monospace', fontSize: '13px', color: '#cfe8ff' }).setOrigin(0.5))
@@ -547,7 +597,7 @@ export default class UIScene extends Phaser.Scene {
     if (this.charOpen) this.closeChar()
     if (this.forgeOpen) this.closeForge()
     this.shopOpen = true
-    this.shopTab = 'weapon' // onglet (catégorie) par défaut
+    this.shopBuyCat = 'weapon' // catégorie d'achat par défaut (colonne ACHETER)
     this.scene.pause('GameScene')
     Audio.playMusic(this, 'mus_shop') // thème "Fight" chez le marchand (restauré à la fermeture par GameScene.update)
     Audio.sfx('ui_accept', { detune: 0 })
@@ -622,6 +672,61 @@ export default class UIScene extends Phaser.Scene {
     this.buildShop()
   }
 
+  /** Onglet Matériaux du marchand : vendre les ressources empilées (par lot) + tout vendre. */
+  drawResourceSell(reg, x, y, w) {
+    const p = this.game_.player
+    const owned = MATERIALS.filter((id) => (p.resources[id] ?? 0) > 0)
+    if (!owned.length) {
+      reg(this.add.text(x + w / 2, y + 50, '(aucun matériau — tue des monstres pour en récolter)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
+      return
+    }
+    const cols = 3
+    const gap = 8
+    const cardW = (w - (cols - 1) * gap) / cols
+    const cardH = 72
+    owned.forEach((id, i) => {
+      const it = ITEMS[id]
+      const cx = x + (i % cols) * (cardW + gap)
+      const cy = y + Math.floor(i / cols) * (cardH + gap)
+      const qty = p.resources[id]
+      const unit = sellPrice(it)
+      reg(this.add.rectangle(cx, cy, cardW, cardH, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, RARITY[it.rarity]?.tint ?? CELL_BORDER))
+      reg(this.rarityBg(cx + 22, cy + 22, 28, it.rarity))
+      reg(this.addIcon(cx + 22, cy + 22, it.icon, 26))
+      reg(this.add.text(cx + 40, cy + 8, `${it.name} ×${qty}`, { fontFamily: 'monospace', fontSize: '10px', color: RARITY[it.rarity]?.color ?? '#fff', wordWrap: { width: cardW - 46 } }).setOrigin(0, 0))
+      reg(this.add.text(cx + 40, cy + 30, `${unit} or/u`, { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0, 0))
+      this.drawForgeBtn(reg, cx + 8, cy + cardH - 22, cardW - 16, true, `Vendre tout +${unit * qty}`, () => this.sellResource(id))
+    })
+    const rows = Math.ceil(owned.length / cols)
+    const total = owned.reduce((s, id) => s + sellPrice(ITEMS[id]) * p.resources[id], 0)
+    const by = y + rows * (cardH + gap) + 6
+    this.drawForgeBtn(reg, x + w / 2 - 90, by, 180, true, `Tout vendre  (+${total} or)`, () => this.sellAllResources())
+    reg(this.add.text(x + w / 2, by + 26, 'Les matériaux servent aussi à AMÉLIORER ton équipement chez Aldric le forgeron.', { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066', align: 'center', wordWrap: { width: w } }).setOrigin(0.5, 0))
+  }
+
+  /** Vend tout un stack de matériau. */
+  sellResource(id) {
+    const p = this.game_.player
+    const qty = p.resources[id] ?? 0
+    if (qty <= 0) return
+    p.gold += sellPrice(ITEMS[id]) * qty
+    p.removeResource(id, qty)
+    Audio.sfx('ui_coin', { detune: 0 })
+    this.buildShop()
+  }
+
+  /** Vend TOUS les matériaux d'un coup. */
+  sellAllResources() {
+    const p = this.game_.player
+    let total = 0
+    for (const id of MATERIALS) {
+      const qty = p.resources[id] ?? 0
+      if (qty > 0) { total += sellPrice(ITEMS[id]) * qty; p.removeResource(id, qty) }
+    }
+    if (total > 0) { p.gold += total; Audio.sfx('ui_coin', { detune: 0 }) }
+    this.buildShop()
+  }
+
   buildShop() {
     const p = this.game_.player
     if (!p) return
@@ -632,49 +737,95 @@ export default class UIScene extends Phaser.Scene {
     }
     const cw = this.scale.width
     const ch = this.scale.height
-    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0))
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeShop())) // clic hors panneau = fermer
     const W = 500
     const H = 470
     const x0 = cw / 2 - W / 2
     const y0 = ch / 2 - H / 2
-    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD).setInteractive()) // absorbe les clics DANS le panneau
     this.drawPanelHeader(reg, x0, y0, W, 'merchant_face', undefined, 'Marchand', p.gold)
 
-    // onglets par CATÉGORIE (+ Vendre) -> tout est rangé et entièrement visible
-    const cats = [
-      { key: 'weapon', label: 'Armes' },
-      { key: 'armor', label: 'Armures' },
-      { key: 'focus', label: 'Focus' },
-      { key: 'ring', label: 'Anneaux' },
-      { key: 'potion', label: 'Potions' },
-      { key: 'boat', label: 'Bateau' },
-      { key: 'sell', label: 'Vendre' },
-    ]
-    if (!cats.some((c) => c.key === this.shopTab)) this.shopTab = 'weapon'
-    const tabY = y0 + 56
-    const tabW = (W - 32) / cats.length
-    cats.forEach((c, i) => this.drawTab(reg, x0 + 16 + i * tabW, tabY, c.label, this.shopTab === c.key, () => { this.shopTab = c.key; this.buildShop() }, tabW - 4))
+    // DEUX COLONNES toujours visibles : ACHETER (gauche, filtres de catégorie) | VENDRE (droite, sac + matériaux)
+    const colW = 222
+    const lx = x0 + 14
+    const rx = x0 + 264
+    const top = y0 + 68
+    const bottom = y0 + H - 16
+    reg(this.add.rectangle(x0 + W / 2, y0 + 52, 1, H - 66, GOLD, 0.35).setOrigin(0.5, 0)) // séparateur vertical
+    reg(this.add.text(lx + colW / 2, y0 + 50, 'ACHETER', { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5, 0))
+    reg(this.add.text(rx + colW / 2, y0 + 50, 'VENDRE', { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#7cfc9a' }).setOrigin(0.5, 0))
+    this.drawBuyColumn(reg, lx, top, colW, bottom)
+    this.drawSellColumn(reg, rx, top, colW, bottom)
+    reg(this.add.text(cw / 2, y0 + H - 8, 'Échap = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5, 1))
+  }
 
-    const gridY = tabY + 32
-    if (this.shopTab === 'boat') {
-      // onglet spécial : achat UNIQUE du bateau (déverrouille la navigation, A3) — pas un objet de sac
-      this.drawBoatCard(reg, x0 + 16, gridY, W - 32)
-    } else {
-      // items selon la catégorie (armes = uniquement celles utilisables par la classe -> on s'y retrouve)
-      let items
-      if (this.shopTab === 'sell') items = p.inventory
-      else if (this.shopTab === 'potion') items = SHOP_STOCK.filter((it) => it.type === 'consumable')
-      else items = SHOP_STOCK.filter((it) => it.slot === this.shopTab && (this.shopTab !== 'weapon' || canEquip(it, p.className)))
-      if (items.length === 0) {
-        reg(this.add.text(cw / 2, gridY + 50, this.shopTab === 'sell' ? '(sac vide)' : '(rien dans cette catégorie)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
-      }
-      this.drawCardGrid(reg, x0 + 16, gridY, W - 32, items, (item) => {
-        if (this.shopTab === 'sell') return { text: `+${sellPrice(item)} or`, color: '#ffd84d', onClick: () => this.sellItem(item) }
-        const aff = p.gold >= item.price
-        return { text: `${item.price} or`, color: aff ? '#ffd84d' : '#e06666', onClick: () => this.buyItem(item) }
-      })
+  /** Ligne compacte d'objet (boutique) : icône + nom (+×qté) + bouton à droite. */
+  drawShopRow(reg, x, y, w, h, item, qty, btn) {
+    const rc = RARITY[item.rarity]
+    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(1.5, rc ? rc.tint : CELL_BORDER))
+    reg(this.rarityBg(x + 16, y + h / 2, 24, item.rarity))
+    this.addItemIcon(reg, x + 16, y + h / 2, item, 20)
+    reg(this.add.text(x + 30, y + 5, itemName(item) + (qty > 1 ? ` ×${qty}` : ''), { fontFamily: 'monospace', fontSize: '9px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 94 } }).setOrigin(0, 0))
+    const hov = reg(this.add.rectangle(x, y, w - 62, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive())
+    hov.on('pointerover', () => this.showTip(item, x + w / 2, y))
+    hov.on('pointerout', () => this.hideTip())
+    this.drawForgeBtn(reg, x + w - 58, y + (h - 18) / 2, 52, btn.enabled, btn.label, btn.onClick || (() => {}))
+  }
+
+  /** Colonne ACHETER : filtres de catégorie + liste des objets achetables. */
+  drawBuyColumn(reg, x, y, w, bottom) {
+    const p = this.game_.player
+    if (!this.shopBuyCat) this.shopBuyCat = 'weapon'
+    const cats = [
+      { key: 'weapon', label: 'Armes' }, { key: 'armor', label: 'Armures' }, { key: 'focus', label: 'Focus' },
+      { key: 'ring', label: 'Anneaux' }, { key: 'potion', label: 'Potions' }, { key: 'boat', label: 'Bateau' },
+    ]
+    const bw = (w - 2 * 4) / 3
+    cats.forEach((c, i) => {
+      const bx = x + (i % 3) * (bw + 4)
+      const by = y + Math.floor(i / 3) * 22
+      this.drawTab(reg, bx, by, c.label, this.shopBuyCat === c.key, () => { this.shopBuyCat = c.key; this.buildShop() }, bw)
+    })
+    const listY = y + 50
+    if (this.shopBuyCat === 'boat') {
+      const owned = p.hasBoat
+      this.drawShopRow(reg, x, listY, w, 40, BOAT_ITEM, 1, owned ? { label: '✓ Possédé', enabled: false } : { label: `${BOAT_ITEM.price}or`, enabled: p.gold >= BOAT_ITEM.price, onClick: () => this.buyBoat() })
+      reg(this.add.text(x, listY + 46, "Déverrouille la navigation sur l'eau\n→ accès aux Terres maudites (end-game).", { fontFamily: 'monospace', fontSize: '9px', color: '#9fd0ff', lineSpacing: 3 }).setOrigin(0, 0))
+      return
     }
-    reg(this.add.text(cw / 2, y0 + H - 14, 'Clic une carte = acheter / vendre  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5))
+    let items
+    if (this.shopBuyCat === 'potion') items = SHOP_STOCK.filter((it) => it.type === 'consumable')
+    else items = SHOP_STOCK.filter((it) => it.slot === this.shopBuyCat && (this.shopBuyCat !== 'weapon' || canEquip(it, p.className)))
+    const rowH = 40
+    const gap = 4
+    const maxRows = Math.floor((bottom - listY) / (rowH + gap))
+    items.slice(0, maxRows).forEach((it, i) => {
+      this.drawShopRow(reg, x, listY + i * (rowH + gap), w, rowH, it, 1, { label: `${it.price}or`, enabled: p.gold >= it.price, onClick: () => this.buyItem(it) })
+    })
+    if (items.length > maxRows) reg(this.add.text(x + w, listY + maxRows * (rowH + gap), `+${items.length - maxRows}…`, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(1, 0))
+  }
+
+  /** Colonne VENDRE : objets du sac + stacks de matériaux, chacun avec son prix de revente. */
+  drawSellColumn(reg, x, y, w, bottom) {
+    const p = this.game_.player
+    const rows = []
+    for (const it of p.inventory) rows.push({ item: it, qty: 1, btn: { label: `+${sellPrice(it)}`, enabled: true, onClick: () => this.sellItem(it) } })
+    for (const id of MATERIALS) {
+      const q = p.resources[id] ?? 0
+      if (q > 0) rows.push({ item: ITEMS[id], qty: q, btn: { label: `+${sellPrice(ITEMS[id]) * q}`, enabled: true, onClick: () => this.sellResource(id) } })
+    }
+    const matTotal = MATERIALS.reduce((s, id) => s + sellPrice(ITEMS[id]) * (p.resources[id] ?? 0), 0)
+    if (!rows.length) {
+      reg(this.add.text(x + w / 2, y + 40, '(rien à vendre)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
+      return
+    }
+    const rowH = 38
+    const gap = 4
+    const listBottom = matTotal > 0 ? bottom - 24 : bottom // réserve la place du bouton "tout vendre"
+    const maxRows = Math.floor((listBottom - y) / (rowH + gap))
+    rows.slice(0, maxRows).forEach((r, i) => this.drawShopRow(reg, x, y + i * (rowH + gap), w, rowH, r.item, r.qty, r.btn))
+    if (rows.length > maxRows) reg(this.add.text(x + w, y + maxRows * (rowH + gap), `+${rows.length - maxRows}…`, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(1, 0))
+    if (matTotal > 0) this.drawForgeBtn(reg, x, bottom - 18, w, true, `Vendre tous les matériaux (+${matTotal})`, () => this.sellAllResources())
   }
 
   // ---------- helpers d'UI partagés (boutique + forge) ----------
@@ -781,12 +932,12 @@ export default class UIScene extends Phaser.Scene {
     }
     const cw = this.scale.width
     const ch = this.scale.height
-    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0))
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeForge())) // clic hors panneau = fermer
     const W = 500
     const H = 470
     const x0 = cw / 2 - W / 2
     const y0 = ch / 2 - H / 2
-    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD).setInteractive()) // absorbe les clics DANS le panneau
     this.drawPanelHeader(reg, x0, y0, W, 'npc_villager', 0, 'Aldric le Forgeron', p.gold)
     reg(this.add.text(x0 + 58, y0 + 38, 'Répare et améliore tes armes & armures', { fontFamily: 'monospace', fontSize: '9px', color: '#cfe8ff' }).setOrigin(0, 0))
 
@@ -829,13 +980,35 @@ export default class UIScene extends Phaser.Scene {
     const hov = reg(this.add.rectangle(x, y, w, h - 26, 0xffffff, 0.001).setOrigin(0, 0).setInteractive())
     hov.on('pointerover', () => this.showTip(item, x + w / 2, y))
     hov.on('pointerout', () => this.hideTip())
+    // coût en MATÉRIAUX de la prochaine amélioration (vert = en stock, orange = manquant)
+    const uCost = upgradeCost(item)
+    const mats = uCost != null ? this.upgradeMats(item) : null
+    const matsOk = !mats || this.hasMats(mats)
+    if (mats) reg(this.add.text(x + 44, y + 54, this.matsLabel(mats), { fontFamily: 'monospace', fontSize: '8px', color: matsOk ? '#9be8a0' : '#e0a060' }).setOrigin(0, 0))
     // boutons
     const rCost = repairCost(item)
-    const uCost = upgradeCost(item)
     const bw = (w - 24) / 2
     const by = y + h - 22
     this.drawForgeBtn(reg, x + 8, by, bw, rCost > 0 && p.gold >= rCost, rCost > 0 ? `Réparer ${rCost}` : 'Intact', () => this.repairItem(item))
-    this.drawForgeBtn(reg, x + 16 + bw, by, bw, uCost != null && p.gold >= uCost, uCost != null ? `+1 : ${uCost}or` : 'Max +5', () => this.upgradeItem(item))
+    this.drawForgeBtn(reg, x + 16 + bw, by, bw, uCost != null && p.gold >= uCost && matsOk, uCost != null ? `+1 : ${uCost}or` : 'Max +5', () => this.upgradeItem(item))
+  }
+
+  /** Matériaux requis pour la prochaine amélioration d'un objet (arme→Os, armure→Cuir ; +Cristal en haut). */
+  upgradeMats(item) {
+    const up = item.upgrade ?? 0
+    const base = item.slot === 'weapon' ? 'mat_essence' : 'mat_leather' // arme = Lingot de fer, armure = Cuir
+    const m = { [base]: up + 1 }
+    if (up >= 2) m.mat_crystal = up - 1 // +3 et au-delà : du Cristal
+    return m
+  }
+
+  hasMats(mats) {
+    const p = this.game_.player
+    return Object.entries(mats).every(([id, q]) => (p.resources[id] ?? 0) >= q)
+  }
+
+  matsLabel(mats) {
+    return Object.entries(mats).map(([id, q]) => `${q} ${ITEMS[id].name}`).join(' + ')
   }
 
   drawForgeBtn(reg, x, y, w, enabled, label, onClick) {
@@ -864,7 +1037,14 @@ export default class UIScene extends Phaser.Scene {
     const p = this.game_.player
     const cost = upgradeCost(item)
     if (cost == null || p.gold < cost) return
+    const mats = this.upgradeMats(item)
+    if (!this.hasMats(mats)) {
+      this.showToast('Matériaux insuffisants — ' + this.matsLabel(mats), '#e06666')
+      this.playDenied()
+      return
+    }
     p.gold -= cost
+    for (const [id, q] of Object.entries(mats)) p.removeResource(id, q)
     item.upgrade = (item.upgrade ?? 0) + 1
     item.durability = item.dur // l'amélioration répare aussi
     p.invVersion++
@@ -1025,7 +1205,7 @@ export default class UIScene extends Phaser.Scene {
     const g = this.game_
     const cw = this.scale.width
     const ch = this.scale.height
-    reg(this.add.rectangle(0, 0, cw, ch, 0x05070c, 0.92).setOrigin(0, 0).setDepth(300).setInteractive())
+    reg(this.add.rectangle(0, 0, cw, ch, 0x05070c, 0.92).setOrigin(0, 0).setDepth(300).setInteractive().on('pointerdown', () => this.closeMap())) // clic = fermer la carte
 
     const mw = g.mapW
     const mh = g.mapH
@@ -1193,7 +1373,10 @@ export default class UIScene extends Phaser.Scene {
     const cx = cw / 2
     const y0 = ch - H - 24 // ancré en bas de l'écran (style RPG)
 
-    // clic n'importe où sur le panneau -> phrase suivante
+    // overlay plein écran (invisible) : clic EN DEHORS de la barre = passer (skip) le dialogue
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.001).setOrigin(0, 0).setInteractive().on('pointerdown', () => { if (this.time.now > this.dlgOpenAt + 150) this.closeDialogue() }))
+
+    // clic sur le panneau -> phrase suivante
     const hit = reg(this.add.rectangle(cx, y0 + H / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD))
     hit.setInteractive({ useHandCursor: true })
     hit.on('pointerdown', () => this.advanceDialogue())
@@ -1254,7 +1437,7 @@ export default class UIScene extends Phaser.Scene {
 
   pointerOverInventory(x, y) {
     const inside = (r) => r && Phaser.Geom.Rectangle.Contains(r, x, y)
-    return inside(this.bagRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect) || inside(this.minimapRect)
+    return inside(this.bagRect) || inside(this.matRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect) || inside(this.minimapRect)
   }
 
   /** Filigrane de RARETÉ : fond teinté (couleur de la rareté) à placer DERRIÈRE l'icône d'un objet. */

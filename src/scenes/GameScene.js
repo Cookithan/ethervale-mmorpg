@@ -636,6 +636,16 @@ export default class GameScene extends Phaser.Scene {
    *  chemins et emprise des bâtiments -> les civils ne marchent ni sur les chemins ni sur les maisons. */
   wanderBlocked(w, x, y) {
     if (this.previewBlocked(x, y)) return true
+    // DISTANCE entre BALADEURS : seules les entités qui errent (état `_w`) comptent — les PNJ statiques non.
+    const sep2 = (TILE * 3) * (TILE * 3)
+    if (this._heroW && this._heroW !== w && this._heroW.sprite) {
+      if ((x - this._heroW.sprite.x) ** 2 + (y - this._heroW.sprite.y) ** 2 < sep2) return true
+    }
+    for (const npc of this.npcs || []) {
+      const ow = npc._w
+      if (!ow || ow === w || !ow.sprite) continue
+      if ((x - ow.sprite.x) ** 2 + (y - ow.sprite.y) ** 2 < sep2) return true
+    }
     if (!w.biomeLock) return false
     const tx = Math.floor(x / TILE)
     const ty = Math.floor(y / TILE)
@@ -2225,17 +2235,21 @@ export default class GameScene extends Phaser.Scene {
       ['Suis les chemins : ils mènent quelque part, l\'eau non.'],
       ['Repose-toi un instant, l\'aventurier. Puis repars plus fort.'],
     ]
-    // TOUS dans la PRAIRIE (autour du village) : ils s'y baladent et ne peuvent pas en sortir.
+    // 6 baladeurs : 3 à GAUCHE du village, 3 à DROITE. On pioche dans toute la moitié correspondante de la
+    // PRAIRIE (côté = signe de tx-cx) -> beaucoup de spots valides, donc les 6 se placent bien espacés.
+    const TARGET = 6
     this.wildNpcs = []
-    for (let guard = 0; this.wildNpcs.length < texes.length && guard < 9000; guard++) {
-      const tx = Phaser.Math.Between(this.cx - 24, this.cx + 24)
-      const ty = Phaser.Math.Between(this.cy - 24, this.cy + 24)
+    for (let guard = 0; this.wildNpcs.length < TARGET && guard < 12000; guard++) {
+      const i = this.wildNpcs.length
+      const left = i < TARGET / 2 // les 3 premiers à gauche du village, les 3 suivants à droite
+      const tx = Phaser.Math.Between(this.cx - 20, this.cx + 20)
+      const ty = Phaser.Math.Between(this.cy - 20, this.cy + 20)
+      if (left ? tx > this.cx - 3 : tx < this.cx + 3) continue // garde le bon côté (petit couloir neutre au centre)
       if (tx < 2 || ty < 2 || tx >= MAP_W - 2 || ty >= MAP_H - 2) continue
       if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
       if (this.biomeAt(tx, ty) !== 'prairie') continue // UNIQUEMENT en prairie
-      if (this.dist(tx, ty, this.cx, this.cy) < 11) continue // pas sur les bâtiments du centre (s'étendent ~10 tuiles)
-      if (this.wildNpcs.some((n) => this.dist(tx, ty, n.tx, n.ty) < 4)) continue // espacés
-      const i = this.wildNpcs.length
+      if (this.dist(tx, ty, this.cx, this.cy) < 11) continue // pas sur les bâtiments du centre
+      if (this.wildNpcs.some((n) => this.dist(tx, ty, n.tx, n.ty) < 6)) continue // bien espacés au spawn
       this.wildNpcs.push({ tx, ty, tex: texes[i], name: names[i], lines: pool[i % pool.length] })
     }
   }
@@ -3629,9 +3643,11 @@ export default class GameScene extends Phaser.Scene {
     if (this.activeBoss === mon) this.activeBoss = null
     if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
 
-    // butin GARANTI : 2 équipements épiques + gros tas d'or + un gros soin
-    this.drops.add(new Drop(this, mon.x - 12, mon.y, 'equip', 0, this.equipmentOfTier('legendary')))
-    this.drops.add(new Drop(this, mon.x + 12, mon.y, 'equip', 0, this.equipmentOfTier('legendary')))
+    // butin de BOSS : UN SEUL légendaire (biaisé classe) + 2 objets épiques/rares + gros or + gros soin
+    const cls = this.player.className
+    this.drops.add(new Drop(this, mon.x, mon.y - 2, 'equip', 0, this.equipmentOfTier('legendary', cls)))
+    this.drops.add(new Drop(this, mon.x - 16, mon.y + 4, 'equip', 0, this.equipmentOfTier('epic', cls)))
+    this.drops.add(new Drop(this, mon.x + 16, mon.y + 4, 'equip', 0, this.equipmentOfTier(Math.random() < 0.5 ? 'epic' : 'rare', cls)))
     const gold = Phaser.Math.Between(120, 240) + mon.level * 20
     this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', gold))
     this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))
@@ -3651,30 +3667,44 @@ export default class GameScene extends Phaser.Scene {
   spawnDrop(mon) {
     const loot = mon.def.loot
     const lvlMul = mon.lvlMul ?? 1
+    const lvl = mon.level ?? 1
     // OR (toujours)
     const g = Math.max(1, Math.round(Phaser.Math.Between(loot.gold[0], loot.gold[1]) * lvlMul * (mon.elite ? 3 : 1)))
     this.drops.add(new Drop(this, mon.x + 6, mon.y + 4, 'gold', g))
-    // ÉQUIPEMENT : ~18 % sur un mob normal, garanti sur une élite
-    if (mon.elite || Math.random() < 0.18) {
-      let tier = this.rollDropRarity()
+    // MATÉRIAU (table par espèce) : drop fréquent, va dans la poche de ressources (empilable)
+    if (loot.mat && ITEMS[loot.mat] && Math.random() < (loot.matChance ?? 0)) {
+      this.drops.add(new Drop(this, mon.x - 8, mon.y + 6, 'equip', 0, cloneItem(ITEMS[loot.mat])))
+    }
+    // ÉQUIPEMENT : proba propre au mob (garanti sur élite), rareté pondérée + SCALING par niveau de zone,
+    // smart loot MIX (60 % biaisé vers la classe du joueur, 40 % aléatoire).
+    if (mon.elite || Math.random() < (loot.gear ?? 0.18)) {
+      let tier = this.rollDropRarity(lvl)
       if (mon.elite) tier = TIER_UP[tier] ?? tier
-      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.equipmentOfTier(tier)))
+      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.equipmentOfTier(tier, this.player.className)))
     }
   }
 
-  /** Tire une rareté de drop pondérée : Commun 60 % / Magique 25 % / Rare 12 % (clés internes
-   *  common/rare/epic). Le Légendaire ne tombe JAMAIS ici (exclusif aux boss). */
-  rollDropRarity() {
-    const r = Math.random() * 97
-    if (r < 60) return 'common'
-    if (r < 85) return 'rare' // = Magique
-    return 'epic' // = Rare
+  /** Tire une rareté de drop pondérée. SCALING DE ZONE : plus le mob est de haut niveau (1→5 par
+   *  distance), plus les bonnes raretés montent. Le Légendaire ne tombe JAMAIS ici (boss only). */
+  rollDropRarity(level = 1) {
+    const t = Math.min(1, Math.max(0, (level - 1) / 4)) // 0 au niv1 -> 1 au niv5
+    const epic = 12 + 26 * t // 12 % -> 38 %
+    const rare = 25 + 10 * t // 25 % -> 35 %
+    const r = Math.random() * 100
+    if (r < epic) return 'epic' // = Rare (violet)
+    if (r < epic + rare) return 'rare' // = Magique (bleu)
+    return 'common'
   }
 
-  /** Renvoie une COPIE d'un objet d'équipement de la rareté `tier` (commun/rare/épique). */
-  equipmentOfTier(tier) {
-    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && !it.ranged) // armes à lancer = marché only
-    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => !it.ranged) // garde-fou
+  /** Renvoie une COPIE d'un ÉQUIPEMENT de rareté `tier`. `biasClass` (smart loot MIX) : 60 % du temps on
+   *  restreint aux objets utilisables par la classe (les ARMES surtout ; armure/focus/anneau restent universels). */
+  equipmentOfTier(tier, biasClass = null) {
+    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged) // slot = équipement ; lancer = marché only
+    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged) // garde-fou
+    if (biasClass && Math.random() < 0.6) {
+      const usable = pool.filter((it) => !it.classes || it.classes.includes(biasClass))
+      if (usable.length) pool = usable
+    }
     return cloneItem(Phaser.Utils.Array.GetRandom(pool))
   }
 
@@ -3682,8 +3712,8 @@ export default class GameScene extends Phaser.Scene {
   collectDrop(drop) {
     if (drop.pickableAt && this.time.now < drop.pickableAt) return // pas encore ramassable (objet lâché à l'instant)
     const p = this.player
-    // SAC PLEIN (cap strict) : l'équipement reste au sol, on prévient (toast throttlé), rien n'est consommé.
-    if (drop.type === 'equip' && p.bagFull()) {
+    // SAC PLEIN (cap strict) : l'équipement reste au sol (sauf MATÉRIAU -> poche de ressources à part).
+    if (drop.type === 'equip' && drop.item?.type !== 'material' && p.bagFull()) {
       this.scene.get('UIScene')?.showBagFull?.()
       return
     }
@@ -3707,11 +3737,20 @@ export default class GameScene extends Phaser.Scene {
       color = '#ff8088'
       Audio.sfx('sfx_pickup', { vol: 0.5, detune: 0 })
     } else if (drop.type === 'equip') {
-      p.addItem(drop.item)
-      text = drop.item.name
-      color = RARITY[drop.item.rarity]?.color ?? '#9be1ff'
-      Audio.sfx('sfx_loot', { vol: 0.6, detune: 0 }) // équipement = son plus marquant
-      this.scene.get('UIScene')?.showItemToast?.('Obtenu', drop.item) // toast HUD lisible
+      const it = drop.item
+      if (it?.type === 'material') {
+        // MATÉRIAU : empilé dans la poche de ressources (pas dans le sac)
+        p.addResource(it.id)
+        text = `${it.name} (${p.resources[it.id]})`
+        color = RARITY[it.rarity]?.color ?? '#cfe8ff'
+        Audio.sfx('sfx_pickup', { vol: 0.5, detune: 0 })
+      } else {
+        p.addItem(it)
+        text = it.name
+        color = RARITY[it.rarity]?.color ?? '#9be1ff'
+        Audio.sfx('sfx_loot', { vol: 0.6, detune: 0 }) // équipement = son plus marquant
+        this.scene.get('UIScene')?.showItemToast?.('Obtenu', it) // toast HUD lisible
+      }
     }
     this.floatingText(drop.x, drop.y, text, color)
   }

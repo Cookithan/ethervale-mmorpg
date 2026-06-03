@@ -78,7 +78,18 @@ export const ITEMS = {
   potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, heal: 120 },
   potion_mana: { id: 'potion_mana', name: 'Potion de mana', type: 'consumable', icon: 'pot_mana', rarity: 'common', price: 45, mana: 40 },
   potion_mana_big: { id: 'potion_mana_big', name: 'Grande potion de mana', type: 'consumable', icon: 'pot_mana_big', rarity: 'rare', price: 120, mana: 90 },
+
+  // ===== MATÉRIAUX (type 'material') — ressources lâchées par les mobs, EMPILABLES dans une poche à part
+  // (pas le sac d'équipement). Servent à VENDRE (or) ET à AMÉLIORER l'équipement à la forge. `price` =
+  // prix de revente ×2 (sellPrice = price/2). =====
+  mat_leather: { id: 'mat_leather', name: 'Cuir', type: 'material', icon: 'mat_leather', rarity: 'common', price: 16 },
+  mat_bone: { id: 'mat_bone', name: 'Os', type: 'material', icon: 'wpn_bone', rarity: 'common', price: 18 },
+  mat_essence: { id: 'mat_essence', name: 'Lingot de fer', type: 'material', icon: 'mat_essence', rarity: 'rare', price: 32 },
+  mat_crystal: { id: 'mat_crystal', name: 'Cristal', type: 'material', icon: 'mat_crystal', rarity: 'epic', price: 56 },
 }
+
+// matériaux exposés à part (ordre d'affichage de la poche de ressources)
+export const MATERIALS = ['mat_leather', 'mat_bone', 'mat_essence', 'mat_crystal']
 
 // stock du marchand = tout le catalogue SAUF les légendaires (exclusifs aux boss, brief §8)
 export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary')
@@ -165,6 +176,7 @@ export function itemName(item) {
 /** Texte descriptif d'un objet (consommable = soin ; équipement = stats + durabilité). */
 export function describeItem(item) {
   if (item.desc) return item.desc // objet spécial décrit en clair (ex. bateau)
+  if (item.type === 'material') return 'Matériau — à vendre ou à utiliser à la forge'
   if (item.type === 'consumable') {
     const e = []
     if (item.heal) e.push(`+${item.heal} PV`)
