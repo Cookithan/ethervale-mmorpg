@@ -52,6 +52,8 @@ export default class BootScene extends Phaser.Scene {
 
     // sol "prairie" (tileset image, découpé en tuiles 16x16 par la tilemap)
     this.load.image('field', 'assets/tiles/field.png')
+    // pont en bois (Sprout Lands) -> remplace les ponts/gués générés
+    this.load.image('bridge_wood', 'assets/tiles/bridge_wood.png') // 80x48 = 5x3 tuiles
     // eau ANIMÉE (Sprout Lands, 4 frames de 16px) -> océan/rivières/lacs qui ondulent
     this.load.image('water_sprout', 'assets/tiles/water_sprout.png')
     // eau ANIMÉE (Sprout Lands, 4 frames de 16px) -> océan/rivières/lacs qui ondulent

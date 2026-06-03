@@ -149,6 +149,10 @@ const TEMP_MAX_SLOW = 0.45 // ralenti maxi (-45 % de vitesse au tout froid/chaud
 const TEMP_CHIP_START = 90 // |temp| où les dégâts (gelure/coup de chaud) commencent
 const TEMP_CHIP_INTERVAL = 1000 // ms entre deux ticks de dégâts
 const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en zone Glacial/Brûlant
+// Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
+// carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
+const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
+const BRIDGE_V = 8
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
 const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
@@ -1305,11 +1309,11 @@ export default class GameScene extends Phaser.Scene {
     this.waterLayer = wmap.createBlankLayer('water', wts, 0, 0).setDepth(-8)
     // couche de pont (au-dessus de l'eau)
     const bmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
-    const bts = bmap.addTilesetImage('bridge_gen', 'bridge_gen', TILE, TILE)
+    const bts = bmap.addTilesetImage('bridge_wood', 'bridge_wood', TILE, TILE) // pont en bois Sprout (5×3 tuiles)
     this.bridgeLayer = bmap.createBlankLayer('bridge', bts, 0, 0).setDepth(-7)
     // couche des GUÉS (terre battue marron clair) au-dessus de l'eau/sol
     const fmap = this.make.tilemap({ tileWidth: TILE, tileHeight: TILE, width: MAP_W, height: MAP_H })
-    const fts = fmap.addTilesetImage('ford_gen', 'ford_gen', TILE, TILE)
+    const fts = fmap.addTilesetImage('bridge_wood', 'bridge_wood', TILE, TILE) // gués rendus en PONT bois (comme les ponts)
     this.fordLayer = fmap.createBlankLayer('ford', fts, 0, 0).setDepth(-7)
 
     this.spawnPonds() // petits lacs (forêt/prairie) + lacs gelés marchables (neige) -> crée iceCells
@@ -1334,6 +1338,7 @@ export default class GameScene extends Phaser.Scene {
       const t = this.waterLayer.getTileAt(x, y)
       if (t) t.setCollision(false) // ...sauf sous un PONT (on marche dessus, l'eau reste visible)
     }
+    this.renderFordBridges() // eau visible (sans collision) + sprite de pont agrandi sous chaque traversée
   }
 
   /** Pose plusieurs PONTS le long de chaque rivière, espacés, chacun PERPENDICULAIRE à l'écoulement
@@ -1354,10 +1359,13 @@ export default class GameScene extends Phaser.Scene {
    *  rivière à (cx,cy), perpendiculairement au courant `flowAng`, + 1 tuile d'accostage sur chaque
    *  berge. Les cellules deviennent marchables (collision retirée dans buildRivers). */
   bridgeSpan(cx, cy, flowAng) {
-    const px = -Math.sin(flowAng) // direction perpendiculaire (en travers de la rivière)
+    const px = -Math.sin(flowAng) // direction perpendiculaire (en travers de la rivière) = LONGUEUR du pont
     const py = Math.cos(flowAng)
     const fx = Math.cos(flowAng) // direction du courant (pour la largeur du pont)
     const fy = Math.sin(flowAng)
+    // orientation du tablier : si le pont s'étend surtout horizontalement -> pont HORIZONTAL (planches
+    // verticales), sinon VERTICAL (planches horizontales). Tuiles du sprite bridge_wood (cf. BRIDGE_H/V).
+    const tile = Math.abs(px) >= Math.abs(py) ? BRIDGE_H : BRIDGE_V
     const place = (x, y) => {
       const tx = Math.round(x)
       const ty = Math.round(y)
@@ -1365,7 +1373,7 @@ export default class GameScene extends Phaser.Scene {
       const k = this.key(tx, ty)
       if (this.iceCells.has(k)) return
       this.bridgeCells.add(k)
-      this.bridgeLayer.putTileAt(Math.floor(tileNoise(tx, ty, 9) * 4), tx, ty) // variante de planches
+      this.bridgeLayer.putTileAt(tile, tx, ty) // planches orientées selon le sens du pont
     }
     for (const along of [0, 1]) {
       // depuis le centre vers chaque berge, jusqu'à sortir de l'eau (+ 1 tuile d'accostage)
@@ -1483,25 +1491,53 @@ export default class GameScene extends Phaser.Scene {
     // GUÉS en TERRE : quelques colonnes traversantes (près du village + étalées) où on retire l'eau
     // et on pose la tuile de chemin -> traversée d'une zone à l'autre.
     const fordXs = [this.cx - 48, this.cx, this.cx + 48].map((x) => Phaser.Math.Clamp(Math.round(x), 3, MAP_W - 4))
+    this.fordBridgeRects = [] // rectangles {px,py,w,h} où poser UN sprite de pont agrandi (rendu plus tard)
     for (const fx of fordXs) {
+      let run = null // segment contigu de traversée en cours {minX,maxX,minY,maxY}
+      const flush = () => {
+        if (!run) return
+        // UN SEUL sprite de pont couvre la traversée + 1 case de TERRE à chaque bout (touche les 2 rives,
+        // ne s'arrête pas dans l'eau). Rendu après le setup de collision.
+        const y0 = Math.max(0, run.minY - 1)
+        const y1 = Math.min(MAP_H - 1, run.maxY + 1)
+        this.fordBridgeRects.push({ px: run.minX * TILE, py: y0 * TILE, w: (run.maxX - run.minX + 1) * TILE, h: (y1 - y0 + 1) * TILE })
+        run = null
+      }
       for (let ty = 2; ty < MAP_H - 2; ty++) {
         let onRiver = false
         for (let dx = -1; dx <= 1; dx++) if (wide.has(this.key(fx + dx, ty))) onRiver = true
-        if (!onRiver) continue
-        for (let dx = -2; dx <= 2; dx++) {
+        if (!onRiver) { flush(); continue }
+        let rowHasCell = false
+        for (let dx = -1; dx <= 1; dx++) { // gué étroit (3 cases, centré sur la porte) : juste de quoi passer
           const k = this.key(fx + dx, ty)
           if (!wide.has(k)) continue
-          this.waterCells.delete(k)
+          this.waterCells.delete(k) // marchable garanti (sort de la logique d'eau) ; l'eau VISUELLE est re-posée sans collision après
           this.frontierCells.delete(k)
           this.fordCells.add(k)
-          this.pathCells.add(k) // déco/spawns évitent le gué
+          this.pathCells.add(k) // déco/spawns évitent le pont
+          const cx = fx + dx
+          if (!run) run = { minX: cx, maxX: cx, minY: ty, maxY: ty }
+          else { run.minX = Math.min(run.minX, cx); run.maxX = Math.max(run.maxX, cx); run.maxY = ty }
+          rowHasCell = true
         }
+        if (!rowHasCell) flush()
       }
+      flush()
     }
-    // rendu des gués en TERRE BATTUE marron CLAIR (texture ford_gen) sur leur couche dédiée
-    for (const k of this.fordCells) {
+  }
+
+  /** Pose, APRÈS le setup de collision de l'eau : (1) de l'eau VISUELLE sans collision sous chaque gué,
+   *  (2) un seul sprite de pont AGRANDI par traversée. Appelé en fin de buildRivers. */
+  renderFordBridges() {
+    const btex = this.textures.get('bridge_wood')
+    if (btex && !btex.has('vbridge')) btex.add('vbridge', 0, 0, 0, 16, 48) // UNE colonne = UN pont vertical complet (rambardes + bouts)
+    for (const k of this.fordCells || []) {
       const [x, y] = k.split(',').map(Number)
-      this.fordLayer.putTileAt(Math.floor(tileNoise(x, y, 23) * 4), x, y)
+      const t = this.waterLayer.putTileAt(Math.floor(tileNoise(x, y, 3) * 4), x, y) // eau VISIBLE sous le pont
+      if (t) t.setCollision(false) // ...mais marchable (on passe dessus)
+    }
+    for (const r of this.fordBridgeRects || []) {
+      this.add.image(r.px, r.py, 'bridge_wood', 'vbridge').setOrigin(0, 0).setDisplaySize(r.w, r.h).setDepth(-7)
     }
   }
 
