@@ -170,15 +170,22 @@ const BOSS_GUARD_LEASH = 220 // tant que le combat n'a PAS commencé, le boss ne
 const BOSS_WAKE_DELAY = 1000 // au réveil (1re attaque reçue), le boss patiente avant de mordre/charger -> laisse le temps de réagir
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
-// (le scaling de niveau est désormais exponentiel ×1.5/niv, calculé directement dans le constructeur)
-const BOSS_HP_MUL = 8 // PV d'un boss = type × niveau × 8 (gros sac à PV)
-const BOSS_DMG_MUL = 1.5 // dégâts du boss (kitable car plus lent que le joueur -> on encaisse rarement)
-const BOSS_XP_MUL = 8 // XP massive
+// SCALING DES MOBS par niveau de ZONE (1→6 selon la distance) : PV ×2/niv (murs de zone nets),
+// dégâts ×1.6/niv (plus doux -> dur mais pas one-shot). Les BOSS NE sont PAS scalés (stats fixes ci-dessous).
+const MOB_HP_MUL = 2 // PV (et XP/or) × ce facteur par niveau de zone
+const MOB_DMG_MUL = 1.6 // dégâts × ce facteur par niveau (plus doux que les PV)
+// BOSS = stats PRÉDÉFINIES (indépendantes de la courbe des mobs) : PV/dégâts/XP = type × ces multiplicateurs.
+// (valeurs gonflées pour garder la puissance d'avant, quand le boss était "niveau 7" scalé.)
+const BOSS_HP_MUL = 91 // PV d'un boss = type × 91 (gros sac à PV, fixe)
+const BOSS_DMG_MUL = 12 // dégâts du boss (fixes) -> sert aux attaques SPÉCIALES (charge, projectiles)
+// Dégâts de CONTACT (morsure) d'un boss = dégâts × ce facteur. Bien plus bas que ses attaques spéciales :
+// le tank/guerrier collé au boss échange des coups SOUTENABLES, et le vrai danger = les attaques esquivables.
+const BOSS_BITE_MUL = 0.5
+const BOSS_XP_MUL = 91 // XP massive
 const BOSS_SCALE_MUL = 2.2 // taille imposante (uniquement les boss = MONSTRES agrandis, PAS les sprites dédiés)
 // BOSS DE RAID (sprites dédiés `rig`) : PV-mur infranchissable en solo + dégâts qui écrasent.
-// Contenu verrouillé tant que le multijoueur (Phase 4) n'existe pas : on peut les approcher, pas les vaincre.
-const RAID_HP_MUL = 28 // × le PV déjà scalé par niveau (=> dizaines de milliers de PV)
-const RAID_DMG_MUL = 3 // chaque coup enlève une énorme part de vie -> facetank = mort
+const RAID_HP_MUL = 319 // dizaines de milliers de PV (fixe)
+const RAID_DMG_MUL = 34 // chaque coup enlève une énorme part de vie -> facetank = mort
 
 // DRAGON SEGMENTÉ : la tête (= le Monster) tire une chaîne de segments. Chaque segment est CONTRAINT
 // en continu à distance fixe derrière celui qui le précède (suivi fluide, pas de saut de point).
@@ -211,23 +218,21 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.ranged = !!def.ranged // boss à DISTANCE : télégraphe (anim shoot) puis tire un projectile à esquiver
     this.eliteName = opts.name ?? null
 
-    // NIVEAU DE SCALING (≠ niveau AFFICHÉ) : ×1.5 PV ET dégâts par niveau (exponentiel).
-    // - mob normal : son niveau de zone (1-5) ; niv4 = 1.5× le niv3.
-    // - ÉLITE : valeurs d'un niveau 7 (mais affiché 5).
-    // - BOSS : niveau passé tel quel (élevé -> PV "comme avant", pas un mob).
-    const scaleLevel = elite ? 7 : level
-    const lvlMul = Math.pow(1.5, scaleLevel - 1) // PV/XP
-    const dmgLvlMul = Math.pow(1.5, scaleLevel - 1) // dégâts (même facteur que les PV)
+    // SCALING : mob normal = par niveau de ZONE (1→6) ; BOSS = stats FIXES (lvlMul=1) ; ÉLITE = ×2 PV/×1.5 dmg à plat.
+    const scaleLevel = level // niveau de zone (1→6)
+    const lvlMul = boss ? 1 : Math.pow(MOB_HP_MUL, scaleLevel - 1) // PV/XP (boss non scalé)
+    const dmgLvlMul = boss ? 1 : Math.pow(MOB_DMG_MUL, scaleLevel - 1) // dégâts (plus doux que les PV)
     this.lvlMul = lvlMul
-    // niveau AFFICHÉ plafonné à 5 (élite niv7 -> "Niv.5", boss niv7 -> "Niv.5")
-    this.displayLevel = Math.min(scaleLevel, 5)
-    // élite : le boost vient déjà du niveau 7 -> pas de multiplicateur HP/dmg en plus (sinon ×2 de trop)
+    this.displayLevel = scaleLevel
+    const eliteHpMul = elite ? 2 : 1 // élite = même zone mais plus costaud (à plat, contrôlable)
+    const eliteDmgMul = elite ? 1.5 : 1
     const hpMul = this.isRaid ? RAID_HP_MUL : boss ? BOSS_HP_MUL : 1
     const dmgMul = this.isRaid ? RAID_DMG_MUL : boss ? BOSS_DMG_MUL : 1
     const xpMul = boss ? BOSS_XP_MUL : elite ? 3 : 1
-    this.maxHp = Math.round(def.hp * lvlMul * hpMul)
+    this.maxHp = Math.round(def.hp * lvlMul * hpMul * eliteHpMul)
     this.hp = this.maxHp
-    this.damage = Math.round(def.damage * dmgLvlMul * dmgMul)
+    this.damage = Math.round(def.damage * dmgLvlMul * dmgMul * eliteDmgMul)
+    this.dmgScale = dmgLvlMul * dmgMul * eliteDmgMul // facteur de dégâts total (utilisé pour les projectiles de boss)
     this.xpReward = Math.round(def.xp * lvlMul * xpMul)
     this.displayName = opts.name ?? def.name // nom affiché (boss/élite nommés, sinon type)
     this.aggroRange = boss ? def.aggro + 70 : def.aggro // le boss repère de plus loin
@@ -789,7 +794,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.isBoss && !this.combatEngaged) return false // boss endormi : ne mord pas tant qu'on ne l'a pas réveillé
     if (this.def.charge) return false // boss à CHARGE : ne blesse QUE par son dash (test de distance) -> mêlée sûre entre 2 charges
     if (now < this.nextBiteAt) return false
-    const dmg = this.charging ? Math.round(this.damage * (this.def.charge?.dmgMul ?? 1.5)) : this.damage
+    let dmg = this.charging ? Math.round(this.damage * (this.def.charge?.dmgMul ?? 1.5)) : this.damage
+    if (this.isBoss && !this.charging) dmg = Math.round(dmg * BOSS_BITE_MUL) // contact de boss = soutenable pour la mêlée (le danger = les attaques spéciales)
     if (player.takeDamage(dmg, now)) {
       this.nextBiteAt = now + TOUCH_COOLDOWN
       return true

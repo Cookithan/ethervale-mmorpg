@@ -137,7 +137,7 @@ const ZONE_WARP = 16 // déformation (tuiles) des frontières de zones (Voronoi)
 const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île -> casse la symétrie (décalé à l'EST)
 const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
-const MONSTER_MAX_LEVEL = 5 // mobs niv 1 (normal) -> 5 max ; chaque niveau = ×1.5 PV & dégâts (cf. Monster.js)
+const MONSTER_MAX_LEVEL = 6 // mobs niv 1 (village) -> 6 (zones lointaines = end-game) ; PV ×2/niv, dégâts ×1.6/niv (cf. Monster.js)
 const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
 const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
@@ -2029,7 +2029,7 @@ export default class GameScene extends Phaser.Scene {
     const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
     const typeKey = type || Phaser.Utils.Array.GetRandom(pool)
     const isElite = elite !== null ? elite : Phaser.Math.Between(1, 100) <= SHINY_CHANCE
-    let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) + (isElite ? 1 : 0)
+    let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) // élite = multiplicateur à plat (Monster.js), pas +niveau
     level = Phaser.Math.Clamp(level, 1, MONSTER_MAX_LEVEL)
     const name = isElite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}` : null
     const m = new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite: isElite, name })
@@ -2085,7 +2085,7 @@ export default class GameScene extends Phaser.Scene {
       const elite = forceElite !== null ? forceElite : initial && Phaser.Math.Between(1, 100) <= SHINY_CHANCE
       // niveau = base du biome (1-5) + variation ±1 -> diversité sur un même type d'ennemi.
       // (déterministe au spawn initial car PRNG seedé ; varié sur les respawns.)
-      let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) + (elite ? 1 : 0)
+      let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) // élite = multiplicateur à plat (Monster.js), pas +niveau
       level = Phaser.Math.Clamp(level, 1, MONSTER_MAX_LEVEL)
       const name = elite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}` : null
       this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite, name }))
@@ -2320,7 +2320,7 @@ export default class GameScene extends Phaser.Scene {
     if (!cfg || !lair) return null
     const tile = this.findBossTile(lair.tx, lair.ty, biome) || lair
     if (!tile) return null
-    const level = 7 // boss = niveau de scaling élevé (PV "comme avant", pas un mob) ; affiché plafonné à 5
+    const level = 6 // niveau AFFICHÉ du boss (cosmétique : ses stats sont FIXES, non scalées par niveau)
     const boss = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, cfg.type, { level, boss: true, name: cfg.name })
     boss.bossBiome = biome
     boss.bossIndex = index // pour le respawn ciblé
@@ -3678,7 +3678,7 @@ export default class GameScene extends Phaser.Scene {
     const proj = this.enemyProjectiles.get(boss.x, boss.y)
     if (!proj) return
     const def = boss.def || {}
-    const dmg = Math.round((def.projDamage ?? 14) * (boss.lvlMul ?? 1))
+    const dmg = Math.round((def.projDamage ?? 14) * (boss.dmgScale ?? 1)) // boss = stats fixes (dmgScale, plus lvlMul)
     const fx = { anim: 'fx-fireball', tex: 'fx_fireball', scale: 1.6 } // boule de feu ROUGE (asset du pack, pas de teinte)
     // léger biais d'avance : on vise un peu DEVANT le joueur s'il bouge (rend l'esquive moins triviale,
     // mais sans homing -> un changement de direction franc évite l'orbe).

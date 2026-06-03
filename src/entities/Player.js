@@ -62,6 +62,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.baseMaxHp = cls.hp
     this.baseAttack = cls.attack
     this.baseDefense = cls.defense
+    // GAINS PAR NIVEAU propres à la CLASSE (identité de rôle trinité, cf. classes.js).
+    // Tank = beaucoup de PV + défense ; Mage = peu de PV mais mana ; Guerrier = PV équilibré ; Soigneur = mana.
+    this.hpPerLevel = cls.hpPerLevel ?? 12
+    this.defPerLevel = cls.defPerLevel ?? 0
+    this.manaPerLevel = cls.manaPerLevel ?? 0
 
     // capacités EXCLUSIVES de la classe (verrouillées à la création) + vitesse
     this.abilities = cls.abilities ?? { melee: true, ranged: false, heal: false }
@@ -133,6 +138,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.baseMaxHp = s.baseMaxHp ?? this.baseMaxHp
     this.baseAttack = s.baseAttack ?? this.baseAttack
     this.baseDefense = s.baseDefense ?? this.baseDefense
+    this.baseMana = s.baseMana ?? this.baseMana // mana de base acquise au fil des niveaux (casters)
     if (s.equipped) {
       // garantit les 4 slots + migre une ancienne sauvegarde (slot 'accessory' -> 'ring')
       this.equipped = { weapon: null, armor: null, focus: null, ring: null, ...s.equipped }
@@ -330,7 +336,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     while (this.xp >= this.xpToNext && this.level < this.maxLevel) {
       this.xp -= this.xpToNext
       this.level++
-      this.baseMaxHp += 12
+      this.baseMaxHp += this.hpPerLevel // gain de PV propre à la classe (Tank +30 ... Mage +11)
+      this.baseDefense += this.defPerLevel // seul le Tank en gagne (+1/niv) -> encaisse de mieux en mieux
+      this.baseMana += this.manaPerLevel // casters (Mage/Soigneur) -> plus de mana pour enchaîner les sorts
       this.baseAttack += 4
       this.recomputeStats()
       this.hp = this.maxHp // soin complet au level up

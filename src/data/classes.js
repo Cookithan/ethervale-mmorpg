@@ -19,6 +19,8 @@ export const CLASSES = {
     key: 'warrior', name: 'Guerrier', desc: 'Corps à corps robuste',
     hp: 110, attack: 14, defense: 1, speedMul: 1.0,
     mana: 60,
+    // GAINS PAR NIVEAU (identité de rôle, style trinité) : DPS mêlée équilibré.
+    hpPerLevel: 20, defPerLevel: 0, manaPerLevel: 0,
     spell: { id: 'charge', name: 'Charge', cost: 25, cd: 6000, desc: 'Bond/esquive ; blesse les ennemis traversés' }, // bond + dégâts
     abilities: { melee: true, ranged: false, heal: false },
     kit: 'Épée (Espace) · Charge (1)',
@@ -32,6 +34,8 @@ export const CLASSES = {
     key: 'mage', name: 'Mage', desc: 'Sorts à distance, fragile',
     hp: 70, attack: 20, defense: 0, speedMul: 1.0,
     mana: 120,
+    // Fragile mais gros dégâts : peu de PV, beaucoup de mana pour enchaîner les sorts.
+    hpPerLevel: 11, defPerLevel: 0, manaPerLevel: 5,
     shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec)
     rangedDmgMul: 1.1, // ...mais qui tape MOINS fort par boule
     spell: { id: 'meteor', name: 'Météore', cost: 45, cd: 8000, desc: 'Incantation puis grosse zone de dégâts' }, // AoE incantée
@@ -49,6 +53,8 @@ export const CLASSES = {
     key: 'tank', name: 'Tank', desc: 'Très lent, énormément de PV',
     hp: 200, attack: 9, defense: 5, speedMul: 0.6,
     mana: 70,
+    // Mur : énormément de PV ET défense qui monte (encaisse de mieux en mieux), dégâts faibles.
+    hpPerLevel: 30, defPerLevel: 1, manaPerLevel: 0,
     attackCdMul: 2.0, // attaque de base nettement plus LENTE (coup lourd de tank)
     meleeKnock: 200, // son coup REPOUSSE l'ennemi
     spell: { id: 'shield', name: 'Bouclier', cost: 30, cd: 10000, desc: '-80% dégâts reçus pendant 4s' }, // absorbe 80%
@@ -64,6 +70,8 @@ export const CLASSES = {
     key: 'healer', name: 'Soigneur', desc: 'Soigne, sorts légers',
     hp: 100, attack: 11, defense: 1, speedMul: 1.0,
     mana: 110,
+    // Soutien : PV moyens, beaucoup de mana pour soigner sur la durée.
+    hpPerLevel: 14, defPerLevel: 0, manaPerLevel: 4,
     spell: { id: 'heal', name: 'Soin', cost: 30, cd: 4000, desc: 'Rend 35% de tes PV' }, // soin (soi / allié blessé)
     abilities: { melee: false, ranged: true, heal: true },
     kit: 'Projectile (F) · Soin (1)',

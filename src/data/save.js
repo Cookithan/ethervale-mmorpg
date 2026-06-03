@@ -48,6 +48,7 @@ export function makeSave(player, character) {
     baseMaxHp: player.baseMaxHp,
     baseAttack: player.baseAttack,
     baseDefense: player.baseDefense,
+    baseMana: player.baseMana,
     hp: player.hp,
     equipped: player.equipped,
     inventory: player.inventory,
