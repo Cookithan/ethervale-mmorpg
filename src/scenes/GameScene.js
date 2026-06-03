@@ -3852,13 +3852,13 @@ export default class GameScene extends Phaser.Scene {
   /** Tire une rareté de drop pondérée. SCALING DE ZONE : plus le mob est de haut niveau (1→5 par
    *  distance), plus les bonnes raretés montent. Le Légendaire ne tombe JAMAIS ici (boss only). */
   rollDropRarity(level = 1) {
-    const t = Math.min(1, Math.max(0, (level - 1) / 4)) // 0 au niv1 -> 1 au niv5
-    const epic = 12 + 26 * t // 12 % -> 38 %
-    const rare = 25 + 10 * t // 25 % -> 35 %
+    const t = Phaser.Math.Clamp((level - 1) / (MONSTER_MAX_LEVEL - 1), 0, 1) // 0 au niv1 -> 1 au niv max (6)
+    const epic = level <= 2 ? 0 : Math.max(0, 44 * t - 6) // AUCUN épique aux niv 1-2 ; monte ensuite jusqu'à ~38 % au niv max (se MÉRITE en zone lointaine)
+    const rare = 22 + 13 * t // 22 % -> 35 %
     const r = Math.random() * 100
-    if (r < epic) return 'epic' // = Rare (violet)
+    if (r < epic) return 'epic' // = Rare (violet) — jamais sur un mob de bas niveau
     if (r < epic + rare) return 'rare' // = Magique (bleu)
-    return 'common'
+    return level >= 5 ? 'rare' : 'common' // niv 5-6 (zones end-game) : plus aucun commun, le plancher = Magique (bleu)
   }
 
   /** Renvoie une COPIE d'un ÉQUIPEMENT de rareté `tier`. `biasClass` (smart loot MIX) : 60 % du temps on
