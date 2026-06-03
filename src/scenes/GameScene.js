@@ -3594,8 +3594,14 @@ export default class GameScene extends Phaser.Scene {
 
   /** Applique l'effet d'un drop ramassé + texte flottant, puis le retire. */
   collectDrop(drop) {
-    if (!drop.collect()) return // déjà ramassé/expiré
+    if (drop.pickableAt && this.time.now < drop.pickableAt) return // pas encore ramassable (objet lâché à l'instant)
     const p = this.player
+    // SAC PLEIN (cap strict) : l'équipement reste au sol, on prévient (toast throttlé), rien n'est consommé.
+    if (drop.type === 'equip' && p.bagFull()) {
+      this.scene.get('UIScene')?.showBagFull?.()
+      return
+    }
+    if (!drop.collect()) return // déjà ramassé/expiré
     let text
     let color
     if (drop.type === 'gold') {
@@ -3622,6 +3628,16 @@ export default class GameScene extends Phaser.Scene {
       this.scene.get('UIScene')?.showItemToast?.('Obtenu', drop.item) // toast HUD lisible
     }
     this.floatingText(drop.x, drop.y, text, color)
+  }
+
+  /** Lâche un objet du sac sur le sol, aux pieds du héros (appelé par l'UI, sac plein -> faire de la place).
+   *  Délai anti-reprise immédiate : on peut s'éloigner avant qu'il ne soit ramassable. */
+  dropItemOnGround(item) {
+    const p = this.player
+    if (!p) return
+    const d = new Drop(this, p.x + Phaser.Math.Between(-6, 6), p.y + 9, 'equip', 0, item, 1000)
+    this.drops.add(d)
+    this.floatingText(p.x, p.y - 4, 'Lâché', '#cdd6e0')
   }
 
   /** Petit texte qui monte et s'efface (ramassage, soin...). */

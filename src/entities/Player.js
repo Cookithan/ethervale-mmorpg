@@ -9,6 +9,7 @@ const ATTACK_COOLDOWN = 340 // cadence de l'attaque de base : rapide/spammable m
 const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
 const SHOOT_COOLDOWN = 360 // délai mini entre deux tirs à distance (ms) — attaque de base à distance
 const MANA_REGEN = 6 // mana régénéré par seconde (régén LENTE, brief §1)
+const INV_MAX = 5 // capacité du SAC (cap strict, brief A0) — l'équipement des 4 slots est à part
 
 /**
  * Player — héros contrôlé au clavier (ZQSD/WASD/flèches) ET au clic (click-to-move).
@@ -81,6 +82,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.inventory = [cloneItem(ITEMS.amulet)] // un Anneau de mana de départ dans le sac
     // (les armes à LANCER ne sont pas de départ : trop fortes -> uniquement achetables au marché)
     this.invVersion = 0 // incrémenté à chaque changement (l'UI s'en sert pour rafraîchir)
+    this.invMax = INV_MAX // taille max du sac (loot/achat refusés quand plein)
 
     this.hp = this.baseMaxHp
     this.recomputeStats() // initialise maxHp / attackPower / defense
@@ -172,10 +174,17 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.mana > this.maxMana) this.mana = this.maxMana
   }
 
-  /** Ajoute un objet au sac. */
+  /** Vrai s'il reste de la place dans le sac. */
+  bagFull() {
+    return this.inventory.length >= this.invMax
+  }
+
+  /** Ajoute un objet au sac. Renvoie false si le sac est PLEIN (cap strict). */
   addItem(item) {
+    if (this.bagFull()) return false
     this.inventory.push(item)
     this.invVersion++
+    return true
   }
 
   /** Retire un objet du sac (revente). Renvoie true si trouvé. */
@@ -222,14 +231,16 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return null
   }
 
-  /** Déséquipe un slot (renvoie l'objet au sac). */
+  /** Déséquipe un slot (renvoie l'objet au sac). Renvoie false si le sac est plein. */
   unequip(slot) {
     const item = this.equipped[slot]
-    if (!item) return
+    if (!item) return false
+    if (this.bagFull()) return false // sac plein : impossible de retirer (libère une place d'abord)
     this.equipped[slot] = null
     this.inventory.push(item)
     this.recomputeStats()
     this.invVersion++
+    return true
   }
 
   /** Autorise un tir si le cooldown est passé et arme le prochain. Renvoie true si OK. */

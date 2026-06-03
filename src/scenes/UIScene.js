@@ -58,6 +58,27 @@ export default class UIScene extends Phaser.Scene {
       .setDepth(200)
       .setVisible(false)
 
+    // bouton « ✖ Lâcher » de l'infobulle (objets du sac seulement) : pose l'objet au sol pour libérer
+    // une place (le sac est cap à 5). Placé SOUS l'infobulle ; reste visible tant qu'on le survole.
+    this._dropTarget = null
+    this._tipHideEv = null
+    this.dropBtn = this.add
+      .text(0, 0, '✖ Lâcher', {
+        fontFamily: 'monospace',
+        fontSize: '11px',
+        color: '#ffd1d1',
+        backgroundColor: '#5a1d1ddd',
+        padding: { x: 6, y: 4 },
+        align: 'center',
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(201)
+      .setVisible(false)
+      .setInteractive({ useHandCursor: true })
+    this.dropBtn.on('pointerover', () => this._cancelTipHide())
+    this.dropBtn.on('pointerout', () => this.hideTip())
+    this.dropBtn.on('pointerdown', () => this._dropTarget && this.dropItem(this._dropTarget))
+
     this.buildHud()
 
     // pseudo du héros : dessiné ICI (scène non-zoomée) puis projeté depuis la caméra de GameScene
@@ -375,7 +396,7 @@ export default class UIScene extends Phaser.Scene {
         }
         this.hideTip()
       })
-      c.on('pointerover', () => this.showTip(item, bx, gy - cell / 2))
+      c.on('pointerover', () => this.showTip(item, bx, gy - cell / 2, true)) // droppable : bouton « ✖ Lâcher »
       c.on('pointerout', () => this.hideTip())
     }
     if (overflow > 0) {
@@ -483,8 +504,12 @@ export default class UIScene extends Phaser.Scene {
         reg(this.addIcon(pos.x, pos.y, item.icon, cellSz - 14))
         c.setInteractive({ useHandCursor: true })
         c.on('pointerdown', () => {
-          Audio.sfx('ui_accept', { detune: 0 })
-          p.unequip(slot)
+          if (p.unequip(slot)) {
+            Audio.sfx('ui_accept', { detune: 0 })
+          } else {
+            this.showToast('Sac plein — libère une place', '#e0a866')
+            this.playDenied()
+          }
           this.hideTip()
         })
         c.on('pointerover', () => this.showTip(item, pos.x, pos.y - cellSz / 2))
@@ -529,8 +554,15 @@ export default class UIScene extends Phaser.Scene {
   buyItem(item) {
     const p = this.game_.player
     if (p.gold < item.price) return
+    if (p.bagFull()) {
+      // cap strict : on n'achète pas si le sac est plein (l'objet n'a nulle part où aller)
+      this.showToast('Sac plein (5) — vends ou lâche un objet', '#e0a866')
+      this.playDenied()
+      return
+    }
     p.gold -= item.price
     p.addItem(cloneItem(item))
+    Audio.sfx('ui_accept', { detune: 0 })
     this.buildShop()
   }
 
@@ -1163,14 +1195,60 @@ export default class UIScene extends Phaser.Scene {
     return img
   }
 
-  showTip(item, centerX, topY) {
+  showTip(item, centerX, topY, droppable = false) {
+    this._cancelTipHide()
     const r = RARITY[item.rarity]
     this.tip.setColor(r ? r.color : '#ffffff')
-    this.tip.setText(`${item.name}\n${describeItem(item)}`).setPosition(centerX, topY - 4).setVisible(true)
+    this.tip.setText(`${item.name}\n${describeItem(item)}`).setVisible(true)
+    if (droppable) {
+      // on remonte l'infobulle de la hauteur du bouton pour que « ✖ Lâcher » se cale juste au-dessus de l'objet
+      const btnH = this.dropBtn.height
+      this.tip.setPosition(centerX, topY - 4 - btnH)
+      this.dropBtn.setPosition(centerX, topY - 4 - btnH).setVisible(true)
+      this._dropTarget = item
+    } else {
+      this.tip.setPosition(centerX, topY - 4)
+      this.dropBtn.setVisible(false)
+      this._dropTarget = null
+    }
   }
 
+  /** Masque l'infobulle + le bouton Lâcher, avec un petit délai de grâce (le temps d'atteindre le bouton). */
   hideTip() {
+    this._cancelTipHide()
+    this._tipHideEv = this.time.delayedCall(150, () => {
+      this.tip.setVisible(false)
+      this.dropBtn.setVisible(false)
+      this._dropTarget = null
+      this._tipHideEv = null
+    })
+  }
+
+  _cancelTipHide() {
+    this._tipHideEv?.remove()
+    this._tipHideEv = null
+  }
+
+  /** Lâche l'objet visé au sol (libère une place de sac). */
+  dropItem(item) {
+    const p = this.game_.player
+    if (!p || !p.removeItem(item)) return
+    this.game_.dropItemOnGround?.(item)
+    this.showItemToast('Lâché', item)
+    Audio.sfx('ui_cancel', { detune: 0 })
+    this._cancelTipHide()
     this.tip.setVisible(false)
+    this.dropBtn.setVisible(false)
+    this._dropTarget = null
+  }
+
+  /** Avertit (throttlé) que le sac est plein. */
+  showBagFull() {
+    const now = this.time.now
+    if (now < (this._bagFullAt || 0)) return
+    this._bagFullAt = now + 1200
+    this.showToast('Sac plein (5) — lâche ou vends un objet', '#e0a866')
+    this.playDenied()
   }
 
   /** Bandeau de zone (nom du biome) qui apparaît en grand puis s'efface. */
