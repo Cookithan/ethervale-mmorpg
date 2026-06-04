@@ -3,7 +3,7 @@ import Player from '../entities/Player.js'
 import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
-import { ITEMS, cloneItem, RARITY } from '../data/items.js'
+import { ITEMS, cloneItem, RARITY, itemColor, itemTint } from '../data/items.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 import { DEFAULT_CHARACTER, KNIGHT_CHARACTER } from '../data/classes.js'
 import { makeSave, writeSave, hasSave, loadSave } from '../data/save.js'
@@ -1320,6 +1320,24 @@ export default class GameScene extends Phaser.Scene {
       }
     }
     this.waterLayer.setCollisionByExclusion([-1]) // l'eau bloque le joueur et les monstres
+    // ...mais setCollisionByExclusion vient de RÉ-activer la collision sur TOUTES les tuiles d'eau, y
+    // compris celles (visibles) sous les ponts/gués posés par buildRivers -> on les re-libère, sinon les
+    // traversées redeviennent des murs invisibles (piège Phaser vécu : "on voit le pont mais il bloque").
+    this.clearCrossingCollision()
+  }
+
+  /** Retire la collision des tuiles d'eau situées sous les PONTS et les GUÉS, puis recalcule les faces
+   *  Arcade (sans quoi les anciennes faces persistent). À rappeler après TOUT setCollisionByExclusion
+   *  sur this.waterLayer, sinon les traversées se re-bloquent. */
+  clearCrossingCollision() {
+    for (const set of [this.bridgeCells, this.fordCells]) {
+      for (const k of set || []) {
+        const [x, y] = k.split(',').map(Number)
+        const t = this.waterLayer.getTileAt(x, y)
+        if (t) t.setCollision(false)
+      }
+    }
+    this.waterLayer.calculateFacesWithin(0, 0, MAP_W, MAP_H)
   }
 
   /**
@@ -4294,9 +4312,9 @@ export default class GameScene extends Phaser.Scene {
     const epic = level <= 2 ? 0 : Math.max(0, 44 * t - 6) // AUCUN épique aux niv 1-2 ; monte ensuite jusqu'à ~38 % au niv max (se MÉRITE en zone lointaine)
     const rare = 22 + 13 * t // 22 % -> 35 %
     const r = Math.random() * 100
-    if (r < epic) return 'epic' // = Rare (violet) — jamais sur un mob de bas niveau
-    if (r < epic + rare) return 'rare' // = Magique (bleu)
-    return level >= 5 ? 'rare' : 'common' // niv 5-6 (zones end-game) : plus aucun commun, le plancher = Magique (bleu)
+    if (r < epic) return 'epic' // = Épique (violet) — jamais sur un mob de bas niveau
+    if (r < epic + rare) return 'rare' // = Rare (bleu)
+    return level >= 5 ? 'rare' : 'common' // niv 5-6 (zones end-game) : plus aucun commun, le plancher = Rare (bleu)
   }
 
   /** Renvoie une COPIE d'un ÉQUIPEMENT de rareté `tier`. `biasClass` (smart loot MIX) : 60 % du temps on
@@ -4350,7 +4368,7 @@ export default class GameScene extends Phaser.Scene {
       } else {
         p.addItem(it)
         text = it.name
-        color = RARITY[it.rarity]?.color ?? '#9be1ff'
+        color = itemColor(it)
         Audio.sfx('sfx_loot', { vol: 0.6, detune: 0 }) // équipement = son plus marquant
         this.scene.get('UIScene')?.showItemToast?.('Obtenu', it) // toast HUD lisible
       }
