@@ -226,6 +226,13 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_magic_circle', 'assets/fx/magic_circle.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (cercle d'incantation au sol, teintable)
     this.load.spritesheet('fx_rock_spike', 'assets/fx/rock_spike.png', { frameWidth: 54, frameHeight: 48 }) // 10 frames (pic de roche — Onde de choc Tank)
     this.load.spritesheet('fx_spark', 'assets/fx/spark.png', { frameWidth: 30, frameHeight: 35 }) // 9 frames (étincelles — Cri intimidant Guerrier, teintable)
+
+    // icônes de la BARRE DE COMPÉTENCES (RPG Ability Icons, CC0) — 1 par sort + attaque (24×24)
+    for (const key of ['skill_atk_melee', 'skill_atk_ranged', 'skill_charge', 'skill_whirlwind', 'skill_warcry',
+      'skill_shieldcharge', 'skill_provoke', 'skill_shockwave', 'skill_blizzard', 'skill_pyroblast', 'skill_mirror',
+      'skill_wordshield', 'skill_sanctuary', 'skill_resurrect']) {
+      this.load.image(key, `assets/skills/${key}.png`)
+    }
     this.load.spritesheet('fx_flam', 'assets/fx/flam.png', { frameWidth: 20, frameHeight: 30 }) // 10 frames (le héros brûle au chaud)
     this.load.spritesheet('fx_dust', 'assets/fx/dust.png', { frameWidth: 12, frameHeight: 12 }) // 4 frames (poussière de pas)
 

@@ -89,6 +89,20 @@ export const CLASSES = {
 }
 export const CLASS_LIST = Object.values(CLASSES)
 
+// Icônes de la BARRE DE COMPÉTENCES (pack RPG Ability Icons, CC0). Clé = id du sort / type d'attaque.
+export const SKILL_ICONS = {
+  // attaque de base (selon abilities.melee / ranged)
+  atk_melee: 'skill_atk_melee', atk_ranged: 'skill_atk_ranged',
+  // Guerrier
+  charge: 'skill_charge', whirlwind: 'skill_whirlwind', warcry: 'skill_warcry',
+  // Tank
+  shieldcharge: 'skill_shieldcharge', provoke: 'skill_provoke', shockwave: 'skill_shockwave',
+  // Mage
+  blizzard: 'skill_blizzard', pyroblast: 'skill_pyroblast', mirror: 'skill_mirror',
+  // Soigneur
+  wordshield: 'skill_wordshield', sanctuary: 'skill_sanctuary', resurrect: 'skill_resurrect',
+}
+
 /** Toutes les apparences à plat (pour le chargement + les animations dans BootScene). */
 export const HEROES = CLASS_LIST.flatMap((c) => c.heroes)
 

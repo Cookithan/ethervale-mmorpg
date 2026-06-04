@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
+import { SKILL_ICONS } from '../data/classes.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
 // palette UI (style WoW lisible)
@@ -278,57 +279,29 @@ export default class UIScene extends Phaser.Scene {
       stroke: '#000000', strokeThickness: 6, shadow: { offsetX: 0, offsetY: 2, color: '#000', blur: 8, fill: true },
     }).setOrigin(0.5).setDepth(140).setVisible(false))
 
-    // --- BOUTONS DE COMBAT (bas-droite, à côté de la hotbar) : ATK + SORT ---
-    // Visibles + CLIQUABLES (mobile ET PC). Affichent la TOUCHE, le coût en mana et le cooldown.
-    // (`ab` et `spell` sont déjà définis plus haut dans buildHud.)
-    const atkKey = ab.melee ? 'Espace' : 'F'
-    const btn = 58
-    const bgap = 8
-    const byc = xpY - 8 - btn / 2 // centre Y, juste au-dessus de la barre d'XP
-    const sortCx = cw - 14 - btn / 2
-    const atkCx = sortCx - btn - bgap
-    this.skillsRect = new Phaser.Geom.Rectangle(atkCx - btn / 2 - 2, byc - btn / 2 - 2, btn * 2 + bgap + 4, btn + 4)
-
-    // bouton ATK (attaque de base, gratuite)
-    reg(this.add.rectangle(atkCx, byc, btn, btn, PANEL, 0.92).setStrokeStyle(2, GOLD))
-    reg(this.add.text(atkCx, byc - 11, 'ATK', { fontFamily: 'monospace', fontSize: '14px', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
-    reg(this.add.text(atkCx, byc + 13, atkKey, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(0.5))
-    const atkHit = reg(this.add.rectangle(atkCx, byc, btn, btn, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
-    atkHit.on('pointerdown', (po, lx, ly, ev) => {
-      ev?.stopPropagation?.()
-      this.game_.basicAttack?.()
-    })
-
-    // bouton SORT (le sort de la classe) — nom + touche + coût mana + voile de cooldown
-    reg(this.add.rectangle(sortCx, byc, btn, btn, 0x1a2740, 0.95).setStrokeStyle(2, 0x6fa8ff))
-    reg(this.add.text(sortCx, byc - 16, spell ? spell.name : '—', { fontFamily: 'monospace', fontSize: '10px', color: '#cfe2ff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
-    this.sortCostText = reg(this.add.text(sortCx, byc + 2, spell ? `${spell.cost} mana` : '', { fontFamily: 'monospace', fontSize: '9px', color: '#7fb3ff' }).setOrigin(0.5))
-    reg(this.add.text(sortCx, byc + 15, 'Touche 1', { fontFamily: 'monospace', fontSize: '8px', color: '#ffe066' }).setOrigin(0.5))
-    // voile de cooldown : rectangle sombre (ancré en haut) dont la hauteur fond quand le sort revient
-    this.sortCdVeil = reg(this.add.rectangle(sortCx, byc - btn / 2, btn, 0, 0x000000, 0.62).setOrigin(0.5, 0))
-    this.sortBtnSize = btn
-    const sortHit = reg(this.add.rectangle(sortCx, byc, btn, btn, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
-    sortHit.on('pointerdown', (po, lx, ly, ev) => {
-      ev?.stopPropagation?.()
-      this.game_.castSpell?.()
-    })
-
-    // bouton SORT 2 (2e compétence, déverrouillée au niv `spell2.level`) — à GAUCHE de ATK, voilé par un CADENAS avant déblocage
-    const spell2 = this.game_?.player?.spell2
-    if (spell2) {
-      const s2Cx = atkCx - btn - bgap
-      this.skillsRect = new Phaser.Geom.Rectangle(s2Cx - btn / 2 - 2, byc - btn / 2 - 2, btn * 3 + bgap * 2 + 4, btn + 4) // zone cliquable étendue aux 3 boutons
-      reg(this.add.rectangle(s2Cx, byc, btn, btn, 0x271a3e, 0.95).setStrokeStyle(2, 0xb07fff))
-      reg(this.add.text(s2Cx, byc - 16, spell2.name, { fontFamily: 'monospace', fontSize: '9px', color: '#e3d4ff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
-      this.sort2CostText = reg(this.add.text(s2Cx, byc + 2, `${spell2.cost} mana`, { fontFamily: 'monospace', fontSize: '9px', color: '#b69bff' }).setOrigin(0.5))
-      reg(this.add.text(s2Cx, byc + 15, 'Touche 2', { fontFamily: 'monospace', fontSize: '8px', color: '#ffe066' }).setOrigin(0.5))
-      this.sort2CdVeil = reg(this.add.rectangle(s2Cx, byc - btn / 2, btn, 0, 0x000000, 0.62).setOrigin(0.5, 0))
-      this.sort2Lock = reg(this.add.rectangle(s2Cx, byc, btn, btn, 0x000000, 0.7))
-      this.sort2LockText = reg(this.add.text(s2Cx, byc, `🔒\nNiv ${spell2.level ?? 10}`, { fontFamily: 'monospace', fontSize: '10px', color: '#ffd27a', align: 'center', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5))
-      this.sort2BtnSize = btn
-      const sort2Hit = reg(this.add.rectangle(s2Cx, byc, btn, btn, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
-      sort2Hit.on('pointerdown', (po, lx, ly, ev) => { ev?.stopPropagation?.(); this.game_.castSpell2?.() })
-    }
+    // --- BARRE DE COMPÉTENCES (bas-droite) : 4 cases carrées style WoW = ATK · Sort 1 · Sort 2 · Sort 3 (set) ---
+    // Icônes (RPG Ability Icons), bordure dorée (émeraude pour le set), raccourci clavier, voile + chiffre de
+    // cooldown, cadenas si verrouillé, flash au lancement. La LOGIQUE (clic/cooldown/mana) est inchangée.
+    const p = this.game_.player
+    const sp1 = p.spell
+    const sp2 = p.spell2
+    const setDef = SETS[p.className]
+    const size = 52
+    const bgap = 6
+    const byc = xpY - 8 - size / 2
+    const rightCx = cw - 14 - size / 2
+    const cx = (i) => rightCx - i * (size + bgap) // i=0 -> droite (Sort 3), i=3 -> gauche (ATK)
+    this.skillsRect = new Phaser.Geom.Rectangle(cx(3) - size / 2 - 2, byc - size / 2 - 2, (size + bgap) * 3 + size + 4, size + 4)
+    const tnow = () => this.game_.time.now
+    this.skillUpdaters = []
+    // ATK (attaque de base) — gauche
+    this.buildSkillCase(reg, cx(3), byc, size, { iconKey: ab.melee ? 'skill_atk_melee' : 'skill_atk_ranged', shortcut: ab.melee ? 'Esp' : 'F', onClick: () => this.game_.basicAttack?.() })
+    // Sort 1
+    this.buildSkillCase(reg, cx(2), byc, size, { iconKey: SKILL_ICONS[sp1?.id], shortcut: '1', onClick: () => this.game_.castSpell?.(), cd: () => ({ rem: Math.max(0, p.nextSpellAt - tnow()), total: sp1?.cd ?? 1 }), cost: () => sp1?.cost })
+    // Sort 2 (déverrouillé niv `spell2.level`)
+    this.buildSkillCase(reg, cx(1), byc, size, { iconKey: SKILL_ICONS[sp2?.id], shortcut: '2', onClick: () => this.game_.castSpell2?.(), cd: () => ({ rem: Math.max(0, p.nextSpell2At - tnow()), total: sp2?.cd ?? 1 }), cost: () => sp2?.cost, locked: () => (p.level < (sp2?.level ?? 10) ? `Niv\n${sp2?.level ?? 10}` : null) })
+    // Sort 3 = compétence de PANOPLIE (bordure émeraude, verrouillé tant que la panoplie n'est pas complète)
+    this.buildSkillCase(reg, cx(0), byc, size, { iconKey: SKILL_ICONS[setDef?.skill], shortcut: '3', setBorder: true, onClick: () => this.game_.castSpell3?.(), cd: () => ({ rem: Math.max(0, (p.nextSpell3At ?? 0) - tnow()), total: 35000 }), cost: () => 30, locked: () => (p.activeSet ? null : 'Set\n4/4') })
 
     // --- MINIMAP (haut-droite) : image schématique de la map ('mmtex'), fenêtre ZOOMÉE qui suit le joueur ---
     const mmSize = 150
@@ -1681,6 +1654,55 @@ export default class UIScene extends Phaser.Scene {
     return img
   }
 
+  /** Une CASE de la barre de compétences (style WoW) : fond + icône + bordure (dorée / émeraude pour le set)
+   *  + raccourci clavier + voile & chiffre de cooldown + cadenas si verrouillé + flash au lancement + coût mana.
+   *  `def` = { iconKey, shortcut, setBorder?, onClick, cd?:()=>{rem,total}, cost?:()=>number, locked?:()=>string|null }.
+   *  Enregistre un updater dans this.skillUpdaters (appelé chaque frame). La logique de jeu reste inchangée. */
+  buildSkillCase(reg, cxx, cyy, size, def) {
+    const border = def.setBorder ? 0x2ecc71 : GOLD
+    reg(this.add.rectangle(cxx, cyy, size, size, 0x12161f, 0.95))
+    let icon = null
+    let baseScale = 1
+    if (def.iconKey && this.textures.exists(def.iconKey)) {
+      icon = reg(this.add.image(cxx, cyy, def.iconKey))
+      baseScale = (size - 8) / Math.max(icon.width, icon.height)
+      icon.setScale(baseScale)
+    }
+    reg(this.add.rectangle(cxx, cyy, size, size, 0x000000, 0).setStrokeStyle(2.5, border))
+    reg(this.add.text(cxx + size / 2 - 3, cyy + size / 2 - 2, def.shortcut, { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 1))
+    const costText = def.cost ? reg(this.add.text(cxx - size / 2 + 3, cyy + size / 2 - 2, '', { fontFamily: 'monospace', fontSize: '8px', color: '#9fd8ff', stroke: '#000', strokeThickness: 3 }).setOrigin(0, 1)) : null
+    const veil = reg(this.add.rectangle(cxx, cyy - size / 2, size, 0, 0x000000, 0.62).setOrigin(0.5, 0))
+    const cdText = reg(this.add.text(cxx, cyy, '', { fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', color: '#ffffff', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5))
+    const lock = reg(this.add.rectangle(cxx, cyy, size, size, 0x000000, 0.66).setVisible(false))
+    const lockText = reg(this.add.text(cxx, cyy, '🔒', { fontFamily: 'monospace', fontSize: '11px', color: '#ffd27a', align: 'center', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setVisible(false))
+    const hit = reg(this.add.rectangle(cxx, cyy, size, size, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
+    hit.on('pointerdown', (po, lx, ly, ev) => { ev?.stopPropagation?.(); def.onClick?.() })
+    let lastRatio = 0
+    this.skillUpdaters.push(() => {
+      const p = this.game_.player
+      const lockLabel = def.locked?.()
+      if (lockLabel) {
+        lock.setVisible(true); lockText.setVisible(true).setText('🔒\n' + lockLabel)
+        if (icon) icon.setAlpha(0.32)
+        veil.setSize(size, 0); cdText.setText(''); lastRatio = 0
+        if (costText) costText.setText('')
+        return
+      }
+      lock.setVisible(false); lockText.setVisible(false)
+      if (icon) icon.setAlpha(1)
+      let ratio = 0, rem = 0
+      if (def.cd) { const c = def.cd(); rem = c.rem; ratio = Phaser.Math.Clamp(c.total ? rem / c.total : 0, 0, 1) }
+      veil.setSize(size, size * ratio)
+      cdText.setText(ratio > 0 ? `${Math.ceil(rem / 1000)}` : '')
+      if (icon && ratio > 0.6 && lastRatio < 0.08) { // un cooldown vient de DÉMARRER -> flash de l'icône
+        icon.setScale(baseScale * 1.3)
+        this.tweens.add({ targets: icon, scaleX: baseScale, scaleY: baseScale, duration: 240, ease: 'Quad.easeOut' })
+      }
+      lastRatio = ratio
+      if (costText && def.cost) { const cost = def.cost(); costText.setText(`${cost}`).setColor(p.mana >= cost ? '#9fd8ff' : '#ff6b6b') }
+    })
+  }
+
   showTip(item, centerX, topY, droppable = false) {
     this._cancelTipHide()
     this.tip.setColor(itemColor(item))
@@ -1890,27 +1912,8 @@ export default class UIScene extends Phaser.Scene {
     const mRatio = p.maxMana > 0 ? Phaser.Math.Clamp(p.mana / p.maxMana, 0, 1) : 0
     this.mpBar.setSize(this.mpBarW * mRatio, this.mpBarH)
     this.mpText.setText(p.maxMana > 0 ? `Mana ${Math.round(p.mana)}/${p.maxMana}` : '—')
-    // bouton SORT : voile de cooldown (fond quand le sort revient) + coût en rouge si mana insuffisant
-    if (this.sortCdVeil && p.spell) {
-      const rem = Math.max(0, p.nextSpellAt - this.game_.time.now)
-      const ratio = Phaser.Math.Clamp(rem / p.spell.cd, 0, 1)
-      this.sortCdVeil.setSize(this.sortBtnSize, this.sortBtnSize * ratio)
-      this.sortCostText?.setColor(p.mana >= p.spell.cost ? '#7fb3ff' : '#ff6b6b')
-    }
-    // bouton SORT 2 : cadenas tant que niv < déblocage, sinon voile de cooldown + coût
-    if (this.sort2CdVeil && p.spell2) {
-      const unlocked = p.level >= (p.spell2.level ?? 10)
-      this.sort2Lock?.setVisible(!unlocked)
-      this.sort2LockText?.setVisible(!unlocked)
-      if (unlocked) {
-        const rem = Math.max(0, p.nextSpell2At - this.game_.time.now)
-        const ratio = Phaser.Math.Clamp(rem / p.spell2.cd, 0, 1)
-        this.sort2CdVeil.setSize(this.sort2BtnSize, this.sort2BtnSize * ratio)
-        this.sort2CostText?.setColor(p.mana >= p.spell2.cost ? '#b69bff' : '#ff6b6b')
-      } else {
-        this.sort2CdVeil.setSize(this.sort2BtnSize, 0)
-      }
-    }
+    // BARRE DE COMPÉTENCES : chaque case se met à jour (voile + chiffre de cooldown, cadenas, coût mana, flash)
+    this.skillUpdaters?.forEach((f) => f())
     const maxLvl = p.maxLevel ?? 50
     this.lvlText.setText(p.level >= maxLvl ? `Niveau ${maxLvl} (MAX)` : `Niveau ${p.level}`)
     this.goldText.setText(`Or : ${p.gold}`)
