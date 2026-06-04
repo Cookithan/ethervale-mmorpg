@@ -187,6 +187,7 @@ export default class BootScene extends Phaser.Scene {
     for (const key of [
       'eq_armor', 'eq_amulet', 'eq_ring', 'eq_helmet',
       'eq_leather', 'eq_mail', 'eq_plate', 'eq_dragon', // armures distinctes (Kyrise armor_01 a/b/c/e)
+      'eq_ring_band', 'eq_ring_emerald', 'eq_ring_topaz', 'eq_ring_sapphire', 'eq_ring_ruby', // anneaux Kyrise (gemmes serties)
       'foc_scroll', 'foc_ice', 'foc_plant', 'foc_thunder', 'foc_fire', // Focus = parchemins élémentaires
       'ring_green', 'ring_yellow', 'ring_purple', 'ring_red', // Anneaux = gemmes colorées
       'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', 'pot_fire', 'pot_frost', // potions (soin / mana / température)

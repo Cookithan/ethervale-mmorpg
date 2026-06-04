@@ -79,11 +79,11 @@ export const ITEMS = {
   focus3: { id: 'focus3', name: 'Parchemin de foudre', slot: 'focus', icon: 'foc_thunder', rarity: 'epic', price: 580, spellPower: 0.32, stats: { manaRegen: 3 } },
   focus_fire: { id: 'focus_fire', name: 'Parchemin de flammes', slot: 'focus', icon: 'foc_fire', rarity: 'epic', price: 600, spellPower: 0.4 },
 
-  // ===== ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire). Gemmes colorées. =====
-  amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring', rarity: 'common', price: 90, stats: { mana: 16, manaRegen: 1 } },
-  ring: { id: 'ring', name: "Anneau d'émeraude", slot: 'ring', icon: 'ring_green', rarity: 'rare', price: 220, stats: { mana: 34, attack: 3 } },
-  ring_topaz: { id: 'ring_topaz', name: 'Anneau de topaze', slot: 'ring', icon: 'ring_yellow', rarity: 'rare', price: 230, stats: { mana: 28, hp: 14 } },
-  signet: { id: 'signet', name: "Anneau d'améthyste", slot: 'ring', icon: 'ring_purple', rarity: 'epic', price: 520, stats: { mana: 58, defense: 3, manaRegen: 3 } },
+  // ===== ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire). Icônes Kyrise (anneaux à gemme sertie). =====
+  amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring_band', rarity: 'common', price: 90, stats: { mana: 16, manaRegen: 1 } },
+  ring: { id: 'ring', name: "Anneau d'émeraude", slot: 'ring', icon: 'eq_ring_emerald', rarity: 'rare', price: 220, stats: { mana: 34, attack: 3 } },
+  ring_topaz: { id: 'ring_topaz', name: 'Anneau de topaze', slot: 'ring', icon: 'eq_ring_topaz', rarity: 'rare', price: 230, stats: { mana: 28, hp: 14 } },
+  signet: { id: 'signet', name: 'Anneau de saphir', slot: 'ring', icon: 'eq_ring_sapphire', rarity: 'epic', price: 520, stats: { mana: 58, defense: 3, manaRegen: 3 } },
 
   // ===== LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand/butin normal, cf. SHOP_STOCK / equipmentOfTier) =====
   legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
@@ -92,7 +92,7 @@ export const ITEMS = {
   legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', iconTint: 0xffe6a0, rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_dragon', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
   legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
-  legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'ring_red', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
+  legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'eq_ring_ruby', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
 
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'pot_heal', rarity: 'common', price: 40, heal: 45 },
