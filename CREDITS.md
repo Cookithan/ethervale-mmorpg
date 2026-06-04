@@ -18,6 +18,22 @@ Ce jeu utilise des assets de plusieurs créateurs. Merci à eux !
 - **Licence :** gratuite, **usage non-commercial uniquement**.
 - Utilisé pour : sol de forêt, décor, intérieurs/murs, ennemis (squelette/slime).
 
+## Kyrise's Free 16x16 RPG Icon Pack (V1.3)
+- **Auteur :** Kyrise — https://kyrise.itch.io/kyrises-free-16x16-rpg-icon-pack
+- **Licence :** **CC BY 4.0** (commercial autorisé, **crédit obligatoire**).
+- Utilisé pour : icônes d'objets (armes, armures, boucliers, grimoires, potions, anneaux, gemmes, lingots, parchemins, matériaux…).
+- *Icons by Kyrise — CC BY 4.0.*
+
+## RPG Ability/Skill Icons Collection (v1.2.1)
+- **Auteur :** Wildan R (frosty_rabbid) — https://www.instagram.com/frosty_rabbid/
+- **Licence :** **CC0** (domaine public — usage libre, y compris commercial ; crédit apprécié).
+- Utilisé pour : icônes de la barre de compétences (sorts/attaques).
+
+## 32x32 Pixel Weapons (Free)
+- **Auteur :** *à compléter (source/licence à confirmer)* — fichier `32x32_PixelWeapons_Free.png`.
+- **Licence :** ⚠️ **à confirmer** avant toute distribution.
+- Utilisé pour : *(armes de panoplie — en attente de confirmation de licence).*
+
 ---
 ⚠️ **Note licence :** Sprout Lands et Mystic Woods sont **non-commerciaux**. Pour une éventuelle
 distribution commerciale du jeu, ces assets devront être remplacés ou faire l'objet d'une licence
