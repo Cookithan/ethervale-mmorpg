@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON } from '../data/items.js'
+import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON, refreshItemDef } from '../data/items.js'
 import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
 import { Audio, SFX } from '../data/sound.js'
 
@@ -155,6 +155,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
     if (s.inventory) this.inventory = s.inventory
+    // migration d'apparence : rafraîchit icônes/noms des objets sauvegardés depuis le catalogue actuel
+    // (les sprites d'items ont changé -> sinon une vieille save garde les anciennes icônes Ninja).
+    for (const slot of Object.keys(this.equipped)) if (this.equipped[slot]) refreshItemDef(this.equipped[slot])
+    for (const it of this.inventory) if (it) refreshItemDef(it)
     this.hasBoat = s.hasBoat ?? false
     this.resources = s.resources ?? {}
     this.quest = s.quest ?? null

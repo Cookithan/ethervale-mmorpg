@@ -511,6 +511,7 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-E', () => this.tryInteract())
       this.input.keyboard.addCapture('TAB') // empêche Tab de changer le focus du navigateur
       this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
+      this.input.keyboard.on('keydown-X', () => { this._heldOn = !this._heldOn }) // X = afficher/masquer l'arme tenue en main en permanence
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
@@ -3315,7 +3316,37 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  /** Coup d'épée : arc devant le héros, dégâts aux monstres dans la zone. */
+  /** ARME TENUE EN MAIN (toggle X) : affiche l'arme équipée à côté du héros, orientée selon la direction.
+   *  Se CACHE pendant une action d'attaque (le swing/poke montre l'arme à la place) et REVIENT à la fin.
+   *  Aura de rareté permanente (épique=violet / légendaire=or). Appelé chaque frame depuis update(). */
+  updateHeldWeapon() {
+    const p = this.player
+    if (!p) return
+    const weapon = p.equipped?.weapon
+    const now = this.time.now
+    // affiché SEULEMENT si le toggle X est actif ; caché si : pas d'arme, en pleine attaque, navigation, mort
+    const busy = !this._heldOn || !weapon?.icon || !this.textures.exists(weapon.icon) || p.attacking || p.casting || p.sailing || p.hp <= 0 || now < (this._heldHideUntil ?? 0)
+    if (busy) { this._heldWeapon?.setVisible(false); this._heldGlow?.setVisible(false); return }
+    if (!this._heldWeapon) this._heldWeapon = this.add.image(0, 0, weapon.icon)
+    if (!this._heldGlow) this._heldGlow = this.add.image(0, 0, weapon.icon).setBlendMode(Phaser.BlendModes.ADD)
+    // position/rotation de la main selon la direction du héros (le héros fait ~16px ; la main est sur le côté)
+    const POSE = {
+      down: { dx: 5, dy: 2, rot: 0.35, behind: false, flip: false },
+      up: { dx: -5, dy: 0, rot: 0.35, behind: true, flip: false },
+      right: { dx: 6, dy: 1, rot: 0.5, behind: false, flip: false },
+      left: { dx: -6, dy: 1, rot: -0.5, behind: false, flip: true },
+    }[p.facing] || { dx: 5, dy: 2, rot: 0.35, behind: false, flip: false }
+    const scale = this.weaponScale(weapon.icon, 13) * (weapon.heldScale ?? 1)
+    const x = p.x + POSE.dx, y = p.y + POSE.dy, depth = p.y + (POSE.behind ? -2 : 2)
+    const w = this._heldWeapon.setTexture(weapon.icon).setVisible(true).setPosition(x, y).setDepth(depth).setRotation(POSE.rot).setScale((POSE.flip ? -1 : 1) * scale, scale)
+    const r = weapon.rarity
+    if (r === 'epic' || r === 'legendary') {
+      const t = 0.45 + 0.2 * Math.sin(now / 240) // pulsation douce
+      this._heldGlow.setTexture(weapon.icon).setVisible(true).setPosition(x, y).setDepth(depth - 1).setRotation(POSE.rot).setScale((POSE.flip ? -1 : 1) * scale * 1.25, scale * 1.25).setTint(RARITY[r].tint).setAlpha(t)
+    } else this._heldGlow.setVisible(false)
+    void w
+  }
+
   /** Attaque de base déclenchée par le bouton ATK : épée (melee) ou projectile (ranged) selon la classe. */
   basicAttack() {
     const p = this.player
@@ -3593,7 +3624,7 @@ export default class GameScene extends Phaser.Scene {
     // on voit le bâton de soin se lever pendant l'incantation
     const wIcon = p.equipped?.weapon?.icon
     if (wIcon && this.textures.exists(wIcon)) {
-      const staff = this.add.image(p.x + 5, p.y + 1, wIcon).setDepth(p.y + 60).setScale(0.95).setRotation(-0.4)
+      const staff = this.add.image(p.x + 5, p.y + 1, wIcon).setDepth(p.y + 60).setScale(this.weaponScale(wIcon, 18) * (p.equipped?.weapon?.heldScale ?? 1)).setRotation(-0.4)
       this.tweens.add({ targets: staff, y: p.y - 4, duration: 200, yoyo: true, onComplete: () => staff.destroy() })
     }
     this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A')
@@ -3776,7 +3807,7 @@ export default class GameScene extends Phaser.Scene {
     const ring = this.add.circle(p.x, p.y + 4, 17, color, 0).setStrokeStyle(2, color, 0.85).setDepth(p.y - 2)
     this.tweens.add({ targets: [aura, ring], scale: 1.35, duration: ms / 2, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
     const wIcon = p.equipped?.weapon?.icon
-    const staff = wIcon && this.textures.exists(wIcon) ? this.add.image(p.x + 5, p.y - 4, wIcon).setDepth(p.y + 60).setScale(0.9).setRotation(-0.3) : null
+    const staff = wIcon && this.textures.exists(wIcon) ? this.add.image(p.x + 5, p.y - 4, wIcon).setDepth(p.y + 60).setScale(this.weaponScale(wIcon, 18) * (p.equipped?.weapon?.heldScale ?? 1)).setRotation(-0.3) : null
     const cleanup = () => { bg.destroy(); bar.destroy(); lbl.destroy(); this.tweens.killTweensOf([aura, ring]); aura.destroy(); ring.destroy(); staff?.destroy(); p.casting = false }
     const ev = this.time.addEvent({
       delay: 16, loop: true,
@@ -3994,7 +4025,7 @@ export default class GameScene extends Phaser.Scene {
       .setResolution(3)
     // sceptre/baguette brandi pendant l'incantation -> on voit l'arme du Mage
     const wIcon = p.equipped?.weapon?.icon
-    const staff = wIcon && this.textures.exists(wIcon) ? this.add.image(p.x + 5, p.y + 1, wIcon).setDepth(p.y + 60).setScale(0.85) : null
+    const staff = wIcon && this.textures.exists(wIcon) ? this.add.image(p.x + 5, p.y + 1, wIcon).setDepth(p.y + 60).setScale(this.weaponScale(wIcon, 18) * (p.equipped?.weapon?.heldScale ?? 1)) : null
     const cleanup = () => {
       bg.destroy()
       bar.destroy()
@@ -4194,19 +4225,46 @@ export default class GameScene extends Phaser.Scene {
   /** Le sprite de l'arme équipée fait un MOUVEMENT DE COUP : il décrit un arc autour du héros dans
    *  la direction visée (la lame reste orientée vers l'extérieur), puis disparaît. Marche pour
    *  n'importe quelle icône d'arme -> toutes les classes/armes. */
+  /** Échelle pour qu'une arme s'affiche à `targetPx` de haut à l'écran, quelle que soit sa taille native
+   *  (sprites d'armes hétérogènes : Ninja ~16px, Admurin rognés ~18-20px) -> taille proportionnée au héros. */
+  weaponScale(iconKey, targetPx) {
+    const img = this.textures.get(iconKey)?.getSourceImage?.()
+    const native = img ? Math.max(img.width, img.height) : 16
+    return targetPx / native
+  }
+
+  /** Lueur de RARETÉ derrière une arme affichée : copie teintée (épique=violet, légendaire=or) en mode
+   *  ADD qui suit le sprite. Renvoie le sprite de lueur (ou null si arme commune/rare). + JOUE le son spécial. */
+  weaponRarityFlair(sprite, iconKey, withSound = true) {
+    const weapon = this.player?.equipped?.weapon
+    const r = weapon?.rarity
+    if (r !== 'epic' && r !== 'legendary') return null
+    const tint = RARITY[r]?.tint ?? 0xffffff
+    const glow = this.add.image(sprite.x, sprite.y, iconKey).setScale(sprite.scaleX * 1.05).setRotation(sprite.rotation).setDepth(sprite.depth - 1).setTint(tint).setBlendMode(Phaser.BlendModes.ADD).setAlpha(0.85)
+    if (withSound) {
+      if (r === 'legendary') Audio.sfx('sfx_spirit', { vol: 0.4 })
+      else Audio.sfx(SFX.magic, { vol: 0.32 })
+    }
+    return glow
+  }
+
   showWeaponSwing(px, py, facing, iconKey) {
     const center = { right: 0, down: 90, left: 180, up: -90 }[facing] ?? 0
     const SWING = 80 // amplitude de l'arc (degrés)
-    const r = 15 // distance de la lame au héros
-    const w = this.add.image(px, py, iconKey).setDepth(py + 51).setScale(1.5)
+    const r = 15 // distance de la lame au héros (PORTÉE conservée)
+    this._heldHideUntil = this.time.now + 170 // cache l'arme tenue le temps du coup, puis elle revient
+    const hs = this.player?.equipped?.weapon?.heldScale ?? 1
+    const w = this.add.image(px, py, iconKey).setDepth(py + 51).setScale(this.weaponScale(iconKey, 22) * hs) // ~22px à l'écran
+    const glow = this.weaponRarityFlair(w, iconKey) // lueur épique/légendaire + son
     const st = { a: center - SWING / 2 }
     const place = () => {
       const rad = Phaser.Math.DegToRad(st.a)
-      w.setPosition(px + Math.cos(rad) * r, py + Math.sin(rad) * r)
-      w.setRotation(rad + Phaser.Math.DegToRad(90)) // sprite d'arme VERTICAL (pointe en haut) -> aligné sur l'arc
+      const x = px + Math.cos(rad) * r, y = py + Math.sin(rad) * r, rot = rad + Phaser.Math.DegToRad(90)
+      w.setPosition(x, y).setRotation(rot) // sprite d'arme VERTICAL (pointe en haut) -> aligné sur l'arc
+      glow?.setPosition(x, y).setRotation(rot)
     }
     place()
-    this.tweens.add({ targets: st, a: center + SWING / 2, duration: 150, ease: 'Quad.easeInOut', onUpdate: place, onComplete: () => w.destroy() })
+    this.tweens.add({ targets: st, a: center + SWING / 2, duration: 150, ease: 'Quad.easeInOut', onUpdate: place, onComplete: () => { w.destroy(); glow?.destroy() } })
   }
 
   /** Joue un effet de TRANCHE animé (FX du pack) devant le héros, orienté selon la direction d'attaque.
@@ -4223,10 +4281,23 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Montre l'arme à distance (sceptre/baguette) TENUE DANS LA MAIN avec un petit "poke" vers le haut.
+   *  SUIT le joueur tant qu'elle est affichée (sinon elle reste sur place quand on tire en courant).
    *  Elle NE pivote PAS vers le curseur/l'ennemi (la visée auto faisait "tourner" l'arme = moche). */
   showWeaponPoint(px, py, facing, iconKey) {
-    const w = this.add.image(px + 5, py + 1, iconKey).setDepth(py + 51).setScale(1.0).setRotation(-0.3)
-    this.tweens.add({ targets: w, y: py - 4, duration: 90, yoyo: true, onComplete: () => w.destroy() })
+    const p = this.player
+    this._heldHideUntil = this.time.now + 200 // cache l'arme tenue le temps du tir, puis elle revient
+    const hs = p.equipped?.weapon?.heldScale ?? 1
+    const w = this.add.image(p.x + 5, p.y + 1, iconKey).setScale(this.weaponScale(iconKey, 18) * hs).setRotation(-0.3)
+    const glow = this.weaponRarityFlair(w, iconKey) // lueur épique/légendaire + son
+    const st = { t: 0 }
+    const ev = this.time.addEvent({ delay: 16, loop: true, callback: () => {
+      st.t += 16
+      const poke = Math.sin(Math.min(1, st.t / 90) * Math.PI) * 5 // "poke" vers le haut (aller-retour)
+      const x = p.x + 5, y = p.y + 1 - poke
+      w.setPosition(x, y).setDepth(p.y + 51)
+      glow?.setPosition(x, y).setDepth(p.y + 50)
+      if (st.t >= 180) { ev.remove(); w.destroy(); glow?.destroy() }
+    } })
   }
 
   onMonsterKilled(mon) {
@@ -4478,6 +4549,7 @@ export default class GameScene extends Phaser.Scene {
     this.player.update(time)
     const p = this.player
     p.setDepth(p.y)
+    this.updateHeldWeapon() // arme tenue en main (cachée pendant l'attaque, revient après)
     this.updateBoat() // barque sous le héros quand il navigue (A3)
     this.updateTarget(time) // réticule de la cible verrouillée + libération si elle meurt
     // récupération du sac de mort (A1) : il faut d'abord s'en éloigner (armement), puis remarcher dessus

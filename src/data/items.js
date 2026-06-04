@@ -40,29 +40,29 @@ export const ITEMS = {
   // ===== ARMES (slot 'weapon') -> +Attaque. `classes` = classes autorisées. L'icône `wpn_*` sert AUSSI
   // de sprite qui swingue à l'attaque (showWeaponSwing). =====
   // Guerrier (épées / lames, tranche 'fx-slash') :
-  dagger: { id: 'dagger', name: 'Dague', slot: 'weapon', classes: ['warrior'], icon: 'wpn_dagger', rarity: 'common', price: 45, stats: { attack: 4 }, dur: 40, fx: 'fx-slash' },
-  sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 50, fx: 'fx-slash' },
-  sabre: { id: 'sabre', name: 'Sabre courbe', slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword2', rarity: 'rare', price: 200, stats: { attack: 11 }, dur: 65, fx: 'fx-slash' },
-  katana: { id: 'katana', name: 'Katana', slot: 'weapon', classes: ['warrior'], icon: 'wpn_katana', rarity: 'rare', price: 220, stats: { attack: 12 }, dur: 70, fx: 'fx-slash' },
-  kris: { id: 'kris', name: "Kris de l'ombre", slot: 'weapon', classes: ['warrior'], icon: 'wpn_ninjaku', rarity: 'epic', price: 520, stats: { attack: 18 }, dur: 100, fx: 'fx-slash' },
-  rapier: { id: 'rapier', name: 'Rapière du duelliste', slot: 'weapon', classes: ['warrior'], icon: 'wpn_rapier', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 110, fx: 'fx-slash' },
+  dagger: { id: 'dagger', name: 'Dague', slot: 'weapon', classes: ['warrior'], icon: 'aw_dagger', rarity: 'common', price: 45, stats: { attack: 4 }, dur: 40, fx: 'fx-slash' },
+  sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'aw_sword', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 50, fx: 'fx-slash' },
+  sabre: { id: 'sabre', name: 'Sabre courbe', slot: 'weapon', classes: ['warrior'], icon: 'aw_sabre', rarity: 'rare', price: 200, stats: { attack: 11 }, dur: 65, fx: 'fx-slash' },
+  katana: { id: 'katana', name: 'Katana', slot: 'weapon', classes: ['warrior'], icon: 'aw_katana', rarity: 'rare', price: 220, stats: { attack: 12 }, dur: 70, fx: 'fx-slash' },
+  kris: { id: 'kris', name: "Kris de l'ombre", slot: 'weapon', classes: ['warrior'], icon: 'aw_kris', rarity: 'epic', price: 520, stats: { attack: 18 }, dur: 100, fx: 'fx-slash' },
+  rapier: { id: 'rapier', name: 'Rapière du duelliste', slot: 'weapon', classes: ['warrior'], icon: 'aw_rapier', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 110, fx: 'fx-slash' },
   // Guerrier — armes à LANCER (`ranged: true` -> l'attaque PROJETTE l'arme vers l'ennemi visible) :
   throwknife: { id: 'throwknife', name: 'Couteaux de lancer', slot: 'weapon', classes: ['warrior'], icon: 'fx_kunai', ranged: true, proj: { tex: 'fx_kunai' }, rarity: 'common', price: 90, stats: { attack: 4 }, dur: 45 },
   shuriken: { id: 'shuriken', name: 'Shuriken', slot: 'weapon', classes: ['warrior'], icon: 'fx_shuriken', ranged: true, proj: { tex: 'fx_shuriken', anim: 'fx-shuriken' }, rarity: 'rare', price: 200, stats: { attack: 8 }, dur: 60 },
   // Tank (masses / lames lourdes -> slash circulaire 'fx-circslash') :
-  club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'wpn_club', rarity: 'common', price: 90, stats: { attack: 5 }, dur: 60, fx: 'fx-circslash' },
-  warhammer: { id: 'warhammer', name: 'Marteau de guerre', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'rare', price: 240, stats: { attack: 10 }, dur: 90, fx: 'fx-circslash' },
-  axe: { id: 'axe', name: 'Hache de guerre', slot: 'weapon', classes: ['tank'], icon: 'wpn_axe', rarity: 'rare', price: 250, stats: { attack: 11 }, dur: 85, fx: 'fx-circslash' },
-  greatblade: { id: 'greatblade', name: 'Lame colossale', slot: 'weapon', classes: ['tank'], icon: 'wpn_bigsword', rarity: 'epic', price: 580, stats: { attack: 17 }, dur: 120, fx: 'fx-circslash' },
-  warlance: { id: 'warlance', name: 'Pertuisane', slot: 'weapon', classes: ['tank'], icon: 'wpn_lance2', rarity: 'epic', price: 560, stats: { attack: 16 }, dur: 115, fx: 'fx-circslash' },
-  // Mage (baguettes / grimoires) :
-  wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'wpn_wand', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 40 },
-  grimoire: { id: 'grimoire', name: 'Grimoire interdit', slot: 'weapon', classes: ['mage'], icon: 'wpn_book', rarity: 'rare', price: 240, stats: { attack: 12 }, dur: 60 },
-  archstaff: { id: 'archstaff', name: "Bâton de l'archimage", slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 80 },
-  // Soigneur (bâtons teintés VERT pour les distinguer du mage) :
-  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'wpn_stick', iconTint: 0x9be88f, rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40 },
-  healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'wpn_wand', iconTint: 0x9be88f, rarity: 'rare', price: 220, stats: { attack: 8 }, dur: 60 },
-  relic: { id: 'relic', name: 'Relique sacrée', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', rarity: 'epic', price: 540, stats: { attack: 12 }, dur: 80 },
+  club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'at_club', rarity: 'common', price: 90, stats: { attack: 5 }, dur: 60, fx: 'fx-circslash' },
+  warhammer: { id: 'warhammer', name: 'Marteau de guerre', slot: 'weapon', classes: ['tank'], icon: 'at_warhammer', rarity: 'rare', price: 240, stats: { attack: 10 }, dur: 90, fx: 'fx-circslash' },
+  axe: { id: 'axe', name: 'Hache de guerre', slot: 'weapon', classes: ['tank'], icon: 'at_axe', rarity: 'rare', price: 250, stats: { attack: 11 }, dur: 85, fx: 'fx-circslash' },
+  greatblade: { id: 'greatblade', name: 'Lame colossale', slot: 'weapon', classes: ['tank'], icon: 'at_greatblade', rarity: 'epic', price: 580, stats: { attack: 17 }, dur: 120, fx: 'fx-circslash' },
+  warlance: { id: 'warlance', name: 'Pertuisane', slot: 'weapon', classes: ['tank'], icon: 'at_warlance', rarity: 'epic', price: 560, stats: { attack: 16 }, dur: 115, fx: 'fx-circslash' },
+  // Mage (baguettes / bâtons / grimoire) — pas de swing (le mage incante/tire) :
+  wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'am_wand', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 40 },
+  grimoire: { id: 'grimoire', name: 'Grimoire interdit', slot: 'weapon', classes: ['mage'], icon: 'am_grimoire', heldScale: 0.7, rarity: 'rare', price: 240, stats: { attack: 12 }, dur: 60 },
+  archstaff: { id: 'archstaff', name: "Bâton de l'archimage", slot: 'weapon', classes: ['mage'], icon: 'am_archstaff', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 80 },
+  // Soigneur (sceptres bénis) — pas de swing :
+  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'ah_healstick', rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40 },
+  healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'ah_healwand', rarity: 'rare', price: 220, stats: { attack: 8 }, dur: 60 },
+  relic: { id: 'relic', name: 'Relique sacrée', slot: 'weapon', classes: ['healer'], icon: 'ah_relic', rarity: 'epic', price: 540, stats: { attack: 12 }, dur: 80 },
 
   // ===== ARMURES (slot 'armor') -> PV / défense. Icônes Kyrise DISTINCTES par pièce (armor_01 a/b/c/e). =====
   leather: { id: 'leather', name: 'Tunique de cuir', slot: 'armor', icon: 'eq_leather', rarity: 'common', price: 90, stats: { hp: 16 }, dur: 50 },
@@ -88,8 +88,8 @@ export const ITEMS = {
   // ===== LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand/butin normal, cf. SHOP_STOCK / equipmentOfTier) =====
   // LÉGENDAIRES d'arme = sprites spectaculaires Admurin (icône). Les classes de mêlée gardent un `swingTex`
   // Ninja pour l'animation de coup (l'icône Admurin est orientée en diagonale, pas alignée sur l'arc du swing).
-  legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_legend_sword', swingTex: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
-  legend_hammer: { id: 'legend_hammer', name: 'Marteau des Titans', slot: 'weapon', classes: ['tank'], icon: 'wpn_legend_mace', swingTex: 'wpn_hammer', rarity: 'legendary', price: 600, stats: { attack: 34 }, dur: 220, fx: 'fx-circslash' },
+  legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_legend_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
+  legend_hammer: { id: 'legend_hammer', name: 'Marteau des Titans', slot: 'weapon', classes: ['tank'], icon: 'wpn_legend_mace', rarity: 'legendary', price: 600, stats: { attack: 34 }, dur: 220, fx: 'fx-circslash' },
   legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_legend_staff', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
   legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_legend_scepter', rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_dragon', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
@@ -144,6 +144,22 @@ export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Man
 const CLASS_FR = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank', healer: 'Soigneur' }
 // arme de DÉPART par classe (équipée à la création du perso)
 export const STARTER_WEAPON = { warrior: 'sword', tank: 'club', mage: 'wand', healer: 'healstick' }
+
+/** Resynchronise les champs de PRÉSENTATION d'un objet (icône, nom, swing, fx…) depuis le catalogue,
+ *  par `id`. Les icônes/noms évoluent au fil des mises à jour : une vieille sauvegarde garde l'objet
+ *  sérialisé tel quel -> on rafraîchit l'apparence sans toucher à l'état d'instance (upgrade/durabilité). */
+export function refreshItemDef(item) {
+  const def = item && ITEMS[item.id]
+  if (!def) return item
+  item.icon = def.icon
+  item.name = def.name
+  if ('swingTex' in def) item.swingTex = def.swingTex; else delete item.swingTex
+  if ('heldScale' in def) item.heldScale = def.heldScale; else delete item.heldScale
+  if ('iconTint' in def) item.iconTint = def.iconTint; else delete item.iconTint
+  if ('fx' in def) item.fx = def.fx
+  if ('set' in def) item.set = def.set; else delete item.set
+  return item
+}
 
 /** true si la classe `classKey` peut équiper cet objet (pas de champ `classes` = universel). */
 export function canEquip(item, classKey) {

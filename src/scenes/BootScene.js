@@ -198,7 +198,11 @@ export default class BootScene extends Phaser.Scene {
     }
     // sprites d'ARMES (Items/Weapons) : servent d'icône d'inventaire ET de sprite qui swingue à l'attaque
     for (const key of ['wpn_sword', 'wpn_sword2', 'wpn_katana', 'wpn_rapier', 'wpn_dagger', 'wpn_ninjaku', 'wpn_club', 'wpn_hammer', 'wpn_axe', 'wpn_lance2', 'wpn_bigsword', 'wpn_wand', 'wpn_book', 'wpn_stick', 'wpn_bone',
-      'wpn_legend_sword', 'wpn_legend_mace', 'wpn_legend_scepter', 'wpn_legend_staff']) { // 4 légendaires spectaculaires (Admurin's Armory)
+      'wpn_legend_sword', 'wpn_legend_mace', 'wpn_legend_scepter', 'wpn_legend_staff', // 4 légendaires spectaculaires (Admurin's Armory)
+      'aw_dagger', 'aw_sword', 'aw_katana', 'aw_sabre', 'aw_kris', 'aw_rapier', // armes Guerrier (icônes Admurin ; swing via swingTex Ninja)
+      'at_club', 'at_warhammer', 'at_axe', 'at_warlance', 'at_greatblade', // armes Tank (Admurin)
+      'am_wand', 'am_grimoire', 'am_archstaff', // armes Mage (am_grimoire = grimoire Kyrise)
+      'ah_healstick', 'ah_healwand', 'ah_relic']) { // armes Soigneur (Admurin)
       this.load.image(key, `assets/weapons/${key}.png`)
     }
 
