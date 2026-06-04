@@ -513,7 +513,6 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.addCapture('TAB') // empêche Tab de changer le focus du navigateur
       this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
       this.input.keyboard.on('keydown-X', () => { this._heldOn = !this._heldOn }) // X = afficher/masquer l'arme tenue en main en permanence
-      this.input.keyboard.on('keydown-G', () => this.debugGrantSet()) // ⚙️ DEBUG (temporaire) : ajoute la panoplie de la classe au sac
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
@@ -3326,18 +3325,6 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  /** ⚙️ DEBUG (temporaire — touche G) : ajoute les 4 pièces de panoplie de la classe au sac (test sets).
-   *  À RETIRER avant la version finale (les pièces de set dropperont des boss, étape 8). */
-  debugGrantSet() {
-    const p = this.player
-    if (!p) return
-    const list = Object.values(ITEMS).filter((it) => it.set === p.className)
-    p.invMax = Math.max(p.invMax, p.inventory.length + list.length)
-    list.forEach((it) => p.inventory.push(cloneItem(it)))
-    p.invVersion++
-    this.scene.get('UIScene')?.showToast?.(`Debug : panoplie ${p.className} ajoutée (${list.length})`, '#3ddc84')
-  }
-
   /** ARME TENUE EN MAIN (toggle X) : affiche l'arme équipée à côté du héros, orientée selon la direction.
    *  Se CACHE pendant une action d'attaque (le swing/poke montre l'arme à la place) et REVIENT à la fin.
    *  Aura de rareté permanente (épique=violet / légendaire=or). Appelé chaque frame depuis update(). */
@@ -4570,6 +4557,7 @@ export default class GameScene extends Phaser.Scene {
     const gold = Phaser.Math.Between(120, 240) + mon.level * 20
     this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', gold))
     this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))
+    this.trySetPieceDrop(mon) // pièce de PANOPLIE (selon biome/raid + classe) avec pity anti-malchance
 
     // annonce + respawn long (boss de monde : ~8-10 min)
     this.scene.get('UIScene')?.showToast?.(`⚔ ${mon.displayName} vaincu !`, '#ffd86b')
@@ -4578,6 +4566,34 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(Phaser.Math.Between(480000, 600000), () => {
       if (!this.gameOver) this.spawnBoss(biome, index)
     })
+  }
+
+  /** Drop d'une PIÈCE DE PANOPLIE (brief §2) selon le biome du boss + la classe du joueur :
+   *  forêt→Armure · désert→Relique · neige→Anneau · raid neige→Arme. Chance ~30 % + PITY (garanti après
+   *  5 boss sans la pièce). Jamais de doublon (si déjà possédée). Cursed=Dargoth (légendaire) / côte = rien. */
+  trySetPieceDrop(mon) {
+    const p = this.player
+    const PREFIX = { warrior: 'war', tank: 'tank', mage: 'mage', healer: 'heal' }[p.className]
+    if (!PREFIX) return
+    let slot = null
+    if (mon.bossBiome === 'forest') slot = 'armor'
+    else if (mon.bossBiome === 'desert') slot = 'relic'
+    else if (mon.bossBiome === 'snow') slot = mon.isRaid ? 'weapon' : 'ring'
+    if (!slot) return
+    const id = `set_${PREFIX}_${slot}`
+    const item = ITEMS[id]
+    if (!item) return
+    // déjà possédée (équipée ou dans le sac) -> on ne la redonne pas
+    if (p.equipped[item.slot]?.id === id || p.inventory.some((it) => it?.id === id)) return
+    const PITY_MAX = 5, CHANCE = 0.3
+    const seen = p.setPity[id] ?? 0
+    if (Math.random() < CHANCE || seen + 1 >= PITY_MAX) {
+      p.setPity[id] = 0
+      this.drops.add(new Drop(this, mon.x, mon.y - 14, 'equip', 0, cloneItem(item)))
+      this.scene.get('UIScene')?.showToast?.(`✦ Pièce de panoplie : ${item.name} !`, '#3ddc84')
+    } else {
+      p.setPity[id] = seen + 1
+    }
   }
 
   /** Fait apparaître le butin sur le cadavre. Drops SERRÉS (brief §9c) : OR à chaque kill, mais

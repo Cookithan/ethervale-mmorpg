@@ -58,6 +58,7 @@ export function makeSave(player, character) {
     questsDone: player.questsDone,
     deathBag: player.deathBag, // sac de mort en attente de récupération (A1)
     deathsSinceRecovery: player.deathsSinceRecovery,
+    setPity: player.setPity, // compteur anti-malchance des pièces de panoplie (par id)
     x: Math.round(player.x),
     y: Math.round(player.y),
   }

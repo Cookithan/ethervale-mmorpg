@@ -118,6 +118,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // SAC DE MORT (A1) : à la mort, or + sac tombent ici {gold, items, x, y} ; 1 seul à la fois.
     this.deathBag = null
     this.deathsSinceRecovery = 0 // remourir sans récupérer remplace l'ancien sac ; 3 = tout perdu
+    this.setPity = {} // pièces de panoplie : kills de boss depuis le dernier drop (par id) -> drop garanti à X
 
     this.hp = this.baseMaxHp
     this.recomputeStats() // initialise maxHp / attackPower / defense
@@ -167,6 +168,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.questsDone = s.questsDone ?? []
     this.deathBag = s.deathBag ?? null
     this.deathsSinceRecovery = s.deathsSinceRecovery ?? 0
+    this.setPity = s.setPity ?? {}
     this.recomputeStats()
     this.hp = Math.min(s.hp ?? this.maxHp, this.maxHp)
     this.mana = this.maxMana
