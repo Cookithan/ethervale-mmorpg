@@ -75,9 +75,9 @@ export const ITEMS = {
   // ===== RELIQUES (slot 'focus', label « Relique ») -> améliorent LA COMPÉTENCE. Une relique donne SOIT
   // +effet/dégâts du sort (`spellPower`), SOIT +durée d'effet (`spellDuration`). Plus de réduction de cooldown. =====
   focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellPower: 0.1 },
-  focus2: { id: 'focus2', name: 'Parchemin de givre', slot: 'focus', icon: 'foc_ice', rarity: 'rare', price: 260, spellDuration: 0.22, stats: { manaRegen: 2 } },
-  focus3: { id: 'focus3', name: 'Parchemin de foudre', slot: 'focus', icon: 'foc_thunder', rarity: 'epic', price: 580, spellPower: 0.32, stats: { manaRegen: 3 } },
-  focus_fire: { id: 'focus_fire', name: 'Parchemin de flammes', slot: 'focus', icon: 'foc_fire', rarity: 'epic', price: 600, spellPower: 0.4 },
+  focus2: { id: 'focus2', name: 'Cristal de givre', slot: 'focus', icon: 'rel_frost', rarity: 'rare', price: 260, spellDuration: 0.22, stats: { manaRegen: 2 } },
+  focus3: { id: 'focus3', name: 'Cristal de foudre', slot: 'focus', icon: 'rel_thunder', rarity: 'epic', price: 580, spellPower: 0.32, stats: { manaRegen: 3 } },
+  focus_fire: { id: 'focus_fire', name: 'Cristal de flammes', slot: 'focus', icon: 'rel_flame', rarity: 'epic', price: 600, spellPower: 0.4 },
 
   // ===== ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire). Icônes Kyrise (anneaux à gemme sertie). =====
   amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring_band', rarity: 'common', price: 90, stats: { mana: 16, manaRegen: 1 } },
@@ -91,7 +91,7 @@ export const ITEMS = {
   legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
   legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', iconTint: 0xffe6a0, rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_dragon', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
-  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
+  legend_focus: { id: 'legend_focus', name: 'Cristal Cosmique', slot: 'focus', icon: 'rel_cosmic', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
   legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'eq_ring_ruby', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
 
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
