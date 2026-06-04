@@ -385,6 +385,19 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.slowFactor = factor
   }
 
+  /** ÉTOURDISSEMENT (Onde de choc du Tank) : immobile et ne mord pas pendant `durationMs`. (Pas sur les boss de raid.) */
+  stun(durationMs) {
+    if (this.isBoss) return // les vrais boss ne sont pas étourdissables
+    this.stunUntil = (this.scene?.time?.now ?? 0) + durationMs
+  }
+
+  /** PEUR (Cri intimidant du Guerrier) : fuit le joueur et ne mord pas pendant `durationMs`. (Pas sur les boss.) */
+  fear(durationMs) {
+    if (this.isBoss) return
+    this.fearUntil = (this.scene?.time?.now ?? 0) + durationMs
+    this.aggroed = false
+  }
+
   /** Joue l'anim d'un boss à rig (idle/walk/hit) sans la relancer si déjà en cours. */
   playRig(state) {
     if (this.rigState === state) return
@@ -892,6 +905,10 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       aimY = this.wander.y
     }
 
+    // CONTRÔLE par compétence de set du joueur (override de la nav) : ÉTOURDI = immobile ; EFFRAYÉ = fuit.
+    if (this.stunUntil && time < this.stunUntil) { this.setVelocity(0, 0); aimX = 0; aimY = 0 }
+    else if (this.fearUntil && time < this.fearUntil) { const d = dist || 1; this.setVelocity(-(dx / d) * spd * 1.15, -(dy / d) * spd * 1.15); aimX = -dx; aimY = -dy }
+
     // BOSS À DISTANCE : tire des orbes que le joueur esquive. Le projectile part vers la FIN du
     // télégraphe (anim "shoot"), pas au début -> on a le temps de voir venir et de se décaler.
     if (this.ranged && this.hp > 0) {
@@ -976,6 +993,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
   /** Tente de mordre le joueur au contact. Renvoie true si un coup a porté. Pendant une charge (dash),
    *  les dégâts sont majorés (×dmgMul). */
   tryBite(player, now) {
+    if ((this.stunUntil && now < this.stunUntil) || (this.fearUntil && now < this.fearUntil)) return false // étourdi/effrayé : ne mord pas
     if (this.isBoss && !this.combatEngaged) return false // boss endormi : ne mord pas tant qu'on ne l'a pas réveillé
     if (this.def.charge) return false // boss à CHARGE : ne blesse QUE par son dash (test de distance) -> mêlée sûre entre 2 charges
     if (this.isBoss && this.attackPhase !== 'idle') return false // boss en plein pattern (saut-slam) -> pas de morsure en plus, l'AoE fait les dégâts

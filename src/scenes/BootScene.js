@@ -224,6 +224,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_ice_spike', 'assets/fx/ice_spike.png', { frameWidth: 32, frameHeight: 32 }) // 9 frames (pics de glace qui jaillissent — Blizzard)
     this.load.spritesheet('fx_ice_burst', 'assets/fx/ice_burst.png', { frameWidth: 32, frameHeight: 32 }) // 10 frames (éclats de glace)
     this.load.spritesheet('fx_magic_circle', 'assets/fx/magic_circle.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (cercle d'incantation au sol, teintable)
+    this.load.spritesheet('fx_rock_spike', 'assets/fx/rock_spike.png', { frameWidth: 54, frameHeight: 48 }) // 10 frames (pic de roche — Onde de choc Tank)
+    this.load.spritesheet('fx_spark', 'assets/fx/spark.png', { frameWidth: 30, frameHeight: 35 }) // 9 frames (étincelles — Cri intimidant Guerrier, teintable)
     this.load.spritesheet('fx_flam', 'assets/fx/flam.png', { frameWidth: 20, frameHeight: 30 }) // 10 frames (le héros brûle au chaud)
     this.load.spritesheet('fx_dust', 'assets/fx/dust.png', { frameWidth: 12, frameHeight: 12 }) // 4 frames (poussière de pas)
 
@@ -295,6 +297,12 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('fx-magic-circle')) {
       this.anims.create({ key: 'fx-magic-circle', frames: this.anims.generateFrameNumbers('fx_magic_circle', { start: 0, end: 3 }), frameRate: 10, repeat: -1 }) // cercle d'incantation au sol
+    }
+    if (!this.anims.exists('fx-rock-spike')) {
+      this.anims.create({ key: 'fx-rock-spike', frames: this.anims.generateFrameNumbers('fx_rock_spike', { start: 0, end: 9 }), frameRate: 18, repeat: 0 }) // pic de roche (Onde de choc)
+    }
+    if (!this.anims.exists('fx-spark')) {
+      this.anims.create({ key: 'fx-spark', frames: this.anims.generateFrameNumbers('fx_spark', { start: 0, end: 8 }), frameRate: 18, repeat: 0 }) // étincelles (Cri intimidant)
     }
     if (!this.anims.exists('fx-flam')) {
       this.anims.create({ key: 'fx-flam', frames: this.anims.generateFrameNumbers('fx_flam', { start: 0, end: 9 }), frameRate: 16, repeat: -1 }) // flamme qui boucle (héros qui brûle)

@@ -4239,6 +4239,71 @@ export default class GameScene extends Phaser.Scene {
     } })
   }
 
+  /** ONDE DE CHOC (Tank, compétence de set) : slam au sol -> anneau de pics de ROCHE, dégâts + ÉTOURDIT
+   *  les ennemis autour ET les FORCE à te cibler (provocation). */
+  spellShockwave() {
+    const p = this.player
+    const R = 92
+    Audio.sfx('sfx_roar', { vol: 0.45, detune: 300 })
+    Audio.sfx(SFX.shield, { vol: 0.6 })
+    this.cameras.main.shake(240, 0.009)
+    // onde de choc (cercle qui s'étend) + anneau de pics de roche
+    const wave = this.add.circle(p.x, p.y, R, 0xffe0a0, 0.22).setStrokeStyle(3, 0xffd27a, 0.9).setDepth(p.y - 1).setScale(0.15)
+    this.tweens.add({ targets: wave, scale: 1, alpha: 0, duration: 420, ease: 'Quad.easeOut', onComplete: () => wave.destroy() })
+    const spike = (x, y, sc = 0.85) => {
+      const s = this.add.sprite(x, y, 'fx_rock_spike').setOrigin(0.5, 0.85).setDepth(y + 4).setScale(sc)
+      if (this.anims.exists('fx-rock-spike')) { s.play('fx-rock-spike'); s.once('animationcomplete', () => s.destroy()) } else this.time.delayedCall(500, () => s.destroy())
+    }
+    spike(p.x, p.y, 1)
+    const N = 9
+    for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2; spike(p.x + Math.cos(a) * R * 0.7, p.y + Math.sin(a) * R * 0.7) }
+    const dmg = Math.round(p.attackPower * 2.2)
+    this.monsters.getChildren().forEach((m) => {
+      if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
+        this.hitMonster(m, dmg, p.x, p.y, 140) // dégâts + recul
+        m.stun?.(2200) // étourdi
+        m.lureTarget = null; m.aggroed = true; m.returning = false // PROVOQUÉ : te cible
+      }
+    })
+    return true
+  }
+
+  /** CRI INTIMIDANT (Guerrier, compétence de set) : onde rouge + étincelles -> les ennemis proches sont
+   *  EFFRAYÉS et FUIENT quelques secondes. */
+  spellWarcry() {
+    const p = this.player
+    const R = 110
+    Audio.sfx('sfx_roar', { vol: 0.6 })
+    this.cameras.main.shake(160, 0.006)
+    const burst = this.add.sprite(p.x, p.y - 2, 'fx_spark').setDepth(p.y + 6).setScale(3.2).setTint(0xff5a4a)
+    if (this.anims.exists('fx-spark')) { burst.play('fx-spark'); burst.once('animationcomplete', () => burst.destroy()) } else burst.destroy()
+    const ring = this.add.circle(p.x, p.y, R, 0xff4a3a, 0.28).setDepth(p.y - 1).setScale(0.2)
+    this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 460, ease: 'Quad.easeOut', onComplete: () => ring.destroy() })
+    this.monsters.getChildren().forEach((m) => {
+      if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
+        m.fear?.(3500) // fuit le héros
+        if (m.showAlert) m.showAlert(this.time.now) // « ! » de panique
+      }
+    })
+    return true
+  }
+
+  /** RÉSURRECTION (Soigneur, compétence de set) : en solo, accorde une AUTO-RÉSURRECTION (1 fois) -> à la
+   *  prochaine mort, le héros se relève à 50 % PV au lieu de tomber (cf. handleDeath). */
+  spellResurrect() {
+    const p = this.player
+    if (p.reviveCharge) { this.floatingText(p.x, p.y - 18, 'Déjà béni', '#ffd27a'); return false }
+    p.reviveCharge = true
+    const circle = this.add.sprite(p.x, p.y, 'fx_magic_circle').setDepth(p.y - 1).setScale(2.2).setTint(0xfff0a0).setAlpha(0.95)
+    if (this.anims.exists('fx-magic-circle')) circle.play('fx-magic-circle')
+    const aura = this.add.sprite(p.x, p.y - 2, 'fx_aura').setDepth(p.y + 6).setScale(2.2).setTint(0xfff0a0)
+    if (this.anims.exists('fx-aura')) { aura.play('fx-aura'); aura.once('animationcomplete', () => aura.destroy()) } else aura.destroy()
+    this.time.delayedCall(2500, () => this.tweens.add({ targets: circle, alpha: 0, duration: 400, onComplete: () => circle.destroy() }))
+    Audio.sfx(SFX.heal, { vol: 0.75 })
+    this.floatingText(p.x, p.y - 20, 'Bénédiction de résurrection', '#ffe9a0')
+    return true
+  }
+
   /** Aura de soin verte qui s'élargit et s'estompe autour de (x,y). */
   showHealEffect(x, y) {
     const ring = this.add.circle(x, y + 2, 6, 0x7cfc9a, 0).setStrokeStyle(2, 0x7cfc9a, 0.9).setDepth(y + 60)
@@ -4940,6 +5005,24 @@ export default class GameScene extends Phaser.Scene {
 
   handleDeath() {
     if (this.gameOver) return // évite un double déclenchement
+    const pl = this.player
+    // RÉSURRECTION (compétence de set Soigneur, solo) : auto-revive UNE fois -> on ANNULE la mort.
+    if (pl.reviveCharge) {
+      pl.reviveCharge = false
+      pl.hp = Math.round(pl.maxHp * 0.5)
+      pl.mana = pl.maxMana
+      pl.invulnUntil = this.time.now + 2500
+      pl.setVelocity(0, 0)
+      const aura = this.add.sprite(pl.x, pl.y - 2, 'fx_aura').setDepth(pl.y + 6).setScale(2.6).setTint(0xfff0a0)
+      if (this.anims.exists('fx-aura')) { aura.play('fx-aura'); aura.once('animationcomplete', () => aura.destroy()) } else aura.destroy()
+      const circle = this.add.sprite(pl.x, pl.y, 'fx_magic_circle').setDepth(pl.y - 1).setScale(2.6).setTint(0xfff0a0)
+      if (this.anims.exists('fx-magic-circle')) circle.play('fx-magic-circle')
+      this.tweens.add({ targets: circle, alpha: 0, duration: 700, delay: 700, onComplete: () => circle.destroy() })
+      Audio.sfx(SFX.heal, { vol: 0.9 })
+      this.cameras.main.flash(300, 255, 240, 180)
+      this.floatingText(pl.x, pl.y - 22, 'RÉSURRECTION !', '#ffe9a0')
+      return
+    }
     this.gameOver = true
     this.endTankCharge() // coupe un éventuel buff de Charge du Tank
     this.activeBoss = null // cache la barre de boss
