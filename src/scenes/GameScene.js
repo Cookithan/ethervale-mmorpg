@@ -215,6 +215,9 @@ function tileNoise(x, y, salt = 0) {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967296
 }
 
+// Échelle des TACHES de teinte des sols (désert/neige/forêt) : multiplie les coords du bruit continu.
+// Plus GRAND = taches plus PETITES. 1 ≈ énormes nappes, ~4 ≈ moyennes (quelques tuiles), élevé ≈ damier.
+const TINT_PATCH = 3.2
 /** Interpolation linéaire entre deux couleurs hex 0xRRGGBB (t dans [0,1]). */
 function lerpHex(a, b, t) {
   const ar = (a >> 16) & 255, ag = (a >> 8) & 255, ab = a & 255
@@ -1078,14 +1081,16 @@ export default class GameScene extends Phaser.Scene {
         const b = this.biomeAt(tx, ty)
         if (b === 'prairie') continue // prairie = herbe de base, rien à peindre
         const fills = BIOME_BLOCKS[b].fills
-        const tile = fills[Math.floor(tileNoise(tx, ty, 7) * fills.length)]
+        // sol surtout UNI (tuile pleine fills[0]) -> accents décorés RARES et dispersés (moins de "détail")
+        const fr = tileNoise(tx, ty, 7)
+        const tile = fr < 0.86 ? fills[0] : fills[1 + Math.floor(tileNoise(tx, ty, 19) * (fills.length - 1))]
         const t = this.groundLayer.putTileAt(tile, tx, ty) // sol de biome SOUS le chemin
-        // FILM de teinte par TUILE (comme la forêt) -> effet MOSAÏQUE : 3 nuances proches alternées
-        // finement par bruit. Désert = sables orangés, neige = blancs/blanc-gris.
+        // FILM de teinte par TACHES MOYENNES (bruit CONTINU quantifié en 3 nuances) -> ni damier par tuile,
+        // ni énormes nappes : zones de quelques tuiles. Désert = sables orangés, neige = blancs/blanc-gris.
         if (t) {
-          const r = tileNoise(tx, ty, 51)
-          if (b === 'desert') t.tint = r < 0.4 ? 0xe6a45c : r < 0.72 ? 0xf3c684 : 0xffe6b0
-          else if (b === 'snow') t.tint = r < 0.4 ? 0xbfcfe2 : r < 0.72 ? 0xe2ebf5 : 0xffffff
+          const r = Phaser.Math.Clamp((this.noise2D(tx * TINT_PATCH, ty * TINT_PATCH) + 1) / 2, 0, 1)
+          if (b === 'desert') t.tint = r < 0.42 ? 0xe6a45c : r < 0.72 ? 0xf3c684 : 0xffe6b0
+          else if (b === 'snow') t.tint = r < 0.42 ? 0xbfcfe2 : r < 0.72 ? 0xe2ebf5 : 0xffffff
         }
       }
     }
@@ -1119,8 +1124,9 @@ export default class GameScene extends Phaser.Scene {
             const ang = Math.atan2(ty - this.cy, tx - this.cx)
             const clearR = 14 * (1 + 0.25 * Math.sin(ang * 2 + 1)) + this.noise2D(tx, ty) * 2 // = bord de prairie
             const k = Phaser.Math.Clamp((dv - clearR) / 3 + this.noise2D(tx, ty) * 0.06, 0, 1) // bande courte (~3 tuiles)
-            // forêt profonde : variation PAR TUILE en 3 verts proches -> alternance fine et dense (jungle)
-            const r = tileNoise(tx, ty, 51)
+            // forêt profonde : 3 verts proches par TACHES MOYENNES (bruit CONTINU quantifié) -> ni damier par
+            // tuile, ni énormes nappes : des zones de vert de quelques tuiles.
+            const r = Phaser.Math.Clamp((this.noise2D(tx * TINT_PATCH, ty * TINT_PATCH) + 1) / 2, 0, 1)
             const deep = r < 0.45 ? 0x4e6e34 : r < 0.75 ? 0x5d7f3e : 0x6f9850 // foncé / moyen / un peu moins foncé
             t.tint = lerpHex(0xe9f4c6, deep, k) // bord clair (~prairie) -> patch de forêt
           }
