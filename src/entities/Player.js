@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON, refreshItemDef, setStatus } from '../data/items.js'
-import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
+import { CLASSES, DEFAULT_CHARACTER, MAGE_KITS } from '../data/classes.js'
 import { Audio, SFX } from '../data/sound.js'
 
 const SPEED = 65 // vitesse de déplacement de base (px/s) — modulée par la classe (speedMul)
@@ -93,6 +93,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.nextSpellAt = 0 // fin du cooldown du sort de classe
     this.spell2 = cls.spell2 ?? null // 2e compétence (déverrouillée à `spell2.level`, défaut niv 10)
     this.nextSpell2At = 0 // fin du cooldown du 2e sort
+    // MAGE ÉLÉMENTAIRE : l'élément vient de l'APPARENCE (feu/glace/ombre) -> kit de sorts propre (MAGE_KITS).
+    this.element = heroDef?.element ?? null
+    if (this.className === 'mage' && this.element && MAGE_KITS[this.element]) {
+      this.spell = MAGE_KITS[this.element].spell
+      this.spell2 = MAGE_KITS[this.element].spell2
+    }
     this.charging2 = false // Charge du Tank en cours (buff de vitesse jusqu'à 4 s / impact)
     this.chargeSpeedMul = 1 // multiplicateur de vitesse pendant la Charge du Tank
     this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -80 % dégâts reçus

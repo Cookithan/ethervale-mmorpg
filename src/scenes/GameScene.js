@@ -3580,7 +3580,9 @@ export default class GameScene extends Phaser.Scene {
     const effects = {
       charge: () => this.spellCharge(),
       shieldcharge: () => this.spellShieldCharge(), // Tank : sort principal = Charge
-      blizzard: () => this.spellBlizzard(), // Mage : sort 1 = Blizzard (givre + ralentit)
+      blizzard: () => this.spellBlizzard(), // Mage GLACE : zone + ralentit
+      firestorm: () => this.spellFirestorm(), // Mage FEU : zone + brûlure
+      voidstorm: () => this.spellVoidstorm(), // Mage OMBRE : zone + affaiblit
       wordshield: () => this.spellShield(), // Soigneur : sort 1 = Mot de pouvoir : Bouclier (absorption + soin)
     }
     const fn = effects[sp.id]
@@ -3604,7 +3606,9 @@ export default class GameScene extends Phaser.Scene {
     const effects = {
       whirlwind: () => this.spellWhirlwind(),
       provoke: () => this.spellProvoke(), // Tank : 2e compétence = Provocation (niv 10)
-      pyroblast: () => this.spellPyroblast(), // Mage : 2e compétence = Pyroblast (niv 10)
+      pyroblast: () => this.spellPyroblast(), // Mage FEU : mono-cible + brûlure (niv 10)
+      frostlance: () => this.spellFrostlance(), // Mage GLACE : mono-cible + ralentit (niv 10)
+      shadowbolt: () => this.spellShadowbolt(), // Mage OMBRE : mono-cible + affaiblit (niv 10)
       sanctuary: () => this.spellSanctuary(),
     }
     const fn = effects[sp.id]
@@ -4196,75 +4200,76 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
-  /** BLIZZARD (Mage, sort 1) : incantation -> zone de givre persistante qui blesse par tics ET RALENTIT. */
-  spellBlizzard() {
-    const p = this.player
-    if (p.casting) return false
-    if (!this.currentTarget(320)) { this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a'); return false }
-    return this.incant(1100, 'Blizzard…', 0x8fd8ff, () => this.blizzardImpact())
-  }
-
-  blizzardImpact() {
+  // ===== SORTS ÉLÉMENTAIRES DU MAGE (élément selon l'apparence : feu / glace / ombre) =====
+  // Helper générique de ZONE (sort 1) : cercle de sort teinté + jets FX répétés + dégâts par tics + EFFET
+  // secondaire par monstre (opts.onHit : ralenti/brûlure/affaiblissement). Centré sur la cible (ou devant).
+  elementalStorm(opts) {
     const p = this.player
     const target = this.currentTarget(300)
     let tx = p.x, ty = p.y
     if (target) { tx = target.x; ty = target.y }
     else { const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]; tx = p.x + dir[0] * 80; ty = p.y + dir[1] * 80 }
     const R = Math.round(54 * (p.spellPowerMul ?? 1))
-    const col = 0x8fd8ff
-    // cercle d'incantation au sol (marqueur de zone, teinté givre) pendant toute la durée du blizzard
-    const circle = this.add.sprite(tx, ty, 'fx_magic_circle').setDepth(ty - 2).setScale((R * 2) / 32).setTint(col).setAlpha(0.9)
+    const circle = this.add.sprite(tx, ty, 'fx_magic_circle').setDepth(ty - 2).setScale((R * 2) / 32).setTint(opts.color).setAlpha(0.9)
     if (this.anims.exists('fx-magic-circle')) circle.play('fx-magic-circle')
-    Audio.sfx(SFX.magic, { vol: 0.5, detune: 500 })
+    Audio.sfx(SFX.magic, { vol: 0.5, detune: opts.detune ?? 0 })
     this.cameras.main.shake(90, 0.003)
-    // pic de glace qui JAILLIT à un point donné (origine en bas -> sort du sol)
-    const spike = (x, y) => {
-      const s = this.add.sprite(x, y, 'fx_ice_spike').setOrigin(0.5, 0.82).setDepth(y + 4)
-      if (this.anims.exists('fx-ice-spike')) { s.play('fx-ice-spike'); s.once('animationcomplete', () => s.destroy()) } else this.time.delayedCall(500, () => s.destroy())
+    const burst = (x, y) => {
+      const s = this.add.sprite(x, y, opts.tex).setOrigin(0.5, opts.originY ?? 0.5).setDepth(y + 4).setScale(opts.scale ?? 1)
+      if (opts.tint) s.setTint(opts.color)
+      if (this.anims.exists(opts.anim)) { s.play(opts.anim); s.once('animationcomplete', () => s.destroy()) } else this.time.delayedCall(500, () => s.destroy())
     }
-    spike(tx, ty) // pic central immédiat
+    burst(tx, ty)
     const DUR = 2600, TICK = 500
     const tickDmg = Math.max(1, Math.round(p.attackPower * 0.7 * (p.spellPowerMul ?? 1)))
     let elapsed = 0
     const ev = this.time.addEvent({ delay: TICK, loop: true, callback: () => {
       elapsed += TICK
       const a = Math.random() * Math.PI * 2, rr = Math.random() * R * 0.8
-      spike(tx + Math.cos(a) * rr, ty + Math.sin(a) * rr) // pics de glace à des points aléatoires
+      burst(tx + Math.cos(a) * rr, ty + Math.sin(a) * rr)
       this.monsters.getChildren().forEach((m) => {
-        if (m.active && Phaser.Math.Distance.Between(tx, ty, m.x, m.y) <= R) {
-          this.hitMonster(m, tickDmg, tx, ty, 0)
-          m.applySlow?.(1300, 0.45) // RALENTI rafraîchi
-        }
+        if (m.active && Phaser.Math.Distance.Between(tx, ty, m.x, m.y) <= R) { this.hitMonster(m, tickDmg, tx, ty, 0); opts.onHit?.(m) }
       })
       if (elapsed >= DUR) { ev.remove(); this.tweens.add({ targets: circle, alpha: 0, duration: 300, onComplete: () => circle.destroy() }) }
     } })
   }
 
-  /** PYROBLAST (Mage, sort 2 niv 10) : incantation -> trait de feu, ÉNORMES dégâts sur une seule cible. */
-  spellPyroblast() {
-    const p = this.player
-    if (p.casting) return false
-    if (!this.currentTarget(340)) { this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a'); return false }
-    return this.incant(950, 'Pyroblast…', 0xff5a2a, () => this.pyroblastImpact())
-  }
-
-  pyroblastImpact() {
+  // Helper générique de TRAIT mono-cible (sort 2 niv 10) : orbe rapide vers la cible -> gros dégât + effet.
+  elementalBolt(opts) {
     const p = this.player
     const target = this.currentTarget(340)
     if (!target || !target.active) return
-    const col = 0xff5a2a
-    const orb = this.add.image(p.x, p.y - 6, 'proj').setTint(col).setScale(2.2).setDepth(p.y + 5)
+    const orb = this.add.image(p.x, p.y - 6, 'proj').setTint(opts.color).setScale(2.2).setDepth(p.y + 5)
     this.tweens.add({ targets: orb, x: target.x, y: target.y, duration: 200, ease: 'Quad.easeIn', onComplete: () => {
       orb.destroy()
       if (!target.active) return
-      const dmg = Math.max(1, Math.round(p.attackPower * 5.0 * (p.spellPowerMul ?? 1)))
-      if (this.anims.exists('fx-explosion')) { const boom = this.add.sprite(target.x, target.y, 'fx_explosion').setDepth(target.y + 6).setScale(1.7); boom.play('fx-explosion'); boom.once('animationcomplete', () => boom.destroy()) }
-      else { const boom = this.add.circle(target.x, target.y, 28, col, 0.6).setDepth(target.y + 1); this.tweens.add({ targets: boom, alpha: 0, scale: 1.4, duration: 320, onComplete: () => boom.destroy() }) }
+      const dmg = Math.max(1, Math.round(p.attackPower * (opts.dmgMul ?? 5) * (p.spellPowerMul ?? 1)))
+      const tex = opts.tex ?? 'fx_explosion', anim = opts.anim ?? 'fx-explosion'
+      if (this.anims.exists(anim)) { const boom = this.add.sprite(target.x, target.y, tex).setDepth(target.y + 6).setScale(opts.boomScale ?? 1.7); if (opts.tint) boom.setTint(opts.color); boom.play(anim); boom.once('animationcomplete', () => boom.destroy()) }
+      else { const boom = this.add.circle(target.x, target.y, 28, opts.color, 0.6).setDepth(target.y + 1); this.tweens.add({ targets: boom, alpha: 0, scale: 1.4, duration: 320, onComplete: () => boom.destroy() }) }
       this.cameras.main.shake(150, 0.005)
       Audio.sfx(SFX.meteor, { vol: 0.75 })
       this.hitMonster(target, dmg, p.x, p.y, 0)
+      opts.onHit?.(target)
     } })
   }
+
+  /** Précheck commun aux sorts mage incantés : refuse si déjà en incantation ou aucune cible visible. */
+  mageCast(ms, label, color, onDone) {
+    const p = this.player
+    if (p.casting) return false
+    if (!this.currentTarget(340)) { this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a'); return false }
+    return this.incant(ms, label, color, onDone)
+  }
+
+  // --- SORT 1 (zone) par élément ---
+  spellBlizzard() { return this.mageCast(1100, 'Blizzard…', 0x8fd8ff, () => this.elementalStorm({ color: 0x8fd8ff, tex: 'fx_ice_spike', anim: 'fx-ice-spike', originY: 0.82, detune: 500, onHit: (m) => m.applySlow?.(1300, 0.45) })) }
+  spellFirestorm() { return this.mageCast(1100, 'Tempête de feu…', 0xff5a2a, () => this.elementalStorm({ color: 0xff5a2a, tex: 'fx_explosion', anim: 'fx-explosion', scale: 1.2, tint: false, detune: -200, onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.5)), 3000) })) }
+  spellVoidstorm() { return this.mageCast(1100, "Tempête d'ombre…", 0x9b4dff, () => this.elementalStorm({ color: 0x9b4dff, tex: 'fx_spirit', anim: 'fx-spirit', scale: 1.5, tint: true, detune: -400, onHit: (m) => m.applyWeaken?.(0.5, 4000) })) }
+  // --- SORT 2 (mono-cible niv 10) par élément ---
+  spellPyroblast() { return this.mageCast(950, 'Pyroblast…', 0xff5a2a, () => this.elementalBolt({ color: 0xff5a2a, dmgMul: 5, tex: 'fx_explosion', anim: 'fx-explosion', onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.6)), 3000) })) }
+  spellFrostlance() { return this.mageCast(950, 'Lance de givre…', 0x8fd8ff, () => this.elementalBolt({ color: 0x8fd8ff, dmgMul: 4.5, tex: 'fx_ice_burst', anim: 'fx-ice-burst', boomScale: 1.6, onHit: (m) => m.applySlow?.(2000, 0.4) })) }
+  spellShadowbolt() { return this.mageCast(950, "Trait d'ombre…", 0x9b4dff, () => this.elementalBolt({ color: 0x9b4dff, dmgMul: 4.5, tex: 'fx_spirit', anim: 'fx-spirit', tint: true, boomScale: 1.8, onHit: (m) => m.applyWeaken?.(0.5, 5000) })) }
 
   /** ONDE DE CHOC (Tank, compétence de set) : slam au sol -> anneau de pics de ROCHE, dégâts + ÉTOURDIT
    *  les ennemis autour ET les FORCE à te cibler (provocation). */

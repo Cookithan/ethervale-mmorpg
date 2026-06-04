@@ -398,6 +398,20 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.aggroed = false
   }
 
+  /** BRÛLURE (Mage feu) : `dmg` dégâts toutes les 0,5 s pendant `durationMs` (DoT). */
+  applyBurn(dmg, durationMs) {
+    const now = this.scene?.time?.now ?? 0
+    this.burnDmg = dmg
+    this.burnUntil = now + durationMs
+    this.burnTickAt = now + 500
+  }
+
+  /** AFFAIBLISSEMENT (Mage ombre) : les dégâts de morsure du monstre sont réduits de `factor` pendant `durationMs`. */
+  applyWeaken(factor, durationMs) {
+    this.weakenFactor = factor
+    this.weakenUntil = (this.scene?.time?.now ?? 0) + durationMs
+  }
+
   /** Joue l'anim d'un boss à rig (idle/walk/hit) sans la relancer si déjà en cours. */
   playRig(state) {
     if (this.rigState === state) return
@@ -766,6 +780,13 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
     this.showSleep(time, false) // réveillé (ou monstre normal) : pas de "Zzz"
 
+    // BRÛLURE (Mage feu) : dégâts par tics (0,5 s). takeDamage gère la mort -> on sort si le monstre meurt.
+    if (this.burnUntil && time < this.burnUntil && time >= (this.burnTickAt ?? 0)) {
+      this.burnTickAt = time + 500
+      this.scene.floatingText?.(this.x, this.y - 10, `${this.burnDmg ?? 1}`, '#ff8a3a')
+      if (this.takeDamage(this.burnDmg ?? 1)) return
+    }
+
     const def = this.def
     // LEURRE (Image miroir du Mage) : le monstre POURSUIT le clone qui l'a touché (mon.lureTarget, posé à
     // l'impact d'un projectile de clone). Tant que ce clone vit, il vise le clone au lieu du joueur.
@@ -1000,6 +1021,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (now < this.nextBiteAt) return false
     let dmg = this.charging ? Math.round(this.damage * (this.def.charge?.dmgMul ?? 1.5)) : this.damage
     if (this.isBoss && !this.charging) dmg = Math.round(dmg * BOSS_BITE_MUL) // contact de boss = soutenable pour la mêlée (le danger = les attaques spéciales)
+    if (this.weakenUntil && now < this.weakenUntil) dmg = Math.max(1, Math.round(dmg * (1 - (this.weakenFactor ?? 0.5)))) // AFFAIBLI (Mage ombre)
     if (player.takeDamage(dmg, now)) {
       this.nextBiteAt = now + TOUCH_COOLDOWN
       return true

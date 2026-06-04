@@ -230,6 +230,7 @@ export default class BootScene extends Phaser.Scene {
     // icônes de la BARRE DE COMPÉTENCES (RPG Ability Icons, CC0) — 1 par sort + attaque (24×24)
     for (const key of ['skill_atk_melee', 'skill_atk_ranged', 'skill_charge', 'skill_whirlwind', 'skill_warcry',
       'skill_shieldcharge', 'skill_provoke', 'skill_shockwave', 'skill_blizzard', 'skill_pyroblast', 'skill_mirror',
+      'skill_firestorm', 'skill_frostlance', 'skill_voidstorm', 'skill_shadowbolt', // Mage par élément (feu/glace/ombre)
       'skill_wordshield', 'skill_sanctuary', 'skill_resurrect']) {
       this.load.image(key, `assets/skills/${key}.png`)
     }

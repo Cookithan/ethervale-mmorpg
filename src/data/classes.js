@@ -46,9 +46,9 @@ export const CLASSES = {
     // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
     heroes: [
       // spellFx = effet d'impact du Météore (anim, texture, taille de frame, teinté ou non par `magic`)
-      { key: 'hero_spirit', name: 'Mage des cieux', magic: 0xeaf2ff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true }, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // blanc
-      { key: 'hero_mage_black', name: 'Mage de l’ombre', magic: 0x9b4dff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true }, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // violet (au MILIEU)
-      { key: 'hero_flam', name: 'Mage de flamme', magic: 0xff3b30, spellFx: { anim: 'fx-explosion', tex: 'fx_explosion', frame: 40, tint: false }, proj: { anim: 'fx-fireball', tex: 'fx_fireball', tint: false } }, // rouge, boule de feu
+      { key: 'hero_spirit', name: 'Mage des cieux', element: 'ice', magic: 0xeaf2ff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true }, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // blanc -> GLACE
+      { key: 'hero_mage_black', name: 'Mage de l’ombre', element: 'shadow', magic: 0x9b4dff, spellFx: { anim: 'fx-spirit', tex: 'fx_spirit', frame: 32, tint: true }, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // violet -> OMBRE (au MILIEU)
+      { key: 'hero_flam', name: 'Mage de flamme', element: 'fire', magic: 0xff3b30, spellFx: { anim: 'fx-explosion', tex: 'fx_explosion', frame: 40, tint: false }, proj: { anim: 'fx-fireball', tex: 'fx_fireball', tint: false } }, // rouge -> FEU
     ],
   },
   tank: {
@@ -89,6 +89,23 @@ export const CLASSES = {
 }
 export const CLASS_LIST = Object.values(CLASSES)
 
+// KITS ÉLÉMENTAIRES DU MAGE : l'élément vient de l'APPARENCE (feu/glace/ombre). Chaque élément a un sort 1
+// (zone) et un sort 2 (mono-cible niv 10) avec un EFFET propre — feu=brûlure, glace=ralenti, ombre=affaiblit.
+export const MAGE_KITS = {
+  fire: {
+    spell: { id: 'firestorm', name: 'Tempête de feu', cost: 45, cd: 8000, desc: 'Incantation : zone de FEU — dégâts + BRÛLURE (dégâts sur la durée)' },
+    spell2: { id: 'pyroblast', name: 'Pyroblast', cost: 55, cd: 11000, level: 10, desc: 'Incantation : trait de feu, ÉNORMES dégâts mono-cible + brûlure (niv 10)' },
+  },
+  ice: {
+    spell: { id: 'blizzard', name: 'Blizzard', cost: 45, cd: 8000, desc: 'Incantation : zone de givre — dégâts + RALENTIT les ennemis' },
+    spell2: { id: 'frostlance', name: 'Lance de givre', cost: 55, cd: 11000, level: 10, desc: 'Incantation : trait de glace, gros dégâts mono-cible + ralentit (niv 10)' },
+  },
+  shadow: {
+    spell: { id: 'voidstorm', name: "Tempête d'ombre", cost: 45, cd: 8000, desc: "Incantation : zone d'ombre — dégâts + AFFAIBLIT (les ennemis tapent moins fort)" },
+    spell2: { id: 'shadowbolt', name: "Trait d'ombre", cost: 55, cd: 11000, level: 10, desc: "Incantation : trait d'ombre, gros dégâts mono-cible + affaiblit (niv 10)" },
+  },
+}
+
 // Icônes de la BARRE DE COMPÉTENCES (pack RPG Ability Icons, CC0). Clé = id du sort / type d'attaque.
 export const SKILL_ICONS = {
   // attaque de base (selon abilities.melee / ranged)
@@ -97,8 +114,11 @@ export const SKILL_ICONS = {
   charge: 'skill_charge', whirlwind: 'skill_whirlwind', warcry: 'skill_warcry',
   // Tank
   shieldcharge: 'skill_shieldcharge', provoke: 'skill_provoke', shockwave: 'skill_shockwave',
-  // Mage
-  blizzard: 'skill_blizzard', pyroblast: 'skill_pyroblast', mirror: 'skill_mirror',
+  // Mage — par élément (feu/glace/ombre)
+  firestorm: 'skill_firestorm', pyroblast: 'skill_pyroblast',
+  blizzard: 'skill_blizzard', frostlance: 'skill_frostlance',
+  voidstorm: 'skill_voidstorm', shadowbolt: 'skill_shadowbolt',
+  mirror: 'skill_mirror',
   // Soigneur
   wordshield: 'skill_wordshield', sanctuary: 'skill_sanctuary', resurrect: 'skill_resurrect',
 }
