@@ -221,6 +221,9 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('fx_kunai', 'assets/fx/kunai.png') // dague de lancer (statique, pointe dans la direction)
     // particules d'AMBIANCE (température + pas) — spritesheets Ninja/Mystic
     this.load.spritesheet('fx_snow', 'assets/fx/snow.png', { frameWidth: 8, frameHeight: 8 }) // 7 flocons (froid)
+    this.load.spritesheet('fx_ice_spike', 'assets/fx/ice_spike.png', { frameWidth: 32, frameHeight: 32 }) // 9 frames (pics de glace qui jaillissent — Blizzard)
+    this.load.spritesheet('fx_ice_burst', 'assets/fx/ice_burst.png', { frameWidth: 32, frameHeight: 32 }) // 10 frames (éclats de glace)
+    this.load.spritesheet('fx_magic_circle', 'assets/fx/magic_circle.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (cercle d'incantation au sol, teintable)
     this.load.spritesheet('fx_flam', 'assets/fx/flam.png', { frameWidth: 20, frameHeight: 30 }) // 10 frames (le héros brûle au chaud)
     this.load.spritesheet('fx_dust', 'assets/fx/dust.png', { frameWidth: 12, frameHeight: 12 }) // 4 frames (poussière de pas)
 
@@ -283,6 +286,15 @@ export default class BootScene extends Phaser.Scene {
     }
     if (!this.anims.exists('fx-dust')) {
       this.anims.create({ key: 'fx-dust', frames: this.anims.generateFrameNumbers('fx_dust', { start: 0, end: 3 }), frameRate: 14, repeat: 0 }) // poussière de pas (joué 1 fois)
+    }
+    if (!this.anims.exists('fx-ice-spike')) {
+      this.anims.create({ key: 'fx-ice-spike', frames: this.anims.generateFrameNumbers('fx_ice_spike', { start: 0, end: 8 }), frameRate: 16, repeat: 0 }) // pics de glace (Blizzard)
+    }
+    if (!this.anims.exists('fx-ice-burst')) {
+      this.anims.create({ key: 'fx-ice-burst', frames: this.anims.generateFrameNumbers('fx_ice_burst', { start: 0, end: 9 }), frameRate: 18, repeat: 0 }) // éclats de glace
+    }
+    if (!this.anims.exists('fx-magic-circle')) {
+      this.anims.create({ key: 'fx-magic-circle', frames: this.anims.generateFrameNumbers('fx_magic_circle', { start: 0, end: 3 }), frameRate: 10, repeat: -1 }) // cercle d'incantation au sol
     }
     if (!this.anims.exists('fx-flam')) {
       this.anims.create({ key: 'fx-flam', frames: this.anims.generateFrameNumbers('fx_flam', { start: 0, end: 9 }), frameRate: 16, repeat: -1 }) // flamme qui boucle (héros qui brûle)

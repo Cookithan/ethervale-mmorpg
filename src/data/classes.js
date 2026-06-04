@@ -32,17 +32,17 @@ export const CLASSES = {
     ],
   },
   mage: {
-    key: 'mage', name: 'Mage', desc: 'Sorts à distance, fragile',
-    hp: 70, attack: 20, defense: 0, speedMul: 1.0,
+    key: 'mage', name: 'Mage', desc: 'Sorts à distance, très fragile',
+    hp: 60, attack: 20, defense: 0, speedMul: 1.0,
     mana: 120,
-    // Fragile mais gros dégâts : peu de PV, beaucoup de mana pour enchaîner les sorts.
+    // TRÈS fragile mais gros dégâts : peu de PV (60), beaucoup de mana ; sorts INCANTÉS (annulables si touché).
     hpPerLevel: 11, defPerLevel: 0, manaPerLevel: 5,
-    shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec)
+    shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec) -> défense fiable de près
     rangedDmgMul: 1.1, // ...mais qui tape MOINS fort par boule
-    spell: { id: 'meteor', name: 'Météore', cost: 45, cd: 8000, desc: 'Incantation puis grosse zone de dégâts' }, // AoE incantée
-    spell2: { id: 'mirror', name: 'Image miroir', cost: 55, cd: 18000, level: 10, desc: 'Invoque des copies qui tirent et détournent les coups (déverrouillé niv 10)' },
+    spell: { id: 'blizzard', name: 'Blizzard', cost: 45, cd: 8000, desc: 'Incantation : zone de givre qui blesse ET ralentit les ennemis' }, // AoE givre + slow
+    spell2: { id: 'pyroblast', name: 'Pyroblast', cost: 55, cd: 11000, level: 10, desc: 'Incantation : trait de feu, ÉNORMES dégâts sur une seule cible (niv 10)' }, // mono-cible burst
     abilities: { melee: false, ranged: true, heal: false },
-    kit: 'Boule (F) · Météore incanté (1)',
+    kit: 'Boule (F) · Blizzard incanté (1)',
     // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
     heroes: [
       // spellFx = effet d'impact du Météore (anim, texture, taille de frame, teinté ou non par `magic`)

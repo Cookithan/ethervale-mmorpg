@@ -378,6 +378,13 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.nextAttackAt = now + BOSS_WAKE_DELAY
   }
 
+  /** RALENTI (Blizzard du Mage) : réduit la vitesse de nav de `factor` pendant `durationMs`. */
+  applySlow(durationMs, factor = 0.5) {
+    const now = this.scene?.time?.now ?? 0
+    this.slowUntil = now + durationMs
+    this.slowFactor = factor
+  }
+
   /** Joue l'anim d'un boss à rig (idle/walk/hit) sans la relancer si déjà en cours. */
   playRig(state) {
     if (this.rigState === state) return
@@ -760,7 +767,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // On l'utilise pour l'anim plutôt que la vitesse physique, qui rebondit quand
     // le monstre est collé au joueur (-> oscillation gauche/droite sans fin).
     const homeDist = Math.hypot(this.homeX - this.x, this.homeY - this.y)
-    const spd = def.speed * SPEED_SCALE
+    const slowed = this.slowUntil && time < this.slowUntil // RALENTI (Blizzard du Mage)
+    const spd = def.speed * SPEED_SCALE * (slowed ? (this.slowFactor ?? 0.5) : 1)
     let aimX
     let aimY
 
