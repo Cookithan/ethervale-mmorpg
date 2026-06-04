@@ -1,7 +1,9 @@
 # Brief Éthervale — État du jeu & feuille de route
 
 > Document de synthèse pour reprendre le projet (humain OU nouvelle session Claude).
-> Dernière mise à jour : **2026-06-03**, dernier commit `080e714` (branche `main`, arbre propre).
+> Dernière mise à jour : **2026-06-04**, dernier commit `f4850c6` (branche `main`, arbre propre).
+>
+> ⚡ **NOUVEAU depuis le 2026-06-04** (par rapport à `080e714`) : équilibrage trinité de classes, patterns de boss (Gélées slam / Cyclopes bull-rush / Tengu déluge+transfo), **système de température** (froid/chaud), **ponts en bois**, **2e compétence par classe** (niv 10), **feu de camp posable**, **cycle jour/nuit 20 min**, et **sols de biomes anti-mosaïque**. Détail dans les sections ci-dessous (et exhaustif dans la mémoire Claude `mmorpg-project.md` → bloc « UPDATE 2026-06-04 »).
 
 ---
 
@@ -40,10 +42,10 @@ Philosophie : **solo d'abord**, **MVP strict**, multijoueur repoussé en **Phase
 ### Le monde / la carte
 - **Map déterministe** (`WORLD_SEED=1337`, PRNG seedé pendant la génération puis restauré). Grille **540×330**, continent en **île** fixe (`icx/icy = 180,110`, ellipse `ISLAND_RX/RY = 96/82`), surplus = **océan**.
 - **Biomes en ZONES (Voronoi)** : `biomeAt` = graine la plus proche en distance déformée par bruit → frontières organiques. Village dans une **clairière de prairie** au sein de la forêt ; **neige** au Nord, **désert** au Sud, **forêt** autour, **île maudite** end-game au SO (verrouillée jusqu'à la nage).
-- **Côte lissée** (`computeCoast` → `oceanMask`), **rivières-séparatrices** (frontières neige|forêt et forêt|désert) avec **gués** (terre battue), **3 grosses îles** au large.
+- **Côte lissée** (`computeCoast` → `oceanMask`), **rivières-séparatrices** (frontières neige|forêt et forêt|désert) avec **ponts en bois** (sprite Sprout `bridge_wood` agrandi au-dessus de l'eau, `renderFordBridges` ; ⚠️ après `setCollision(false)` sur un gué il FAUT `waterLayer.calculateFacesWithin(...)` sinon le pont reste infranchissable), **3 grosses îles** au large.
 - **Sols** :
-  - Prairie/forêt = **herbe Sprout** (`grassLayer`), forêt teintée vert sombre par tuile (mosaïque) + transition douce au bord de prairie. **Prairie SANS plantes** (demandé).
-  - Désert & neige = tuiles `field` du biome + **film de teinte par tuile (mosaïque, 3 nuances)** comme la forêt. Pas de lacs asséchés/gelés (retirés).
+  - Prairie/forêt = **herbe Sprout** (`grassLayer`), forêt teintée vert sombre + transition douce au bord de prairie. **Prairie SANS plantes** (demandé).
+  - Désert & neige = tuiles `field` du biome + **film de teinte en 3 nuances**. ⚠️ **Anti-mosaïque (commit `f4850c6`)** : la teinte (désert/neige + forêt profonde) suit un **bruit CONTINU** `noise2D(tx*TINT_PATCH, ty*TINT_PATCH)` quantifié → **taches MOYENNES** (quelques tuiles), plus de damier par tuile. `const TINT_PATCH=3.2` = échelle réglable (plus grand = taches plus petites). Sols aussi plus unis (tuile pleine majoritaire). Pas de lacs asséchés/gelés.
 - **Eau animée** (Sprout, `animateWater` cycle les tuiles visibles).
 - **Déco** : forêt = **chênes Mystic Woods** (`oak_canopy`/`oak_trunk`, tronc opaque + canopée walk-behind) + sous-bois léger. Props par biome (cactus, congères, cristaux…).
 - **Village** : place + chemins, **clôture**, **feu de camp**, maisons. Layout actuel : **DROITE = marchand**, **GAUCHE = Aldric le Forgeron**, **HAUT = Mira**, **BAS = Tom**. Marchand + villageois de service = **statiques**.
@@ -52,7 +54,9 @@ Philosophie : **solo d'abord**, **MVP strict**, multijoueur repoussé en **Phase
 
 ### Combat (4 classes complètes)
 - 2 barres **Vie/Mana** + régén, **attaque de base spammable**, **1 sort par classe** (touche 1 / boutons HUD ATK-SORT) :
-  Guerrier=**Charge** (dash i-frames), Tank=**Bouclier** (-80 %), Mage=**Météore** (incantation), Soigneur=**Soin**.
+  Guerrier=**Charge** (dash i-frames), Tank=**Charge de bouclier**, Mage=**Météore** (incantation), Soigneur=**Soin**.
+- **2e compétence par classe** (touche **2**, débloquée **niv 10**, bouton HUD avec cadenas) : Guerrier=Tourbillon, Tank=Provocation+Bouclier (Tank refondu), Mage=Image miroir (clones), Soigneur=Sanctuaire (zone de soin).
+- **Équilibrage trinité** : gains par niveau dans `classes.js` (`hpPerLevel`/`defPerLevel`/`manaPerLevel`) appliqués dans `Player.gainXp`. **Boss = stats fixes découplées** des mobs ; contact de boss ÷2 → la mêlée est soutenable, le danger vient des **attaques spéciales esquivables**.
 - Dégâts centralisés (`hitMonster`), recul seulement par le Tank, ciblage auto sur mobs **visibles**.
 - **FX data-driven** (sorts/slash/projectiles animés via spritesheets du pack).
 - **Apparences par classe** (3/classe + faceset) + **création de perso** (fond village vivant).
@@ -67,6 +71,17 @@ Philosophie : **solo d'abord**, **MVP strict**, multijoueur repoussé en **Phase
 - **Système « rig » boss** (sprites dédiés `Actor/Boss/`, anims mono-orientation + flipX) : ~15 boss placés (repaires multiples par biome) + **Dragon de mer** d'ambiance (segmenté, longe la côte, intouchable pour l'instant).
 - **2 vrais BOSS DE RAID** intuables solo (Tengu des Glaces, Samouraï Sylvestre) + **ARÈNE scellée** (mur invisible, clairière sans arbres/mobs).
 - **Comportements boss** : **endormis** sur leur repaire (réveil = on les frappe), **solides**, **CHARGE télégraphiée** (dash data-driven) sur plusieurs boss.
+- **Patterns spéciaux data-driven** (moteur calqué sur la charge, tous télégraphiés/esquivables) : **Gélées = saut-slam** (`def.slam`), **Cyclopes = bull-rush** (`def.charge`), **Tengu = déluge de boules de feu en éventail** (`def.barrage`) + **transformation furieuse à 50 % PV** (`def.enrage`, anim `Trans`). RESTE : Bambou/Crâne n'ont encore que contact/charge.
+
+### Température (froid / chaud) — `GameScene.updateTemperature`
+- Jauge `player.temp` −100→+100, **thermomètre façon LEGO Fortnite** (haut-gauche). **Neige = froid**, **désert = chaud** : ralenti progressif dès |temp|≥55, **dégâts** dès ≥90 (uniquement dans le biome). Lisière = tempéré (on sent venir). Flammes aux pieds / flocons / vignette / bandeau d'alerte.
+- **Atténuation** : armures `coldResist`/`heatResist` (Cape de fourrure / Habit du désert) + **potions feu/givre** (immunité 10 min, marchand).
+- **Feu de camp posable** : consommable `campfire_kit` (« Feu de camp », **rare, 800 or**, marchand → Potions). Clic hotbar → pose un foyer ~90 s (rayon 64 px, flamme animée + halo + crépitement, 3 max) = **zone-refuge qui neutralise le FROID** autour (réchauffe → **sans effet au désert**).
+
+### Cycle jour / nuit — `GameScene.updateDayNight` (cf. mémoire `day-night-cycle.md`)
+- **Cycle complet = 20 min** (`DAY_CYCLE_MS`). Voile bleu nuit couvrant le monde, opacité/teinte suivant l'heure (aube mauve → bleu nuit **~55 %** à minuit → jour). `this.dayDarkness` (0..1) exposé.
+- **Nuit = plus froid** : décale la cible de température vers le froid (neige plus dure, désert qui se rafraîchit) ; la potion de feu l'annule. **Feux de camp plus marqués la nuit**.
+- **HUD** : petite **icône soleil/lune** (textures générées) à gauche de la minimap.
 
 ### Audio (validé « parfait »)
 - Moteur centralisé (`sound.js`) : **musique par zone** (fondu), **bruitages combat**, jingles level-up/game over, **ambiance vent/vagues côtière**, **sons d'UI** (panneaux, équip, transactions, pas, ramassage), sons élémentaires des sorts, rugissement de boss. Réglages muet/volume persistés.
@@ -86,20 +101,21 @@ Philosophie : **solo d'abord**, **MVP strict**, multijoueur repoussé en **Phase
 3. **Intérieurs / donjons** (gros chantier, nouvelles scènes/transitions) : entrer dans les maisons et grottes (`TilesetHouse/Interior`, `TilesetDungeon`). `TilesetFloor.png` contient de **vrais sols** (sable/neige/glace) si besoin un jour.
 
 ### B. Boss & monstres
-4. **Patterns d'attaque des boss restants** (au-delà de la charge) : Tengu = déluge `Attack` + **transformation `Trans` à 50 % PV** ; Cyclopes = bull-rush ; Gelées = saut-slam (`Jump`). Demandé par l'utilisateur (« pas que le dash »).
+4. **Patterns d'attaque des boss restants** : Gélées (slam), Cyclopes (bull-rush), Tengu (déluge+transfo) sont **FAITS** ; il reste **Bambou / Crâne / autres** qui n'ont que contact/charge.
 5. **Plus d'ennemis** : ~10 monstres utilisés sur ~70 dispo dans `Actor/Monster/`.
 
 ### C. Contenu de jeu
 6. **📜 QUÊTES** (§10 du brief original, **le plus structurant**) : système data-driven, PNJ avec `!`/`?`, objectifs, récompenses.
 7. **🐾 Animaux d'ambiance** (`Actor/Animal/` ~26) : critters / familiers / montures.
-8. **Potions de mana** au marchand ; FX élémentaires manquants (Ice/Thunder/Plant/Water, poussière de pas).
+8. **FX élémentaires manquants** (Glace/Foudre/Plante/Eau) — surtout cosmétique tant qu'aucune mécanique ne les pilote (l'élément vient de l'apparence du Mage : feu/lumière/ombre). *(Potions de soin/mana/température = déjà au marchand.)*
+9. **Idées en réserve** : PNJ/village qui s'allument la nuit ; mobs nocturnes ; passifs/stats secondaires (crit/vitesse/vol-de-vie) ; rations chaudes/eau fraîche (anti-chaleur côté désert).
 
 ### D. Phase 4 — Multijoueur (gros morceau, après le solo)
-9. **Multijoueur Colyseus** + persistance serveur (Supabase/SQLite à trancher).
-10. **Compétence NAGE** → débloque l'**île maudite** (et permet d'**invoquer le Dragon de mer** à un point précis dans l'eau : il quitte sa ronde, devient un vrai boss de raid).
-11. **Arène à sens unique** (multi) : les autres joueurs peuvent ENTRER mais pas SORTIR tant que le boss vit.
-12. **Brouillard de guerre** (§7, nécessite la persistance serveur).
-13. Plages le long de la côte, équilibrage RAID, loot légendaire de raid, nettoyage code mort.
+10. **Multijoueur Colyseus** + persistance serveur (Supabase/SQLite à trancher).
+11. **Compétence NAGE** → débloque l'**île maudite** (et permet d'**invoquer le Dragon de mer** à un point précis dans l'eau : il quitte sa ronde, devient un vrai boss de raid).
+12. **Arène à sens unique** (multi) : les autres joueurs peuvent ENTRER mais pas SORTIR tant que le boss vit.
+13. **Brouillard de guerre** (§7, nécessite la persistance serveur).
+14. Plages le long de la côte, équilibrage RAID, loot légendaire de raid, nettoyage code mort.
 
 ---
 
@@ -110,6 +126,10 @@ Philosophie : **solo d'abord**, **MVP strict**, multijoueur repoussé en **Phase
 - **Rendu** : poser un rectangle de fond couleur-herbe derrière la tilemap (seam 1px au zoom ×3).
 - **Recul/mort** : appeler `setVelocity` AVANT `takeDamage` (sinon body `undefined` → gel du step physique).
 - **Outil carte** : script temporaire `_*.mjs` qui réplique `noise2D/biomeAt/isOcean/rivières` → PNG (encodeur PNG maison via zlib) pour visualiser la map sans lancer le jeu. **Supprimer après** (préfixe `_`).
+- **Ponts/gués** : après `tile.setCollision(false)` sur les tuiles de gué, **APPELER `waterLayer.calculateFacesWithin(0,0,MAP_W,MAP_H)`** — sinon Arcade garde les anciennes « faces » et le pont reste infranchissable.
+- **Voile plein écran + zoom ×3** : pour un overlay qui doit couvrir tout l'écran (nuit), un **rectangle couvrant TOUT le monde** (scrollFactor 1) est plus simple/sûr qu'un `scrollFactor(0)` (qui est quand même mis à l'échelle par le zoom). Depth ~9000 (au-dessus des sprites `depth=y`, sous les flashs/HUD).
+- **Anti-mosaïque des sols** : teinter par un **bruit CONTINU** (`noise2D`) quantifié, PAS par `tileNoise` par-tuile (= damier). Échelle réglable via `TINT_PATCH`.
+- **Tester un cycle long** (jour/nuit 20 min) : réduire temporairement la constante de durée (ex. 90 s), valider, **remettre la vraie valeur avant commit**.
 
 ---
 
