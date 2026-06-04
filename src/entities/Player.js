@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON, refreshItemDef } from '../data/items.js'
+import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON, refreshItemDef, setStatus } from '../data/items.js'
 import { CLASSES, DEFAULT_CHARACTER } from '../data/classes.js'
 import { Audio, SFX } from '../data/sound.js'
 
@@ -213,6 +213,21 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       heatResist += s.heatResist ?? 0 // résiste à la chaleur (biome désert)
       spellPower += it.spellPower ?? 0 // Relique -> effet/dégâts de compétence renforcé
       spellDuration += it.spellDuration ?? 0 // Relique -> durée d'effet de compétence allongée
+    }
+    // PANOPLIES : cumule les bonus 2/4 pièces des sets équipés + détecte la panoplie COMPLÈTE (sort 3, étape 7)
+    this.activeSet = null
+    const setKeys = new Set(Object.values(this.equipped).filter((it) => it?.set).map((it) => it.set))
+    for (const key of setKeys) {
+      const st = setStatus(this.equipped, key)
+      const b = st.bonus
+      atk += b.attack ?? 0
+      def += b.defense ?? 0
+      hp += b.hp ?? 0
+      mana += b.mana ?? 0
+      manaRegen += b.manaRegen ?? 0
+      spellPower += b.spellPower ?? 0
+      spellDuration += b.spellDuration ?? 0
+      if (st.count >= 4) this.activeSet = st.set // panoplie complète -> compétence de set débloquée
     }
     this.coldResist = coldResist
     this.heatResist = heatResist

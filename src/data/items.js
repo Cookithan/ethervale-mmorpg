@@ -20,6 +20,34 @@ export const RARITY = {
 export const SET_COLOR = '#3ddc84' // émeraude (texte/contours)
 export const SET_TINT = 0x2ecc71 // émeraude (teintes de sprite/filigrane)
 
+// PANOPLIES (brief §4) : 1 par classe, 4 pièces (arme + armure + relique + anneau). Le champ `item.set`
+// pointe vers une clé ici. 2 pièces équipées -> `bonus2` ; 4 pièces (complète) -> `bonus4` + débloque la
+// COMPÉTENCE DE SET `skill` (sort 3 / touche 3, géré à l'étape 7). Bonus = stats cumulées dans recomputeStats.
+export const SETS = {
+  warrior: { name: 'Dernier Chevalier', class: 'warrior', skill: 'warcry', skillName: 'Cri intimidant',
+    bonus2: { attack: 8 }, bonus4: { attack: 18, hp: 40 } },
+  tank: { name: 'Cœur en Pierre', class: 'tank', skill: 'shockwave', skillName: 'Onde de choc',
+    bonus2: { hp: 40, defense: 6 }, bonus4: { hp: 110, defense: 16 } },
+  mage: { name: 'Magie Ancienne', class: 'mage', skill: 'mirror', skillName: 'Image miroir',
+    bonus2: { mana: 40, spellPower: 0.12 }, bonus4: { mana: 100, spellPower: 0.3 } },
+  healer: { name: 'Vie Sacrée', class: 'healer', skill: 'resurrect', skillName: 'Résurrection',
+    bonus2: { mana: 40, manaRegen: 3 }, bonus4: { mana: 100, manaRegen: 6 } },
+}
+
+/** Nb de pièces de la panoplie `setKey` équipées + bonus actif. Renvoie { count, set, bonus } (bonus =
+ *  cumul des stats actives : 0 si <2, bonus2 si 2-3, bonus2+bonus4 si 4). */
+export function setStatus(equipped, setKey) {
+  const set = SETS[setKey]
+  if (!set) return { count: 0, set: null, bonus: {} }
+  let count = 0
+  for (const slot of Object.keys(equipped)) if (equipped[slot]?.set === setKey) count++
+  const bonus = {}
+  const add = (b) => { for (const [k, v] of Object.entries(b)) bonus[k] = (bonus[k] ?? 0) + v }
+  if (count >= 2) add(set.bonus2)
+  if (count >= 4) add(set.bonus4)
+  return { count, set, bonus }
+}
+
 /** Couleur d'affichage (texte) d'un objet : émeraude si pièce de set, sinon couleur de rareté. */
 export function itemColor(item) {
   if (item?.set) return SET_COLOR
@@ -96,6 +124,29 @@ export const ITEMS = {
   legend_focus: { id: 'legend_focus', name: 'Cristal Cosmique', slot: 'focus', icon: 'rel_cosmic', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
   legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'eq_ring_ruby', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
 
+  // ===== PIÈCES DE PANOPLIE (champ `set`) — marquage VERT ÉMERAUDE, BOSS only (jamais marchand/butin normal).
+  // 4 par classe (arme/armure/relique/anneau). Voir SETS pour les bonus 2/4 pièces. =====
+  // -- Guerrier : « Dernier Chevalier » --
+  set_war_weapon: { id: 'set_war_weapon', name: 'Lame du Dernier Chevalier', slot: 'weapon', classes: ['warrior'], icon: 'set_sword', set: 'warrior', rarity: 'epic', price: 800, stats: { attack: 22 }, dur: 200, fx: 'fx-slash' },
+  set_war_armor: { id: 'set_war_armor', name: 'Cuirasse du Serment', slot: 'armor', classes: ['warrior'], icon: 'eq_plate', set: 'warrior', rarity: 'epic', price: 800, stats: { hp: 48, defense: 9 }, dur: 160 },
+  set_war_relic: { id: 'set_war_relic', name: 'Étendard du Chevalier', slot: 'focus', classes: ['warrior'], icon: 'rel_emerald', set: 'warrior', rarity: 'epic', price: 800, spellDuration: 0.3 },
+  set_war_ring: { id: 'set_war_ring', name: 'Anneau du Serment', slot: 'ring', classes: ['warrior'], icon: 'eq_ring_emerald', set: 'warrior', rarity: 'epic', price: 800, stats: { mana: 30, attack: 5 } },
+  // -- Tank : « Cœur en Pierre » --
+  set_tank_weapon: { id: 'set_tank_weapon', name: 'Masse du Cœur en Pierre', slot: 'weapon', classes: ['tank'], icon: 'set_glaive', set: 'tank', rarity: 'epic', price: 800, stats: { attack: 19 }, dur: 220, fx: 'fx-circslash' },
+  set_tank_armor: { id: 'set_tank_armor', name: 'Carapace de Granit', slot: 'armor', classes: ['tank'], icon: 'eq_mail', set: 'tank', rarity: 'epic', price: 800, stats: { hp: 60, defense: 12 }, dur: 200 },
+  set_tank_relic: { id: 'set_tank_relic', name: 'Pierre du Gardien', slot: 'focus', classes: ['tank'], icon: 'rel_emerald', set: 'tank', rarity: 'epic', price: 800, spellDuration: 0.3 },
+  set_tank_ring: { id: 'set_tank_ring', name: 'Anneau Tellurique', slot: 'ring', classes: ['tank'], icon: 'eq_ring_emerald', set: 'tank', rarity: 'epic', price: 800, stats: { mana: 24, hp: 24, defense: 3 } },
+  // -- Mage : « Magie Ancienne » --
+  set_mage_weapon: { id: 'set_mage_weapon', name: 'Sceptre de la Magie Ancienne', slot: 'weapon', classes: ['mage'], icon: 'set_scepter', set: 'mage', rarity: 'epic', price: 800, stats: { attack: 21 }, dur: 160 },
+  set_mage_armor: { id: 'set_mage_armor', name: 'Robe Runique', slot: 'armor', classes: ['mage'], icon: 'eq_leather', set: 'mage', rarity: 'epic', price: 800, stats: { hp: 32, mana: 30 }, dur: 140 },
+  set_mage_relic: { id: 'set_mage_relic', name: 'Tome Ancien', slot: 'focus', classes: ['mage'], icon: 'rel_emerald', set: 'mage', rarity: 'epic', price: 800, spellPower: 0.35, stats: { manaRegen: 3 } },
+  set_mage_ring: { id: 'set_mage_ring', name: 'Anneau Arcanique', slot: 'ring', classes: ['mage'], icon: 'eq_ring_emerald', set: 'mage', rarity: 'epic', price: 800, stats: { mana: 70, manaRegen: 3 } },
+  // -- Soigneur : « Vie Sacrée » --
+  set_heal_weapon: { id: 'set_heal_weapon', name: 'Sceptre de la Vie Sacrée', slot: 'weapon', classes: ['healer'], icon: 'set_scepter', set: 'healer', rarity: 'epic', price: 800, stats: { attack: 15 }, dur: 160 },
+  set_heal_armor: { id: 'set_heal_armor', name: 'Robe Sacrée', slot: 'armor', classes: ['healer'], icon: 'eq_leather', set: 'healer', rarity: 'epic', price: 800, stats: { hp: 32, mana: 30 }, dur: 140 },
+  set_heal_relic: { id: 'set_heal_relic', name: 'Reliquaire Béni', slot: 'focus', classes: ['healer'], icon: 'rel_emerald', set: 'healer', rarity: 'epic', price: 800, spellPower: 0.3, stats: { manaRegen: 3 } },
+  set_heal_ring: { id: 'set_heal_ring', name: 'Anneau Béni', slot: 'ring', classes: ['healer'], icon: 'eq_ring_emerald', set: 'healer', rarity: 'epic', price: 800, stats: { mana: 70, manaRegen: 4 } },
+
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'pot_heal', rarity: 'common', price: 40, heal: 45 },
   potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, heal: 120 },
@@ -119,8 +170,8 @@ export const ITEMS = {
 // matériaux exposés à part (ordre d'affichage de la poche de ressources)
 export const MATERIALS = ['mat_leather', 'mat_bone', 'mat_essence', 'mat_crystal']
 
-// stock du marchand = tout le catalogue SAUF les légendaires (exclusifs aux boss, brief §8)
-export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary')
+// stock du marchand = tout le catalogue SAUF les légendaires ET les pièces de set (exclusifs aux boss)
+export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set)
 
 // BATEAU (brief A3) : achat SPÉCIAL au marchand (onglet dédié) — déverrouille la navigation sur l'eau
 // (le héros embarque dès qu'il marche sur l'eau) → accès aux Terres maudites end-game. Pas un objet de
@@ -237,6 +288,11 @@ export function describeItem(item) {
   if (hasDurability(item)) {
     const broken = (item.durability ?? item.dur) <= 0
     txt += `\nDurabilité ${item.durability ?? item.dur}/${item.dur}${broken ? ' (CASSÉ)' : ''}`
+  }
+  if (item.set && SETS[item.set]) {
+    const s = SETS[item.set]
+    const fb = (b) => Object.entries(b).map(([k, v]) => (k === 'spellPower' || k === 'spellDuration') ? `+${Math.round(v * 100)}% ${k === 'spellPower' ? 'effet' : 'durée'}` : `+${v} ${STAT_LABELS[k] ?? k}`).join(', ')
+    txt += `\nPanoplie « ${s.name} »\n  (2) ${fb(s.bonus2)}\n  (4) ${fb(s.bonus4)} + ${s.skillName}`
   }
   const restr = classRestrictionLabel(item)
   if (restr) txt += `\n${restr}`

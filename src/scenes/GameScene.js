@@ -508,10 +508,12 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-ONE', () => this.castSpell()) // LE sort de la classe (touche 1)
       this.input.keyboard.on('keydown-R', () => this.castSpell()) // alias pratique (R)
       this.input.keyboard.on('keydown-TWO', () => this.castSpell2()) // 2e compétence (touche 2, déverrouillée niv 10)
+      this.input.keyboard.on('keydown-THREE', () => this.castSpell3()) // compétence de PANOPLIE (touche 3, panoplie complète)
       this.input.keyboard.on('keydown-E', () => this.tryInteract())
       this.input.keyboard.addCapture('TAB') // empêche Tab de changer le focus du navigateur
       this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
       this.input.keyboard.on('keydown-X', () => { this._heldOn = !this._heldOn }) // X = afficher/masquer l'arme tenue en main en permanence
+      this.input.keyboard.on('keydown-G', () => this.debugGrantSet()) // ⚙️ DEBUG (temporaire) : ajoute la panoplie de la classe au sac
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
@@ -3324,6 +3326,18 @@ export default class GameScene extends Phaser.Scene {
     })
   }
 
+  /** ⚙️ DEBUG (temporaire — touche G) : ajoute les 4 pièces de panoplie de la classe au sac (test sets).
+   *  À RETIRER avant la version finale (les pièces de set dropperont des boss, étape 8). */
+  debugGrantSet() {
+    const p = this.player
+    if (!p) return
+    const list = Object.values(ITEMS).filter((it) => it.set === p.className)
+    p.invMax = Math.max(p.invMax, p.inventory.length + list.length)
+    list.forEach((it) => p.inventory.push(cloneItem(it)))
+    p.invVersion++
+    this.scene.get('UIScene')?.showToast?.(`Debug : panoplie ${p.className} ajoutée (${list.length})`, '#3ddc84')
+  }
+
   /** ARME TENUE EN MAIN (toggle X) : affiche l'arme équipée à côté du héros, orientée selon la direction.
    *  Se CACHE pendant une action d'attaque (le swing/poke montre l'arme à la place) et REVIENT à la fin.
    *  Aura de rareté permanente (épique=violet / légendaire=or). Appelé chaque frame depuis update(). */
@@ -3610,6 +3624,31 @@ export default class GameScene extends Phaser.Scene {
     if (!fn || fn() === false) return
     p.spendMana(sp.cost)
     p.nextSpell2At = now + sp.cd // cooldown fixe (cf. castSpell)
+  }
+
+  /** COMPÉTENCE DE PANOPLIE (touche 3) : disponible seulement si la panoplie de classe est COMPLÈTE
+   *  (p.activeSet, 4 pièces). Cooldown long + coût mana. Plus forte que les sorts 1/2. (Brief §5/§7) */
+  castSpell3() {
+    if (this.uiBusy() || this.gameOver) return
+    if (this.sailBlocked()) return
+    const p = this.player
+    if (p.hp <= 0) return
+    const set = p.activeSet
+    if (!set) return this.floatingText(p.x, p.y - 18, 'Panoplie incomplète (4/4)', '#ffd27a')
+    const now = this.time.now
+    if (now < (p.nextSpell3At ?? 0)) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
+    const COST = 30
+    if (p.mana < COST) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
+    const effects = {
+      mirror: () => this.spellMirrorImage(), // Mage : Image miroir (clones)
+      warcry: () => this.spellWarcry?.(), // Guerrier : Cri intimidant (à venir étape 7)
+      shockwave: () => this.spellShockwave?.(), // Tank : Onde de choc (à venir)
+      resurrect: () => this.spellResurrect?.(), // Soigneur : Résurrection (à venir)
+    }
+    const fn = effects[set.skill]
+    if (!fn || fn() === false) return this.floatingText(p.x, p.y - 18, 'Bientôt', '#ffd27a')
+    p.spendMana(COST)
+    p.nextSpell3At = now + 35000 // cooldown long (~35 s)
   }
 
   /** Jeu de sons magiques (cast/proj/impact + detune) selon l'APPARENCE du héros (feu/lumière/ombre/arcane). */
@@ -4404,8 +4443,8 @@ export default class GameScene extends Phaser.Scene {
   /** Renvoie une COPIE d'un ÉQUIPEMENT de rareté `tier`. `biasClass` (smart loot MIX) : 60 % du temps on
    *  restreint aux objets utilisables par la classe (les ARMES surtout ; armure/focus/anneau restent universels). */
   equipmentOfTier(tier, biasClass = null) {
-    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged) // slot = équipement ; lancer = marché only
-    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged) // garde-fou
+    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged && !it.set) // slot = équipement ; lancer/set = exclus du butin normal
+    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged && !it.set) // garde-fou
     if (biasClass && Math.random() < 0.6) {
       const usable = pool.filter((it) => !it.classes || it.classes.includes(biasClass))
       if (usable.length) pool = usable

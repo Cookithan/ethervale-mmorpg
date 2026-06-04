@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
+import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
@@ -1684,7 +1684,13 @@ export default class UIScene extends Phaser.Scene {
   showTip(item, centerX, topY, droppable = false) {
     this._cancelTipHide()
     this.tip.setColor(itemColor(item))
-    this.tip.setText(`${item.name}\n${describeItem(item)}`).setVisible(true)
+    // progression de panoplie « x/4 » (compte les pièces actuellement équipées)
+    let setLine = ''
+    if (item.set && SETS[item.set]) {
+      const n = setStatus(this.game_.player.equipped, item.set).count
+      setLine = `\n[Panoplie ${n}/4 équipée${n > 1 ? 's' : ''}]`
+    }
+    this.tip.setText(`${item.name}\n${describeItem(item)}${setLine}`).setVisible(true)
     if (droppable) {
       // on remonte l'infobulle de la hauteur du bouton pour que « ✖ Lâcher » se cale juste au-dessus de l'objet
       const btnH = this.dropBtn.height

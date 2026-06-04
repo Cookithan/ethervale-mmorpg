@@ -189,6 +189,7 @@ export default class BootScene extends Phaser.Scene {
       'eq_leather', 'eq_mail', 'eq_plate', 'eq_dragon', // armures distinctes (Kyrise armor_01 a/b/c/e)
       'eq_ring_band', 'eq_ring_emerald', 'eq_ring_topaz', 'eq_ring_sapphire', 'eq_ring_ruby', // anneaux Kyrise (gemmes serties)
       'rel_frost', 'rel_thunder', 'rel_flame', 'rel_cosmic', // reliques = cristaux de pouvoir Kyrise (givre/foudre/flammes/cosmique)
+      'rel_emerald', // relique de PANOPLIE (cristal vert émeraude)
       'foc_scroll', 'foc_ice', 'foc_plant', 'foc_thunder', 'foc_fire', // Focus = parchemins élémentaires
       'ring_green', 'ring_yellow', 'ring_purple', 'ring_red', // Anneaux = gemmes colorées
       'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', 'pot_fire', 'pot_frost', // potions (soin / mana / température)
@@ -202,7 +203,8 @@ export default class BootScene extends Phaser.Scene {
       'aw_dagger', 'aw_sword', 'aw_katana', 'aw_sabre', 'aw_kris', 'aw_rapier', // armes Guerrier (icônes Admurin ; swing via swingTex Ninja)
       'at_club', 'at_warhammer', 'at_axe', 'at_warlance', 'at_greatblade', // armes Tank (Admurin)
       'am_wand', 'am_grimoire', 'am_archstaff', // armes Mage (am_grimoire = grimoire Kyrise)
-      'ah_healstick', 'ah_healwand', 'ah_relic']) { // armes Soigneur (Admurin)
+      'ah_healstick', 'ah_healwand', 'ah_relic', // armes Soigneur (Admurin)
+      'set_sword', 'set_glaive', 'set_scepter']) { // armes de PANOPLIE (ligne émeraude Admurin)
       this.load.image(key, `assets/weapons/${key}.png`)
     }
 
