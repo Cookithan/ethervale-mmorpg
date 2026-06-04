@@ -100,8 +100,8 @@ export const ITEMS = {
   potion_mana: { id: 'potion_mana', name: 'Potion de mana', type: 'consumable', icon: 'pot_mana', rarity: 'common', price: 45, mana: 40 },
   potion_mana_big: { id: 'potion_mana_big', name: 'Grande potion de mana', type: 'consumable', icon: 'pot_mana_big', rarity: 'rare', price: 120, mana: 90 },
   // potions de TEMPÉRATURE (10 min) : la potion de feu protège du FROID, la potion de givre protège de la CHALEUR.
-  potion_fire: { id: 'potion_fire', name: 'Potion de feu', type: 'consumable', icon: 'pot_fire', iconTint: 0xffb060, rarity: 'rare', price: 150, tempBuff: 'fire', tempDur: 600000, desc: 'Protège du FROID 10 min (immunité gel)' },
-  potion_frost: { id: 'potion_frost', name: 'Potion de givre', type: 'consumable', icon: 'pot_frost', iconTint: 0xa0e6ff, rarity: 'rare', price: 150, tempBuff: 'frost', tempDur: 600000, desc: 'Protège de la CHALEUR 10 min (immunité feu)' },
+  potion_fire: { id: 'potion_fire', name: 'Potion de feu', type: 'consumable', icon: 'pot_fire', rarity: 'rare', price: 150, tempBuff: 'fire', tempDur: 600000, desc: 'Protège du FROID 10 min (immunité gel)' },
+  potion_frost: { id: 'potion_frost', name: 'Potion de givre', type: 'consumable', icon: 'pot_frost', rarity: 'rare', price: 150, tempBuff: 'frost', tempDur: 600000, desc: 'Protège de la CHALEUR 10 min (immunité feu)' },
   // feu de camp À POSER : crée un foyer temporaire (zone-refuge) qui neutralise le froid ET le chaud autour.
   campfire_kit: { id: 'campfire_kit', name: 'Feu de camp', type: 'consumable', icon: 'campfire', rarity: 'rare', price: 800, placeFire: true, fireDur: 90000, fireRadius: 64, desc: 'À poser : foyer ~90 s qui réchauffe — protège du FROID autour (sans effet au désert)' },
 
@@ -109,7 +109,7 @@ export const ITEMS = {
   // (pas le sac d'équipement). Servent à VENDRE (or) ET à AMÉLIORER l'équipement à la forge. `price` =
   // prix de revente ×2 (sellPrice = price/2). =====
   mat_leather: { id: 'mat_leather', name: 'Cuir', type: 'material', icon: 'mat_leather', rarity: 'common', price: 16 },
-  mat_bone: { id: 'mat_bone', name: 'Os', type: 'material', icon: 'wpn_bone', rarity: 'common', price: 18 },
+  mat_bone: { id: 'mat_bone', name: 'Os', type: 'material', icon: 'mat_bone', rarity: 'common', price: 18 },
   mat_essence: { id: 'mat_essence', name: 'Lingot de fer', type: 'material', icon: 'mat_essence', rarity: 'rare', price: 32 },
   mat_crystal: { id: 'mat_crystal', name: 'Cristal', type: 'material', icon: 'mat_crystal', rarity: 'epic', price: 56 },
 }

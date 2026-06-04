@@ -192,7 +192,7 @@ export default class BootScene extends Phaser.Scene {
       'foc_scroll', 'foc_ice', 'foc_plant', 'foc_thunder', 'foc_fire', // Focus = parchemins élémentaires
       'ring_green', 'ring_yellow', 'ring_purple', 'ring_red', // Anneaux = gemmes colorées
       'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', 'pot_fire', 'pot_frost', // potions (soin / mana / température)
-      'mat_leather', 'mat_essence', 'mat_crystal', // matériaux empilables (mat_bone réutilise wpn_bone)
+      'mat_leather', 'mat_bone', 'mat_essence', 'mat_crystal', // matériaux empilables (Os = vraie icône Kyrise ; Lingot = ingot Kyrise)
     ]) {
       this.load.image(key, `assets/items/${key}.png`)
     }
