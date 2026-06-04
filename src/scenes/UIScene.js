@@ -892,7 +892,7 @@ export default class UIScene extends Phaser.Scene {
     const p = this.game_.player
     if (!this.shopBuyCat) this.shopBuyCat = 'weapon'
     const cats = [
-      { key: 'weapon', label: 'Armes' }, { key: 'armor', label: 'Armures' }, { key: 'focus', label: 'Focus' },
+      { key: 'weapon', label: 'Armes' }, { key: 'armor', label: 'Armures' }, { key: 'focus', label: 'Reliques' },
       { key: 'ring', label: 'Anneaux' }, { key: 'potion', label: 'Potions' }, { key: 'boat', label: 'Bateau' },
     ]
     const bw = (w - 2 * 4) / 3

@@ -72,12 +72,12 @@ export const ITEMS = {
   furcloak: { id: 'furcloak', name: 'Cape de fourrure', slot: 'armor', icon: 'eq_armor', iconTint: 0xe6f0ff, rarity: 'rare', price: 230, stats: { hp: 22, defense: 2, coldResist: 55 }, dur: 70 },
   desertgarb: { id: 'desertgarb', name: 'Habit du désert', slot: 'armor', icon: 'eq_armor', iconTint: 0xe8c987, rarity: 'rare', price: 230, stats: { hp: 22, defense: 2, heatResist: 55 }, dur: 70 },
 
-  // ===== FOCUS (slot 'focus') -> améliore LA COMPÉTENCE (cooldown -%, effet +%). Parchemins élémentaires. =====
-  focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellCd: 0.08, spellPower: 0.08 },
-  focus2: { id: 'focus2', name: 'Parchemin de givre', slot: 'focus', icon: 'foc_ice', rarity: 'rare', price: 260, spellCd: 0.15, spellPower: 0.18, stats: { manaRegen: 2 } },
-  focus_plant: { id: 'focus_plant', name: 'Parchemin de vie', slot: 'focus', icon: 'foc_plant', rarity: 'rare', price: 250, spellCd: 0.14, spellPower: 0.2, stats: { manaRegen: 2 } },
-  focus3: { id: 'focus3', name: 'Parchemin de foudre', slot: 'focus', icon: 'foc_thunder', rarity: 'epic', price: 580, spellCd: 0.24, spellPower: 0.3, stats: { manaRegen: 3 } },
-  focus_fire: { id: 'focus_fire', name: 'Parchemin de flammes', slot: 'focus', icon: 'foc_fire', rarity: 'epic', price: 600, spellCd: 0.2, spellPower: 0.38 },
+  // ===== RELIQUES (slot 'focus', label « Relique ») -> améliorent LA COMPÉTENCE. Une relique donne SOIT
+  // +effet/dégâts du sort (`spellPower`), SOIT +durée d'effet (`spellDuration`). Plus de réduction de cooldown. =====
+  focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellPower: 0.1 },
+  focus2: { id: 'focus2', name: 'Parchemin de givre', slot: 'focus', icon: 'foc_ice', rarity: 'rare', price: 260, spellDuration: 0.22, stats: { manaRegen: 2 } },
+  focus3: { id: 'focus3', name: 'Parchemin de foudre', slot: 'focus', icon: 'foc_thunder', rarity: 'epic', price: 580, spellPower: 0.32, stats: { manaRegen: 3 } },
+  focus_fire: { id: 'focus_fire', name: 'Parchemin de flammes', slot: 'focus', icon: 'foc_fire', rarity: 'epic', price: 600, spellPower: 0.4 },
 
   // ===== ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire). Gemmes colorées. =====
   amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring', rarity: 'common', price: 90, stats: { mana: 16, manaRegen: 1 } },
@@ -91,7 +91,7 @@ export const ITEMS = {
   legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
   legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', iconTint: 0xffe6a0, rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_armor', iconTint: 0xffd27a, rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
-  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellCd: 0.42, spellPower: 0.65, stats: { manaRegen: 4 } },
+  legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
   legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'ring_red', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
 
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
@@ -132,9 +132,9 @@ export const BOAT_ITEM = {
   desc: "Navigue sur l'eau et atteins les Terres maudites.",
 }
 
-// 4 slots d'équipement : Arme(+ATQ) / Armure(+DEF) / Focus(améliore la compétence) / Anneau(+Mana)
+// 4 slots d'équipement : Arme(+ATQ) / Armure(+DEF) / Relique(améliore la compétence, clé interne 'focus') / Anneau(+Mana)
 export const SLOTS = ['weapon', 'armor', 'focus', 'ring']
-export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', focus: 'Focus', ring: 'Anneau' }
+export const SLOT_LABELS = { weapon: 'Arme', armor: 'Armure', focus: 'Relique', ring: 'Anneau' }
 
 // abréviations FR des stats (pour l'affichage des bonus)
 export const STAT_LABELS = { attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Mana', manaRegen: 'Mana/s', coldResist: 'Rés. froid', heatResist: 'Rés. chaud' }
@@ -210,10 +210,10 @@ export function describeItem(item) {
     return (e.length ? e.join(', ') : 'Consommable') + ' (clic = boire)'
   }
   let txt = describeStats(effectiveStats(item))
-  if (item.spellCd || item.spellPower) {
+  if (item.spellPower || item.spellDuration) {
     const parts = []
-    if (item.spellCd) parts.push(`-${Math.round(item.spellCd * 100)}% cooldown du sort`)
     if (item.spellPower) parts.push(`+${Math.round(item.spellPower * 100)}% effet du sort`)
+    if (item.spellDuration) parts.push(`+${Math.round(item.spellDuration * 100)}% durée du sort`)
     txt = (txt ? txt + '\n' : '') + parts.join('\n')
   }
   if (hasDurability(item)) {

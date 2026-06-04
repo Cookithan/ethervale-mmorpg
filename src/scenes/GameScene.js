@@ -3541,11 +3541,11 @@ export default class GameScene extends Phaser.Scene {
     const fn = effects[sp.id]
     if (!fn || fn() === false) return // sort inconnu / non exécuté -> on ne consomme ni mana ni cd
     p.spendMana(sp.cost)
-    p.nextSpellAt = now + sp.cd * (p.spellCdMul ?? 1) // Focus -> cooldown réduit
+    p.nextSpellAt = now + sp.cd // cooldown fixe (la Relique n'agit plus sur le cooldown : effet/durée)
   }
 
   /** 2e COMPÉTENCE (touche 2), déverrouillée au niveau `spell2.level` (10). Mêmes règles que castSpell
-   *  (cooldown propre `nextSpell2At`, coût mana, Focus réduit le cooldown). */
+   *  (cooldown propre `nextSpell2At`, coût mana). */
   castSpell2() {
     if (this.uiBusy() || this.gameOver) return
     if (this.sailBlocked()) return
@@ -3565,7 +3565,7 @@ export default class GameScene extends Phaser.Scene {
     const fn = effects[sp.id]
     if (!fn || fn() === false) return
     p.spendMana(sp.cost)
-    p.nextSpell2At = now + sp.cd * (p.spellCdMul ?? 1)
+    p.nextSpell2At = now + sp.cd // cooldown fixe (cf. castSpell)
   }
 
   /** Jeu de sons magiques (cast/proj/impact + detune) selon l'APPARENCE du héros (feu/lumière/ombre/arcane). */
@@ -3608,7 +3608,7 @@ export default class GameScene extends Phaser.Scene {
     const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
     const ang = Math.atan2(dir[1], dir[0])
     const SPD = 520
-    const dur = Math.round(200 * (p.spellPowerMul ?? 1)) // bond (allongé par le Focus) -> esquive / repositionnement
+    const dur = Math.round(200 * (p.spellDurationMul ?? 1)) // bond (allongé par la Relique) -> esquive / repositionnement
     p.invulnUntil = now + dur + 130 // i-frames = vraie esquive pendant le dash
     p.attacking = true // bloque le déplacement normal pendant le bond
     p.dashing = true // TRAVERSE les boss solides pendant le dash (esquive + dégâts de traversée) -> processCallback du collider
@@ -3651,8 +3651,8 @@ export default class GameScene extends Phaser.Scene {
   spellProvoke() {
     const p = this.player
     const now = this.time.now
-    // 1) BOUCLIER : bulle animée qui suit le héros (5 s)
-    const dur = 5000 * (p.spellPowerMul ?? 1)
+    // 1) BOUCLIER : bulle animée qui suit le héros (5 s, allongé par la Relique)
+    const dur = 5000 * (p.spellDurationMul ?? 1)
     p.shieldUntil = now + dur
     Audio.sfx(SFX.shield, { vol: 0.6 })
     const bubble = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 60).setScale(1.7).setAlpha(0.9)
@@ -4046,7 +4046,7 @@ export default class GameScene extends Phaser.Scene {
       tx = p.x + dir[0] * 80
       ty = p.y + dir[1] * 80
     }
-    const R = Math.round(46 * (p.spellPowerMul ?? 1)) // Focus -> zone plus large (pas plus de dégâts)
+    const R = Math.round(46 * (p.spellPowerMul ?? 1)) // Relique (effet) -> zone plus large (pas plus de dégâts)
     const col = p.magicColor // couleur de la magie de l'apparence (violet / blanc / rouge...)
     const dealAoe = () => {
       const dmg = p.attackPower * 3.0 // gros dégâts AoE (récompense de l'incantation)

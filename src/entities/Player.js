@@ -97,12 +97,12 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.chargeSpeedMul = 1 // multiplicateur de vitesse pendant la Charge du Tank
     this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -80 % dégâts reçus
 
-    // équipement 4 SLOTS (Arme/Armure/Focus/Anneau) + sac. Départ = SEULEMENT l'arme de base de la classe
+    // équipement 4 SLOTS (Arme/Armure/Relique[clé 'focus']/Anneau) + sac. Départ = SEULEMENT l'arme de base de la classe
     // (rien d'autre : ni armure, ni anneau -> tout le reste se gagne/s'achète).
     const starterId = STARTER_WEAPON[this.className] ?? 'sword'
     this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: null, focus: null, ring: null }
-    this.spellCdMul = 1 // <1 = cooldown de compétence réduit (Focus)
-    this.spellPowerMul = 1 // >1 = effet de compétence renforcé (Focus)
+    this.spellPowerMul = 1 // >1 = effet/dégâts de compétence renforcé (Relique)
+    this.spellDurationMul = 1 // >1 = durée d'effet de compétence allongée (Relique)
     this.inventory = [] // sac vide au départ
     this.resources = {} // poche de MATÉRIAUX empilables {id: quantité} (à part du sac, pour vendre/forger)
     // (les armes à LANCER ne sont pas de départ : trop fortes -> uniquement achetables au marché)
@@ -194,8 +194,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     let manaRegen = 0
     let coldResist = 0
     let heatResist = 0
-    let spellCd = 0
     let spellPower = 0
+    let spellDuration = 0
     for (const slot of Object.keys(this.equipped)) {
       const it = this.equipped[slot]
       if (!it) continue
@@ -204,11 +204,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       def += s.defense ?? 0
       hp += s.hp ?? 0
       mana += s.mana ?? 0 // Anneau -> +Mana max
-      manaRegen += s.manaRegen ?? 0 // Focus/Anneau -> +régén de mana/s (pour les casters)
+      manaRegen += s.manaRegen ?? 0 // Relique/Anneau -> +régén de mana/s (pour les casters)
       coldResist += s.coldResist ?? 0 // résiste au froid (biome neige)
       heatResist += s.heatResist ?? 0 // résiste à la chaleur (biome désert)
-      spellCd += it.spellCd ?? 0 // Focus -> cooldown de compétence réduit
-      spellPower += it.spellPower ?? 0 // Focus -> effet de compétence renforcé
+      spellPower += it.spellPower ?? 0 // Relique -> effet/dégâts de compétence renforcé
+      spellDuration += it.spellDuration ?? 0 // Relique -> durée d'effet de compétence allongée
     }
     this.coldResist = coldResist
     this.heatResist = heatResist
@@ -217,8 +217,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.maxHp = this.baseMaxHp + hp
     this.maxMana = (this.baseMana ?? 0) + mana
     this.manaRegen = MANA_REGEN + manaRegen // régén de base + bonus des items équipés (mana/s)
-    this.spellCdMul = Math.max(0.3, 1 - spellCd) // -X% cooldown (jamais sous 30 % du cd)
-    this.spellPowerMul = 1 + spellPower // +X% effet du sort
+    this.spellPowerMul = 1 + spellPower // +X% effet/dégâts du sort
+    this.spellDurationMul = 1 + spellDuration // +X% durée d'effet du sort
     if (this.hp > this.maxHp) this.hp = this.maxHp // si on retire un bonus de PV max
     if (this.mana > this.maxMana) this.mana = this.maxMana
   }
