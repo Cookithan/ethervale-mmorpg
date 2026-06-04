@@ -192,6 +192,12 @@ export default class UIScene extends Phaser.Scene {
     reg(this.add.rectangle(px, py, pSize, pSize, 0x000000, 0.5).setOrigin(0, 0).setStrokeStyle(2, GOLD))
     const portrait = reg(this.add.image(px + pSize / 2, py + pSize / 2, this.game_.player?.heroKey ?? 'player', 0))
     portrait.setScale((pSize - 8) / portrait.width)
+    // PORTRAIT cliquable (souris + tactile) -> ouvre la fiche perso (bouton HUD permanent ; touche C en plus)
+    const charBtn = reg(this.add.rectangle(px, py, pSize, pSize, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+    charBtn.on('pointerover', () => charBtn.setFillStyle(0xffe066, 0.18))
+    charBtn.on('pointerout', () => charBtn.setFillStyle(0xffffff, 0.001))
+    charBtn.on('pointerdown', (po, lx, ly, ev) => { ev?.stopPropagation?.(); this.toggleChar() })
+    reg(this.add.text(px + pSize - 2, py + pSize - 1, 'C', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 1))
 
     // vie + mana + niveau + or à droite du portrait
     const tx = px + pSize + 10
@@ -302,6 +308,22 @@ export default class UIScene extends Phaser.Scene {
     this.buildSkillCase(reg, cx(1), byc, size, { iconKey: SKILL_ICONS[sp2?.id], shortcut: '2', onClick: () => this.game_.castSpell2?.(), cd: () => ({ rem: Math.max(0, p.nextSpell2At - tnow()), total: sp2?.cd ?? 1 }), cost: () => sp2?.cost, locked: () => (p.level < (sp2?.level ?? 10) ? `Niv\n${sp2?.level ?? 10}` : null) })
     // Sort 3 = compétence de PANOPLIE (bordure émeraude, verrouillé tant que la panoplie n'est pas complète)
     this.buildSkillCase(reg, cx(0), byc, size, { iconKey: SKILL_ICONS[setDef?.skill], shortcut: '3', setBorder: true, onClick: () => this.game_.castSpell3?.(), cd: () => ({ rem: Math.max(0, (p.nextSpell3At ?? 0) - tnow()), total: 35000 }), cost: () => 30, locked: () => (p.activeSet ? null : 'Set\n4/4') })
+
+    // --- BOUTON PERSO (HUD, accès facile souris+tactile) : portrait + « C » en bas-gauche ---
+    const pbSz = 48
+    const pbX = 14 + pbSz / 2
+    const pbY = ch - 14 - pbSz / 2
+    const pbFace = this.textures.exists('face_' + p.heroKey) ? 'face_' + p.heroKey : (p.heroKey ?? 'player')
+    reg(this.add.rectangle(pbX, pbY, pbSz, pbSz, PANEL, 0.9).setStrokeStyle(2, GOLD))
+    const pbImg = reg(this.add.image(pbX, pbY - 4, pbFace, 0))
+    pbImg.setScale((pbSz - 14) / Math.max(pbImg.width, pbImg.height))
+    reg(this.add.text(pbX, pbY + pbSz / 2 - 8, 'Perso', { fontFamily: 'monospace', fontSize: '8px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 0))
+    reg(this.add.text(pbX + pbSz / 2 - 3, pbY - pbSz / 2 + 2, 'C', { fontFamily: 'monospace', fontSize: '8px', color: '#9fb6cc' }).setOrigin(1, 0))
+    this.charBtnRect = new Phaser.Geom.Rectangle(pbX - pbSz / 2, pbY - pbSz / 2, pbSz, pbSz)
+    const pbHit = reg(this.add.rectangle(pbX, pbY, pbSz, pbSz, 0xffffff, 0.001).setInteractive({ useHandCursor: true }))
+    pbHit.on('pointerover', () => pbHit.setFillStyle(0xffe066, 0.16))
+    pbHit.on('pointerout', () => pbHit.setFillStyle(0xffffff, 0.001))
+    pbHit.on('pointerdown', (po, lx, ly, ev) => { ev?.stopPropagation?.(); this.toggleChar() })
 
     // --- MINIMAP (haut-droite) : image schématique de la map ('mmtex'), fenêtre ZOOMÉE qui suit le joueur ---
     const mmSize = 150
@@ -585,98 +607,175 @@ export default class UIScene extends Phaser.Scene {
     this.charObjects = []
   }
 
+  /** Reconstruit le panneau perso au tick suivant (sécurise : on ne détruit pas l'objet en plein clic). */
+  refreshChar() {
+    this.time.delayedCall(1, () => { if (this.charOpen) this.buildCharPanel() })
+  }
+
+  /** Petite case générique (fond bleu nuit + bordure) du panneau perso. */
+  charCell(reg, x, y, sz, border) {
+    reg(this.add.rectangle(x, y, sz, sz, 0x232f52, 1))
+    reg(this.add.rectangle(x, y, sz, sz, 0x121a33, 0).setStrokeStyle(1, 0x121a33))
+    reg(this.add.rectangle(x, y, sz, sz, 0x000000, 0).setStrokeStyle(2.5, border))
+  }
+
+  /** CASE D'ÉQUIPEMENT (paper-doll WoW) : case biseautée + bordure de QUALITÉ épaisse + HALO qui pulse
+   *  (épique/légendaire/set) + objet OU silhouette grisée si vide. Survol éclaire ; clic = retirer. */
+  drawEquipSlot(reg, x, y, sz, slot, ghostKey) {
+    const p = this.game_.player
+    const item = p.equipped[slot]
+    const qcol = item ? itemTint(item) ?? GOLD : 0x46557c
+    // HALO de qualité derrière (pulse pour les pièces remarquables)
+    if (item && (item.set || item.rarity === 'epic' || item.rarity === 'legendary')) {
+      const halo = reg(this.add.rectangle(x, y, sz + 12, sz + 12, qcol, 0.3).setBlendMode(Phaser.BlendModes.ADD))
+      this.tweens.add({ targets: halo, alpha: 0.55, scaleX: 1.08, scaleY: 1.08, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    }
+    // case biseautée (bord clair + creux sombre, ton cuir) + bordure de qualité
+    reg(this.add.rectangle(x, y, sz, sz, 0x3d2f1c, 1))
+    reg(this.add.rectangle(x, y, sz - 5, sz - 5, 0x1c1208, 1))
+    reg(this.add.rectangle(x, y, sz, sz, 0x000000, 0).setStrokeStyle(3, qcol))
+    reg(this.add.text(x, y - sz / 2 - 8, SLOT_LABELS[slot], { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: '#e0c074', stroke: '#000', strokeThickness: 2 }).setOrigin(0.5))
+    if (item) { reg(this.rarityBg(x, y, sz - 14, item.rarity)); this.addItemIcon(reg, x, y, item, sz - 18) }
+    else if (ghostKey && this.textures.exists(ghostKey)) reg(this.addIcon(x, y, ghostKey, sz - 18)).setAlpha(0.45)
+    const hover = reg(this.add.rectangle(x, y, sz - 3, sz - 3, 0xffffff, 0).setVisible(false))
+    const hit = reg(this.add.rectangle(x, y, sz, sz, 0xffffff, 0.001).setInteractive({ useHandCursor: !!item }))
+    hit.on('pointerover', () => { hover.setFillStyle(0xffffff, 0.12).setVisible(true); if (item) this.showTip(item, x, y - sz / 2) })
+    hit.on('pointerout', () => { hover.setVisible(false); this.hideTip() })
+    if (item) hit.on('pointerdown', () => { if (p.unequip(slot)) { Audio.sfx('ui_accept', { detune: 0 }); this.refreshChar() } else { this.showToast('Sac plein — libère une place', '#e0a866'); this.playDenied() } this.hideTip() })
+  }
+
+  /** CASE DU SAC (inventaire) : objet cliquable -> équiper / boire / (matériau). Survol = infobulle. */
+  drawBagSlot(reg, x, y, sz, item) {
+    const p = this.game_.player
+    this.charCell(reg, x, y, sz, item ? itemTint(item) ?? CELL_BORDER : 0x2a3342)
+    if (!item) return
+    reg(this.rarityBg(x, y, sz - 12, item.rarity))
+    this.addItemIcon(reg, x, y, item, sz - 16)
+    const hit = reg(this.add.rectangle(x, y, sz, sz, 0xffffff, 0.001).setInteractive({ useHandCursor: true }))
+    hit.on('pointerdown', () => {
+      if (item.type === 'consumable') { this.useConsumable(item); Audio.sfx('ui_accept', { detune: 0 }); this.refreshChar() }
+      else if (item.type === 'material') { this.showToast('Matériau — vends-le ou forge avec', '#e0a866'); this.playDenied() }
+      else if (!canEquip(item, p.className)) { this.showToast(classRestrictionLabel(item), '#e0a866'); this.playDenied() }
+      else if (p.equip(item)) { Audio.sfx('ui_accept', { detune: 0 }); this.showItemToast('Équipé', item); this.refreshChar() }
+      else { this.showToast('Objet cassé — répare chez Aldric', '#e06666'); this.playDenied() }
+      this.hideTip()
+    })
+    hit.on('pointerover', () => this.showTip(item, x, y - sz / 2))
+    hit.on('pointerout', () => this.hideTip())
+  }
+
   buildCharPanel() {
     const p = this.game_.player
     if (!p) return
     this.destroyChar()
-    const reg = (o) => {
-      this.charObjects.push(o)
-      return o
-    }
+    const reg = (o) => { this.charObjects.push(o); return o }
     const cw = this.scale.width
     const ch = this.scale.height
-
-    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.55).setOrigin(0, 0))
-    const W = 320
-    const H = 388
-    const x0 = cw / 2 - W / 2
-    const y0 = ch / 2 - H / 2
-    reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.97).setStrokeStyle(2, GOLD))
+    const cx = cw / 2
+    const cy = ch / 2
+    // voile quasi opaque avec un TROU uniquement autour des cases du sac (l'inventaire reste visible/cliquable)
+    const b = this.bagRect
+    const dimA = 0.9
+    if (b) {
+      reg(this.add.rectangle(0, 0, cw, b.top, 0x000000, dimA).setOrigin(0, 0)) // au-dessus du sac
+      reg(this.add.rectangle(0, b.bottom, cw, ch - b.bottom, 0x000000, dimA).setOrigin(0, 0)) // en dessous
+      reg(this.add.rectangle(0, b.top, b.left, b.height, 0x000000, dimA).setOrigin(0, 0)) // à gauche
+      reg(this.add.rectangle(b.right, b.top, cw - b.right, b.height, 0x000000, dimA).setOrigin(0, 0)) // à droite
+      reg(this.add.rectangle(b.centerX, b.centerY, b.width + 4, b.height + 4, 0x000000, 0).setStrokeStyle(2, GOLD)) // liseré doré autour du sac
+    } else {
+      reg(this.add.rectangle(0, 0, cw, ch, 0x000000, dimA).setOrigin(0, 0))
+    }
+    // CADRE cuir/bois + double bordure dorée (immersif) — responsive
+    const W = Math.min(410, cw - 18)
+    const H = Math.min(462, ch - 18)
+    const x0 = cx - W / 2
+    const y0 = cy - H / 2
+    // fond en DÉGRADÉ vertical CUIR/BOIS (haut chaud -> bas profond) + bordures dorées
+    const grad = reg(this.add.graphics())
+    grad.fillGradientStyle(0x2c2014, 0x2c2014, 0x130c06, 0x130c06, 1)
+    grad.fillRect(x0, y0, W, H)
+    reg(this.add.rectangle(cx, cy, W, H, 0x000000, 0).setStrokeStyle(3, GOLD))
+    reg(this.add.rectangle(cx, cy, W - 8, H - 8, 0x000000, 0).setStrokeStyle(1, 0x8a6d2e))
+    // COINS dorés ornementés (équerres en L)
+    const L = 18, T = 3
+    const corner = (px, py, sx, sy) => {
+      reg(this.add.rectangle(px, py, L, T, GOLD).setOrigin(sx < 0 ? 1 : 0, sy < 0 ? 1 : 0))
+      reg(this.add.rectangle(px, py, T, L, GOLD).setOrigin(sx < 0 ? 1 : 0, sy < 0 ? 1 : 0))
+    }
+    corner(x0 + 3, y0 + 3, 1, 1)
+    corner(x0 + W - 3, y0 + 3, -1, 1)
+    corner(x0 + 3, y0 + H - 3, 1, -1)
+    corner(x0 + W - 3, y0 + H - 3, -1, -1)
+    // barre de titre (cuir + or)
+    reg(this.add.rectangle(cx, y0 + 17, W - 12, 30, 0x2a1f12, 0.96).setStrokeStyle(1, 0x6b5526))
     const ch_ = this.game_.character ?? {}
     const clsName = { warrior: 'Guerrier', mage: 'Mage', tank: 'Tank', healer: 'Soigneur' }[p.className] ?? ''
-    reg(this.add.text(cw / 2, y0 + 12, ch_.name ?? 'Personnage', { fontFamily: 'monospace', fontSize: '16px', color: '#ffe066' }).setOrigin(0.5, 0))
-    reg(this.add.text(cw / 2, y0 + 32, `${clsName}  ·  Niveau ${p.level}`, { fontFamily: 'monospace', fontSize: '10px', color: '#9fb6cc' }).setOrigin(0.5, 0))
+    reg(this.add.text(cx, y0 + 10, ch_.name ?? 'Personnage', { fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5, 0))
+    reg(this.add.text(cx, y0 + 30, `${clsName}  ·  Niveau ${p.level}`, { fontFamily: 'monospace', fontSize: '9px', color: '#cdb78a' }).setOrigin(0.5, 0))
+    const xBtn = reg(this.add.text(x0 + W - 16, y0 + 8, '✕', { fontFamily: 'monospace', fontSize: '15px', color: '#e0a0a0' }).setOrigin(0.5, 0).setInteractive({ useHandCursor: true }))
+    xBtn.on('pointerdown', () => this.closeChar())
 
-    // portrait au centre
-    const cx = cw / 2
-    const pSize = 60
-    const pY = y0 + 110
-    reg(this.add.rectangle(cx, pY, pSize, pSize, 0x000000, 0.5).setStrokeStyle(2, GOLD))
-    const portrait = reg(this.add.image(cx, pY, this.game_.player?.heroKey ?? 'player', 0))
-    portrait.setScale((pSize - 10) / portrait.width)
+    // HÉROS au centre = FACESET (portrait) cadre doré + lueur de la couleur de magie de la classe
+    const heroY = y0 + 128
+    const faceKey = this.textures.exists('face_' + p.heroKey) ? 'face_' + p.heroKey : (p.heroKey ?? 'player')
+    const mcol = p.magicColor && p.magicColor !== 0xffffff ? p.magicColor : 0xc8a24a
+    reg(this.add.ellipse(cx, heroY, 108, 108, mcol, 0.22).setBlendMode(Phaser.BlendModes.ADD))
+    reg(this.add.rectangle(cx, heroY, 84, 84, 0x1a1208, 1))
+    reg(this.add.rectangle(cx, heroY, 84, 84, mcol, 0.12))
+    reg(this.add.rectangle(cx, heroY, 84, 84, 0x000000, 0).setStrokeStyle(2.5, GOLD))
+    reg(this.add.rectangle(cx, heroY, 80, 80, 0x000000, 0).setStrokeStyle(1, 0x8a6d2e))
+    const face = reg(this.add.image(cx, heroY, faceKey, 0))
+    face.setScale(74 / Math.max(face.width, face.height))
 
-    // 4 slots autour du portrait (paper-doll) : Arme/Armure en haut (G/D), Casque/Anneau en bas (G/D)
-    const cellSz = 46
-    const dy = 32
+    // 4 EMPLACEMENTS en croix (Arme/Armure en haut, Relique/Anneau en bas) — plus grands
+    const sz = 62
+    const colX = 122
+    const rowDy = 48
+    const ghost = { weapon: 'slot_weapon', armor: 'slot_armor', focus: 'slot_relic', ring: 'slot_ring' }
     const place = {
-      weapon: { x: cx - 96, y: pY - dy, lx: cx - 96, ly: pY - dy - cellSz / 2 - 9 },
-      armor: { x: cx + 96, y: pY - dy, lx: cx + 96, ly: pY - dy - cellSz / 2 - 9 },
-      focus: { x: cx - 96, y: pY + dy, lx: cx - 96, ly: pY + dy + cellSz / 2 + 9 },
-      ring: { x: cx + 96, y: pY + dy, lx: cx + 96, ly: pY + dy + cellSz / 2 + 9 },
+      weapon: { x: cx - colX, y: heroY - rowDy }, armor: { x: cx + colX, y: heroY - rowDy },
+      focus: { x: cx - colX, y: heroY + rowDy }, ring: { x: cx + colX, y: heroY + rowDy },
     }
-    SLOTS.forEach((slot) => {
-      const pos = place[slot]
-      reg(this.add.text(pos.lx, pos.ly, SLOT_LABELS[slot], { fontFamily: 'monospace', fontSize: '11px', color: '#9fb6cc' }).setOrigin(0.5))
-      const item = p.equipped[slot]
-      const border = item ? itemTint(item) ?? GOLD : GOLD
-      const c = reg(this.add.rectangle(pos.x, pos.y, cellSz, cellSz, CELL, 1).setStrokeStyle(2, border))
-      if (item) {
-        reg(this.rarityBg(pos.x, pos.y, cellSz - 8, item.rarity)) // filigrane de rareté
-        this.addItemIcon(reg, pos.x, pos.y, item, cellSz - 14)
-        c.setInteractive({ useHandCursor: true })
-        c.on('pointerdown', () => {
-          if (p.unequip(slot)) {
-            Audio.sfx('ui_accept', { detune: 0 })
-          } else {
-            this.showToast('Sac plein — libère une place', '#e0a866')
-            this.playDenied()
-          }
-          this.hideTip()
-        })
-        c.on('pointerover', () => this.showTip(item, pos.x, pos.y - cellSz / 2))
-        c.on('pointerout', () => this.hideTip())
-      }
-    })
+    SLOTS.forEach((slot) => this.drawEquipSlot(reg, place[slot].x, place[slot].y, sz, slot, ghost[slot]))
 
-    // POCHE DE RESSOURCES (matériaux empilés : icône + quantité) — vendables/forgeables
-    const owned = MATERIALS.filter((id) => (p.resources[id] ?? 0) > 0)
-    reg(this.add.text(cx, y0 + 196, 'Ressources', { fontFamily: 'monospace', fontSize: '11px', color: '#9fb6cc' }).setOrigin(0.5, 0))
-    if (!owned.length) {
-      reg(this.add.text(cx, y0 + 218, '(aucun matériau — tue des monstres)', { fontFamily: 'monospace', fontSize: '9px', color: '#6c7b8c' }).setOrigin(0.5, 0))
-    } else {
-      const sz = 30
-      const gap = 12
-      const totalW = owned.length * sz + (owned.length - 1) * gap
-      let rx = cx - totalW / 2 + sz / 2
-      const ry = y0 + 226
-      for (const id of owned) {
-        const it = ITEMS[id]
-        reg(this.add.rectangle(rx, ry, sz, sz, CELL, 1).setStrokeStyle(2, RARITY[it.rarity]?.tint ?? CELL_BORDER))
-        reg(this.rarityBg(rx, ry, sz - 6, it.rarity))
-        reg(this.addIcon(rx, ry, it.icon, sz - 10))
-        reg(this.add.text(rx + sz / 2 - 2, ry + sz / 2 - 1, `${p.resources[id]}`, { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 1))
-        const z = reg(this.add.rectangle(rx, ry, sz, sz, 0xffffff, 0.001).setInteractive())
-        z.on('pointerover', () => this.showTip(it, rx, ry - sz / 2))
-        z.on('pointerout', () => this.hideTip())
-        rx += sz + gap
-      }
+    // ===== SET DE CLASSE — compact : x/4 + bonus 2/4 + compétence débloquée =====
+    const set = SETS[p.className]
+    const st = setStatus(p.equipped, p.className)
+    const count = st.count
+    const emerald = '#3ddc84'
+    const setTop = y0 + 212
+    const setH = 96
+    if (count > 0) { const sg = reg(this.add.rectangle(cx, setTop + setH / 2, W - 18, setH + 8, 0x2ecc71, 0.12).setBlendMode(Phaser.BlendModes.ADD)); this.tweens.add({ targets: sg, alpha: 0.28, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.inOut' }) }
+    reg(this.add.rectangle(cx, setTop + setH / 2, W - 28, setH, 0x241a0f, 0.8).setStrokeStyle(2, count > 0 ? 0x2ecc71 : 0x6b5526))
+    if (set) {
+      const fmt = (b) => Object.entries(b).map(([k, v]) => (k === 'spellPower' ? `+${Math.round(v * 100)}% effet` : k === 'spellDuration' ? `+${Math.round(v * 100)}% durée` : `+${v} ${({ attack: 'ATQ', defense: 'DEF', hp: 'PV', mana: 'Mana', manaRegen: 'Mana/s' }[k] ?? k)}`)).join(', ')
+      reg(this.add.text(cx, setTop + 7, `✦ Set de ${clsName}   ${count}/4`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: emerald }).setOrigin(0.5, 0))
+      reg(this.add.text(x0 + 26, setTop + 30, '2 pièces', { fontFamily: 'monospace', fontSize: '10px', color: '#cdb78a' }).setOrigin(0, 0))
+      reg(this.add.text(x0 + W - 26, setTop + 30, fmt(set.bonus2), { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: count >= 2 ? emerald : '#7c715a' }).setOrigin(1, 0))
+      reg(this.add.text(x0 + 26, setTop + 48, '4 pièces', { fontFamily: 'monospace', fontSize: '10px', color: '#cdb78a' }).setOrigin(0, 0))
+      reg(this.add.text(x0 + W - 26, setTop + 48, fmt(set.bonus4), { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: count >= 4 ? emerald : '#7c715a' }).setOrigin(1, 0))
+      reg(this.add.text(cx, setTop + 70, `★ ${set.skillName}  ·  butin de boss`, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: count >= 4 ? '#ffe066' : '#d8b25a' }).setOrigin(0.5, 0))
     }
 
-    // stats (totaux base + équipement), Mana inclus
-    const sY = y0 + H - 62
-    reg(this.add.text(cx, sY, `Attaque ${p.attackPower}      Défense ${p.defense}`, { fontFamily: 'monospace', fontSize: '13px', color: '#cfe8ff' }).setOrigin(0.5))
-    reg(this.add.text(cx, sY + 19, `PV ${Math.round(p.hp)}/${p.maxHp}      Mana ${Math.round(p.mana)}/${p.maxMana}`, { fontFamily: 'monospace', fontSize: '13px', color: '#ffd1d1' }).setOrigin(0.5))
-    reg(this.add.text(cx, y0 + H - 16, 'Clic objet du sac = équiper  ·  clic slot = retirer  ·  C = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5))
+    // ===== CARACTÉRISTIQUES (stats lisibles + icônes) =====
+    const stBox = y0 + H - 126
+    reg(this.add.rectangle(cx, stBox + 56, W - 28, 112, 0x1c140c, 0.85).setStrokeStyle(1.5, 0x6b5526))
+    reg(this.add.text(cx, stBox + 3, 'CARACTÉRISTIQUES', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: '#c8a24a' }).setOrigin(0.5, 0))
+    const iX = x0 + 30, lX = x0 + 46, rXv = x0 + W - 32
+    let sy = stBox + 24
+    const stat = (iconKey, label, value, color) => {
+      if (iconKey && this.textures.exists(iconKey)) { const ic = reg(this.add.image(iX, sy, iconKey)); ic.setScale(14 / Math.max(ic.width, ic.height)) }
+      reg(this.add.text(lX, sy, label, { fontFamily: 'monospace', fontSize: '11px', color: '#d8c8a8' }).setOrigin(0, 0.5))
+      reg(this.add.text(rXv, sy, value, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color }).setOrigin(1, 0.5))
+      sy += 18
+    }
+    stat('wpn_sword', 'Attaque', `${p.attackPower}`, '#ff9a5a')
+    stat('stat_def', 'Défense', `${p.defense}`, '#7fb3ff')
+    stat('drop_heart', 'Points de vie', `${Math.round(p.hp)} / ${p.maxHp}`, '#7CFC9A')
+    stat('pot_mana', 'Mana', `${Math.round(p.mana)} / ${p.maxMana}`, '#7fd8ff')
+    stat('pot_mana', 'Mana / seconde', `${p.manaRegen}`, '#7fd8ff')
+
+    reg(this.add.text(cx, y0 + H - 12, 'Clic objet du sac = équiper · clic slot = retirer · C = fermer', { fontFamily: 'monospace', fontSize: '8px', color: '#8a7a5a' }).setOrigin(0.5))
   }
 
   // ---------- boutique (marchand) ----------
@@ -1629,7 +1728,7 @@ export default class UIScene extends Phaser.Scene {
 
   pointerOverInventory(x, y) {
     const inside = (r) => r && Phaser.Geom.Rectangle.Contains(r, x, y)
-    return inside(this.bagRect) || inside(this.matRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect) || inside(this.minimapRect)
+    return inside(this.bagRect) || inside(this.matRect) || inside(this.frameRect) || inside(this.xpRect) || inside(this.skillsRect) || inside(this.minimapRect) || inside(this.charBtnRect)
   }
 
   /** Filigrane de RARETÉ : fond teinté (couleur de la rareté) à placer DERRIÈRE l'icône d'un objet. */

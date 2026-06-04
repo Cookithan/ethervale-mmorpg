@@ -166,6 +166,14 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('title_logo', 'assets/ui/title.png')
     this.load.image('dialogbox', 'assets/ui/dialogbox.png') // boîte de dialogue Ninja (300×58 : portrait à gauche + crème)
     this.load.image('arrow_next', 'assets/ui/arrow_next.png') // flèche « suivant » (13×13)
+    // FICHE PERSO WoW (Ninja UI, CC0) : cadre 9-slice sombre + case d'emplacement + silhouettes de slot vide
+    this.load.image('ui_panel_dark', 'assets/ui/panel_dark.png') // 16×16 -> nineslice
+    this.load.image('ui_cell', 'assets/ui/cell.png') // 16×16 -> nineslice (emplacement)
+    this.load.image('slot_weapon', 'assets/ui/slot_weapon.png') // silhouettes grisées de slot vide (24×24)
+    this.load.image('slot_armor', 'assets/ui/slot_armor.png')
+    this.load.image('slot_relic', 'assets/ui/slot_relic.png')
+    this.load.image('slot_ring', 'assets/ui/slot_ring.png')
+    this.load.image('stat_def', 'assets/ui/stat_def.png') // icône bouclier (stat Défense)
 
     // marchand : spritesheet 16x16 (on n'utilise que la frame 0 = face) + portrait
     this.load.spritesheet('npc_merchant', 'assets/sprites/npc_merchant.png', { frameWidth: 16, frameHeight: 16 })

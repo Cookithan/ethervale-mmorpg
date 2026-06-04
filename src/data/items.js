@@ -25,12 +25,16 @@ export const SET_TINT = 0x2ecc71 // émeraude (teintes de sprite/filigrane)
 // COMPÉTENCE DE SET `skill` (sort 3 / touche 3, géré à l'étape 7). Bonus = stats cumulées dans recomputeStats.
 export const SETS = {
   warrior: { name: 'Dernier Chevalier', class: 'warrior', skill: 'warcry', skillName: 'Cri intimidant',
+    skillDesc: 'Les ennemis proches sont effrayés et fuient.',
     bonus2: { attack: 8 }, bonus4: { attack: 18, hp: 40 } },
   tank: { name: 'Cœur en Pierre', class: 'tank', skill: 'shockwave', skillName: 'Onde de choc',
+    skillDesc: 'Étourdit les ennemis autour et les force à t\'attaquer.',
     bonus2: { hp: 40, defense: 6 }, bonus4: { hp: 110, defense: 16 } },
   mage: { name: 'Magie Ancienne', class: 'mage', skill: 'mirror', skillName: 'Image miroir',
+    skillDesc: 'Invoque des clones qui tirent et détournent les coups.',
     bonus2: { mana: 40, spellPower: 0.12 }, bonus4: { mana: 100, spellPower: 0.3 } },
   healer: { name: 'Vie Sacrée', class: 'healer', skill: 'resurrect', skillName: 'Résurrection',
+    skillDesc: 'Te relève automatiquement une fois (auto-résurrection solo).',
     bonus2: { mana: 40, manaRegen: 3 }, bonus4: { mana: 100, manaRegen: 6 } },
 }
 
