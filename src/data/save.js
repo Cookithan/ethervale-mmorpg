@@ -59,6 +59,7 @@ export function makeSave(player, character) {
     deathBag: player.deathBag, // sac de mort en attente de récupération (A1)
     deathsSinceRecovery: player.deathsSinceRecovery,
     setPity: player.setPity, // compteur anti-malchance des pièces de panoplie (par id)
+    reviveCharge: player.reviveCharge, // bénédiction de résurrection (Soigneur, set) en attente
     x: Math.round(player.x),
     y: Math.round(player.y),
   }

@@ -378,8 +378,10 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.nextAttackAt = now + BOSS_WAKE_DELAY
   }
 
-  /** RALENTI (Blizzard du Mage) : réduit la vitesse de nav de `factor` pendant `durationMs`. */
+  /** RALENTI (Blizzard du Mage) : réduit la vitesse de nav de `factor` pendant `durationMs`. (Contrôle ->
+   *  PAS sur les boss, comme stun/fear : on ne contrôle pas un boss, on le blesse seulement.) */
   applySlow(durationMs, factor = 0.5) {
+    if (this.isBoss) return
     const now = this.scene?.time?.now ?? 0
     this.slowUntil = now + durationMs
     this.slowFactor = factor
@@ -406,8 +408,10 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.burnTickAt = now + 500
   }
 
-  /** AFFAIBLISSEMENT (Mage ombre) : les dégâts de morsure du monstre sont réduits de `factor` pendant `durationMs`. */
+  /** AFFAIBLISSEMENT (Mage ombre) : réduit les dégâts de morsure de `factor` pendant `durationMs`.
+   *  (Contrôle -> PAS sur les boss, comme stun/fear/ralenti.) */
   applyWeaken(factor, durationMs) {
+    if (this.isBoss) return
     this.weakenFactor = factor
     this.weakenUntil = (this.scene?.time?.now ?? 0) + durationMs
   }

@@ -4076,130 +4076,6 @@ export default class GameScene extends Phaser.Scene {
     return true
   }
 
-  /** MÉTÉORE (Mage) : sort à INCANTATION (~1,3s). Le mage est ENRACINÉ et une barre se remplit au-dessus
-   *  de sa tête ; s'il prend un COUP, l'incantation est ANNULÉE (sort perdu). À la fin, le météore tombe
-   *  en AoE sur l'ennemi le plus proche. */
-  spellMeteor() {
-    const p = this.player
-    if (p.casting) return false // déjà en incantation
-    if (!this.currentTarget(300)) {
-      this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a')
-      return false // pas d'ennemi VISIBLE à l'écran (ni cible verrouillée) -> on n'incante pas
-    }
-    const CAST = 1300
-    const start = this.time.now
-    p.casting = true
-    p.castInterrupted = false
-    p.setVelocity(0, 0)
-    // incantation : son magique propre à l'apparence (feu / lumière / ombre / arcane)
-    const s = this.spellSfx()
-    Audio.sfx(s.cast, { vol: 0.6, detune: s.castDetune ?? 0 })
-    // barre d'incantation au-dessus de la tête (espace monde) : fond + remplissage + libellé
-    const W = 30
-    const yOff = 24
-    const bg = this.add.rectangle(p.x, p.y - yOff, W + 2, 6, 0x000000, 0.65).setDepth(99998)
-    const bar = this.add.rectangle(p.x - W / 2, p.y - yOff, 0, 4, p.magicColor).setOrigin(0, 0.5).setDepth(99999)
-    const lbl = this.add
-      .text(p.x, p.y - yOff - 7, 'Météore…', { fontFamily: 'monospace', fontSize: '8px', color: '#ffd27a', stroke: '#000', strokeThickness: 3 })
-      .setOrigin(0.5, 1)
-      .setDepth(99999)
-      .setResolution(3)
-    // sceptre/baguette brandi pendant l'incantation -> on voit l'arme du Mage
-    const wIcon = p.equipped?.weapon?.icon
-    const staff = wIcon && this.textures.exists(wIcon) ? this.add.image(p.x + 5, p.y + 1, wIcon).setDepth(p.y + 60).setScale(this.weaponScale(wIcon, 18) * (p.equipped?.weapon?.heldScale ?? 1)) : null
-    const cleanup = () => {
-      bg.destroy()
-      bar.destroy()
-      lbl.destroy()
-      staff?.destroy()
-      p.casting = false
-    }
-    const ev = this.time.addEvent({
-      delay: 16,
-      loop: true,
-      callback: () => {
-        if (!p.active || p.castInterrupted || this.gameOver) {
-          if (p.castInterrupted) this.floatingText(p.x, p.y - 18, 'Incantation interrompue', '#ff8a8a')
-          ev.remove()
-          cleanup()
-          return
-        }
-        const t = Phaser.Math.Clamp((this.time.now - start) / CAST, 0, 1)
-        bg.setPosition(p.x, p.y - yOff)
-        lbl.setPosition(p.x, p.y - yOff - 7)
-        bar.setPosition(p.x - W / 2, p.y - yOff).setSize(W * t, 4)
-        if (staff) {
-          if (this.time.now - start < CAST - 200) {
-            staff.rotation += 0.3 // tourne pendant l'incantation
-          } else {
-            staff.rotation = 0 // 200ms avant la fin : il s'arrête et se BRANDIT (dressé), prêt à lancer
-            staff.setPosition(p.x + 5, p.y - 5)
-          }
-        }
-        if (t >= 1) {
-          ev.remove()
-          cleanup()
-          this.meteorImpact()
-        }
-      },
-    })
-    return true // l'incantation a démarré -> on paie le mana + le cooldown (perdus si interrompu)
-  }
-
-  /** Impact du Météore (fin d'incantation) : AoE sur l'ennemi le plus proche (ou devant si aucun). */
-  meteorImpact() {
-    const p = this.player
-    const target = this.currentTarget(280)
-    let tx = p.x
-    let ty = p.y
-    if (target) {
-      tx = target.x
-      ty = target.y
-    } else {
-      const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
-      tx = p.x + dir[0] * 80
-      ty = p.y + dir[1] * 80
-    }
-    const R = Math.round(46 * (p.spellPowerMul ?? 1)) // Relique (effet) -> zone plus large (pas plus de dégâts)
-    const col = p.magicColor // couleur de la magie de l'apparence (violet / blanc / rouge...)
-    const dealAoe = () => {
-      const dmg = p.attackPower * 3.0 // gros dégâts AoE (récompense de l'incantation)
-      this.monsters.getChildren().forEach((m) => {
-        if (m.active && Phaser.Math.Distance.Between(tx, ty, m.x, m.y) <= R) this.hitMonster(m, dmg, tx, ty, 0)
-      })
-    }
-    // zone télégraphiée (brève) + une boule qui TOMBE du ciel sur la zone -> vrai "météore"
-    const tele = this.add.circle(tx, ty, R, col, 0.16).setStrokeStyle(2, col, 0.7).setDepth(ty)
-    const orb = this.add.image(tx, ty - 96, 'proj').setTint(col).setScale(2.4).setDepth(ty + 5)
-    this.tweens.add({
-      targets: orb,
-      y: ty,
-      duration: 320,
-      ease: 'Quad.easeIn',
-      onComplete: () => {
-        orb.destroy()
-        tele.destroy()
-        // belle anim d'impact propre à l'apparence (feu / spectre teinté) ; sinon cercle de repli
-        const fx = p.spellFx
-        if (fx && this.anims.exists(fx.anim)) {
-          const boom = this.add.sprite(tx, ty, fx.tex).setDepth(ty + 6).setScale((R * 2) / fx.frame)
-          if (fx.tint) boom.setTint(col)
-          boom.play(fx.anim)
-          boom.once('animationcomplete', () => boom.destroy())
-        } else {
-          const boom = this.add.circle(tx, ty, R, col, 0.6).setDepth(ty + 1)
-          this.tweens.add({ targets: boom, alpha: 0, scale: 1.35, duration: 320, onComplete: () => boom.destroy() })
-        }
-        this.cameras.main.shake(120, 0.004) // petit choc d'impact
-        // détonation propre à l'élément (feu = explosion, lumière = boom clair, ombre = esprit + explosion)
-        const s = this.spellSfx()
-        Audio.sfx(s.impact, { vol: 0.75, detune: s.impactDetune ?? 0 })
-        if (s.impactExtra) Audio.sfx(s.impactExtra, { vol: 0.7, detune: 0 }) // son superposé (ex. boom de feu sur l'ombre)
-        dealAoe()
-      },
-    })
-  }
-
   // ===== SORTS ÉLÉMENTAIRES DU MAGE (élément selon l'apparence : feu / glace / ombre) =====
   // Helper générique de ZONE (sort 1) : cercle de sort teinté + jets FX répétés + dégâts par tics + EFFET
   // secondaire par monstre (opts.onHit : ralenti/brûlure/affaiblissement). Centré sur la cible (ou devant).
@@ -4575,7 +4451,9 @@ export default class GameScene extends Phaser.Scene {
 
   /** Drop d'une PIÈCE DE PANOPLIE (brief §2) selon le biome du boss + la classe du joueur :
    *  forêt→Armure · désert→Relique · neige→Anneau · raid neige→Arme. Chance ~30 % + PITY (garanti après
-   *  5 boss sans la pièce). Jamais de doublon (si déjà possédée). Cursed=Dargoth (légendaire) / côte = rien. */
+   *  5 boss sans la pièce). Jamais de doublon (si déjà possédée). Cursed=Dargoth (légendaire).
+   *  ⚠️ Les 4 pièces viennent de boss SOLOABLES (panoplie complétable solo) : l'ARME = le Kraken de la
+   *  CÔTE (`squidred`, boss solo à distance), PAS le raid neige (intuable solo). */
   trySetPieceDrop(mon) {
     const p = this.player
     const PREFIX = { warrior: 'war', tank: 'tank', mage: 'mage', healer: 'heal' }[p.className]
@@ -4583,7 +4461,8 @@ export default class GameScene extends Phaser.Scene {
     let slot = null
     if (mon.bossBiome === 'forest') slot = 'armor'
     else if (mon.bossBiome === 'desert') slot = 'relic'
-    else if (mon.bossBiome === 'snow') slot = mon.isRaid ? 'weapon' : 'ring'
+    else if (mon.bossBiome === 'snow') slot = 'ring'
+    else if (mon.bossBiome === 'coast') slot = 'weapon' // Kraken (solo) -> arme de set
     if (!slot) return
     const id = `set_${PREFIX}_${slot}`
     const item = ITEMS[id]

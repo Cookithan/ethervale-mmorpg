@@ -175,6 +175,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.deathBag = s.deathBag ?? null
     this.deathsSinceRecovery = s.deathsSinceRecovery ?? 0
     this.setPity = s.setPity ?? {}
+    this.reviveCharge = s.reviveCharge ?? false
     this.recomputeStats()
     this.hp = Math.min(s.hp ?? this.maxHp, this.maxHp)
     this.mana = this.maxMana

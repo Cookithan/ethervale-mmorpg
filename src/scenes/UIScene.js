@@ -612,13 +612,6 @@ export default class UIScene extends Phaser.Scene {
     this.time.delayedCall(1, () => { if (this.charOpen) this.buildCharPanel() })
   }
 
-  /** Petite case générique (fond bleu nuit + bordure) du panneau perso. */
-  charCell(reg, x, y, sz, border) {
-    reg(this.add.rectangle(x, y, sz, sz, 0x232f52, 1))
-    reg(this.add.rectangle(x, y, sz, sz, 0x121a33, 0).setStrokeStyle(1, 0x121a33))
-    reg(this.add.rectangle(x, y, sz, sz, 0x000000, 0).setStrokeStyle(2.5, border))
-  }
-
   /** CASE D'ÉQUIPEMENT (paper-doll WoW) : case biseautée + bordure de QUALITÉ épaisse + HALO qui pulse
    *  (épique/légendaire/set) + objet OU silhouette grisée si vide. Survol éclaire ; clic = retirer. */
   drawEquipSlot(reg, x, y, sz, slot, ghostKey) {
@@ -642,26 +635,6 @@ export default class UIScene extends Phaser.Scene {
     hit.on('pointerover', () => { hover.setFillStyle(0xffffff, 0.12).setVisible(true); if (item) this.showTip(item, x, y - sz / 2) })
     hit.on('pointerout', () => { hover.setVisible(false); this.hideTip() })
     if (item) hit.on('pointerdown', () => { if (p.unequip(slot)) { Audio.sfx('ui_accept', { detune: 0 }); this.refreshChar() } else { this.showToast('Sac plein — libère une place', '#e0a866'); this.playDenied() } this.hideTip() })
-  }
-
-  /** CASE DU SAC (inventaire) : objet cliquable -> équiper / boire / (matériau). Survol = infobulle. */
-  drawBagSlot(reg, x, y, sz, item) {
-    const p = this.game_.player
-    this.charCell(reg, x, y, sz, item ? itemTint(item) ?? CELL_BORDER : 0x2a3342)
-    if (!item) return
-    reg(this.rarityBg(x, y, sz - 12, item.rarity))
-    this.addItemIcon(reg, x, y, item, sz - 16)
-    const hit = reg(this.add.rectangle(x, y, sz, sz, 0xffffff, 0.001).setInteractive({ useHandCursor: true }))
-    hit.on('pointerdown', () => {
-      if (item.type === 'consumable') { this.useConsumable(item); Audio.sfx('ui_accept', { detune: 0 }); this.refreshChar() }
-      else if (item.type === 'material') { this.showToast('Matériau — vends-le ou forge avec', '#e0a866'); this.playDenied() }
-      else if (!canEquip(item, p.className)) { this.showToast(classRestrictionLabel(item), '#e0a866'); this.playDenied() }
-      else if (p.equip(item)) { Audio.sfx('ui_accept', { detune: 0 }); this.showItemToast('Équipé', item); this.refreshChar() }
-      else { this.showToast('Objet cassé — répare chez Aldric', '#e06666'); this.playDenied() }
-      this.hideTip()
-    })
-    hit.on('pointerover', () => this.showTip(item, x, y - sz / 2))
-    hit.on('pointerout', () => this.hideTip())
   }
 
   buildCharPanel() {
@@ -769,7 +742,7 @@ export default class UIScene extends Phaser.Scene {
       reg(this.add.text(rXv, sy, value, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color }).setOrigin(1, 0.5))
       sy += 18
     }
-    stat('wpn_sword', 'Attaque', `${p.attackPower}`, '#ff9a5a')
+    stat('skill_atk_melee', 'Attaque', `${p.attackPower}`, '#ff9a5a')
     stat('stat_def', 'Défense', `${p.defense}`, '#7fb3ff')
     stat('drop_heart', 'Points de vie', `${Math.round(p.hp)} / ${p.maxHp}`, '#7CFC9A')
     stat('pot_mana', 'Mana', `${Math.round(p.mana)} / ${p.maxMana}`, '#7fd8ff')
