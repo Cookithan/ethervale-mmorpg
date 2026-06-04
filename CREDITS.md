@@ -29,10 +29,11 @@ Ce jeu utilise des assets de plusieurs créateurs. Merci à eux !
 - **Licence :** **CC0** (domaine public — usage libre, y compris commercial ; crédit apprécié).
 - Utilisé pour : icônes de la barre de compétences (sorts/attaques).
 
-## 32x32 Pixel Weapons (Free)
-- **Auteur :** *à compléter (source/licence à confirmer)* — fichier `32x32_PixelWeapons_Free.png`.
-- **Licence :** ⚠️ **à confirmer** avant toute distribution.
-- Utilisé pour : *(armes de panoplie — en attente de confirmation de licence).*
+## Admurin's Armory (Free) — 32x32 Pixel Weapons
+- **Auteur :** Admurin — https://admurin.itch.io/
+- **Licence :** gratuite, usage personnel **et commercial** autorisé ; ne pas revendre/redistribuer le pack brut ; crédit apprécié.
+- Fichier : `32x32_PixelWeapons_Free.png`.
+- Utilisé pour : armes de panoplie (pièces de set spectaculaires).
 
 ---
 ⚠️ **Note licence :** Sprout Lands et Mystic Woods sont **non-commerciaux**. Pour une éventuelle
