@@ -96,6 +96,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.charging2 = false // Charge du Tank en cours (buff de vitesse jusqu'à 4 s / impact)
     this.chargeSpeedMul = 1 // multiplicateur de vitesse pendant la Charge du Tank
     this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -80 % dégâts reçus
+    this.shieldHp = 0 // POINTS d'absorption (Mot de pouvoir : Bouclier, Soigneur) : encaissés avant les PV
+    this.shieldHpUntil = 0 // expiration de l'absorption
 
     // équipement 4 SLOTS (Arme/Armure/Relique[clé 'focus']/Anneau) + sac. Départ = SEULEMENT l'arme de base de la classe
     // (rien d'autre : ni armure, ni anneau -> tout le reste se gagne/s'achète).
@@ -348,14 +350,20 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (now < this.invulnUntil || this.hp <= 0) return false
     if (this.casting) this.castInterrupted = true // un coup pendant l'incantation l'annule (sort perdu)
     if (now < this.shieldUntil) amount *= 0.2 // Bouclier (Tank) : le bouclier absorbe 80 % -> héros = 20 %
-    const dmg = Math.max(1, Math.round(amount - this.defense)) // la défense réduit les dégâts (min 1)
-    this.hp = Math.max(0, this.hp - dmg)
+    let dmg = Math.max(1, Math.round(amount - this.defense)) // la défense réduit les dégâts (min 1)
+    // ABSORPTION (Mot de pouvoir : Bouclier, Soigneur) : encaisse avant les PV, jusqu'à épuisement/expiration
+    if (this.shieldHp > 0 && now < this.shieldHpUntil) {
+      const absorbed = Math.min(this.shieldHp, dmg)
+      this.shieldHp -= absorbed
+      dmg -= absorbed
+      if (this.shieldHp <= 0) this.scene.onShieldBroken?.(this) // bulle disparaît quand le bouclier casse
+    }
+    if (dmg > 0) this.hp = Math.max(0, this.hp - dmg)
     Audio.sfx(SFX.hurt, { vol: 0.5 }) // le héros encaisse (toutes sources : morsure, sort...)
     this.invulnUntil = now + HURT_IFRAMES
-    this.setTintFill(0xffffff)
+    this.setTintFill(dmg > 0 ? 0xffffff : 0x9fe0ff) // flash blanc, ou BLEU si entièrement absorbé
     this.scene.time.delayedCall(90, () => this.clearTint())
-    const broke = this.wearSlot('armor') // l'armure s'use quand on encaisse un coup
-    if (broke) this.scene.notifyBreak?.(broke)
+    if (dmg > 0) { const broke = this.wearSlot('armor'); if (broke) this.scene.notifyBreak?.(broke) } // l'armure ne s'use que sur de vrais dégâts
     return true
   }
 

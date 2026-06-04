@@ -3594,7 +3594,7 @@ export default class GameScene extends Phaser.Scene {
       charge: () => this.spellCharge(),
       shieldcharge: () => this.spellShieldCharge(), // Tank : sort principal = Charge
       blizzard: () => this.spellBlizzard(), // Mage : sort 1 = Blizzard (givre + ralentit)
-      heal: () => this.spellHeal(),
+      wordshield: () => this.spellShield(), // Soigneur : sort 1 = Mot de pouvoir : Bouclier (absorption + soin)
     }
     const fn = effects[sp.id]
     if (!fn || fn() === false) return // sort inconnu / non exécuté -> on ne consomme ni mana ni cd
@@ -3679,6 +3679,46 @@ export default class GameScene extends Phaser.Scene {
     }
     this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A')
     return true
+  }
+
+  /** MOT DE POUVOIR : BOUCLIER (Soigneur, sort 1) : petit soin immédiat + BOUCLIER d'absorption (encaisse
+   *  des dégâts avant les PV) pendant un temps. Bulle bleue qui suit le héros, éclate quand il casse/expire. */
+  spellShield() {
+    const p = this.player
+    const now = this.time.now
+    const heal = p.heal(Math.round(p.maxHp * 0.18 * (p.spellPowerMul ?? 1))) // petit soin immédiat
+    const shield = Math.max(1, Math.round(p.maxHp * 0.3 * (p.spellPowerMul ?? 1))) // points d'absorption
+    const dur = Math.round(9000 * (p.spellDurationMul ?? 1))
+    p.shieldHp = shield
+    p.shieldHpUntil = now + dur
+    Audio.sfx(SFX.shield, { vol: 0.6 })
+    const aura = this.add.sprite(p.x, p.y - 2, 'fx_aura').setDepth(p.y + 61).setScale(1.6).setTint(0x9fe0ff)
+    if (this.anims.exists('fx-aura')) { aura.play('fx-aura'); aura.once('animationcomplete', () => aura.destroy()) } else aura.destroy()
+    if (heal > 0) this.floatingText(p.x, p.y - 6, `+${heal}`, '#7CFC9A')
+    this.floatingText(p.x, p.y - 16, `Bouclier ${shield}`, '#bfe9ff')
+    this.spawnShieldBubble()
+    return true
+  }
+
+  /** Bulle de bouclier (Soigneur) qui suit le héros tant que l'absorption tient. */
+  spawnShieldBubble() {
+    const p = this.player
+    this.onShieldBroken(p) // nettoie une bulle précédente
+    const bubble = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 60).setScale(1.8).setAlpha(0.8).setTint(0x9fe0ff)
+    if (this.anims.exists('fx-shield')) bubble.play('fx-shield')
+    this._shieldBubble = bubble
+    this._shieldBubbleEv = this.time.addEvent({ delay: 30, loop: true, callback: () => {
+      if (!this._shieldBubble) return
+      if (p.shieldHp <= 0 || this.time.now >= p.shieldHpUntil) { this.onShieldBroken(p); return }
+      bubble.setPosition(p.x, p.y).setDepth(p.y + 60)
+    } })
+  }
+
+  /** Le bouclier d'absorption casse / expire : annule l'absorption et fait éclater la bulle. */
+  onShieldBroken(p) {
+    p.shieldHp = 0
+    this._shieldBubbleEv?.remove(); this._shieldBubbleEv = null
+    if (this._shieldBubble) { const b = this._shieldBubble; this._shieldBubble = null; this.tweens.add({ targets: b, alpha: 0, scale: 2.1, duration: 200, onComplete: () => b.destroy() }) }
   }
 
   /** CHARGE (Guerrier) : DASH dans la direction du héros = outil de MOBILITÉ / ESQUIVE (i-frames

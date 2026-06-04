@@ -70,15 +70,16 @@ export const CLASSES = {
     ],
   },
   healer: {
-    key: 'healer', name: 'Soigneur', desc: 'Soigne, sorts légers',
-    hp: 100, attack: 11, defense: 1, speedMul: 1.0,
+    key: 'healer', name: 'Soigneur', desc: 'Soutien, mais sait se défendre',
+    hp: 100, attack: 15, defense: 1, speedMul: 1.0,
     mana: 110,
-    // Soutien : PV moyens, beaucoup de mana pour soigner sur la durée.
+    // Soutien VIABLE EN SOLO : PV moyens, mana abondante, mais tir de base qui tape (attaque 15 + bonus).
     hpPerLevel: 14, defPerLevel: 0, manaPerLevel: 4,
-    spell: { id: 'heal', name: 'Soin', cost: 30, cd: 4000, desc: 'Rend 35% de tes PV' }, // soin (soi / allié blessé)
+    rangedDmgMul: 1.15, // son projectile sacré fait un peu plus mal (autonomie solo)
+    spell: { id: 'wordshield', name: 'Mot de pouvoir : Bouclier', cost: 30, cd: 7000, desc: 'Bouclier qui ABSORBE les dégâts + petit soin immédiat' }, // bouclier + soin
     spell2: { id: 'sanctuary', name: 'Sanctuaire', cost: 50, cd: 16000, level: 10, desc: 'Zone de lumière au sol : soigne sur la durée (déverrouillé niv 10)' },
     abilities: { melee: false, ranged: true, heal: true },
-    kit: 'Projectile (F) · Soin (1)',
+    kit: 'Projectile (F) · Bouclier (1)',
     heroes: [
       { key: 'hero_sorcerer', name: 'Soigneuse des ombres', magic: 0x8ef0a0, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // SorcererBlack ; magie de soin (vert sacré)
       { key: 'hero_cavegirl', name: 'Mia la soigneuse', magic: 0x8ef0a0, proj: { anim: 'fx-energyball', tex: 'fx_energyball', tint: true } }, // Cavegirl, au MILIEU
