@@ -3211,6 +3211,14 @@ export default class GameScene extends Phaser.Scene {
     this.scene.get('UIScene')?.showToast?.(`${item.name} cassé ! (réparer chez Aldric)`, '#e06666')
   }
 
+  /** Rappel (throttlé) quand on attaque À MAINS NUES (arme cassée) : peu de dégâts -> va réparer. */
+  warnBrokenWeapon() {
+    const now = this.time.now
+    if (now < (this._brokenWarnAt ?? 0)) return
+    this._brokenWarnAt = now + 4000
+    this.scene.get('UIScene')?.showToast?.('Mains nues ! Répare ton arme chez Aldric le forgeron', '#e0a866')
+  }
+
   /** Décorations du village : lampadaires, barriques, caisses, fleurs (spots libres). */
   spawnVillageDecor() {
     const cx = this.cx
@@ -3406,7 +3414,9 @@ export default class GameScene extends Phaser.Scene {
     else this.showSlash(p.x, p.y, p.facing)
     // tranche FX selon le TYPE d'arme (lame = tranche courbée, masse = slash circulaire)
     if (weapon?.fx && this.anims.exists(weapon.fx)) this.showSlashFx(p.x, p.y, p.facing, weapon.fx)
-    Audio.sfx(SFX.slash, { vol: 0.5 }) // sifflement de la lame à chaque coup
+    // MAINS NUES (arme cassée) : coup de poing -> son sourd (whoosh) + rappel de réparation ; sinon lame.
+    if (p.unarmed) { Audio.sfx(SFX.whoosh, { vol: 0.45 }); this.warnBrokenWeapon() }
+    else Audio.sfx(SFX.slash, { vol: 0.5 }) // sifflement de la lame à chaque coup
 
     let hitAny = false
     this.monsters.getChildren().forEach((mon) => {
@@ -3542,6 +3552,7 @@ export default class GameScene extends Phaser.Scene {
   shootForward() {
     if (this.uiBusy()) return
     const p = this.player
+    if (p.unarmed) this.warnBrokenWeapon() // arme cassée -> tir affaibli + rappel de réparation
     const target = this.currentTarget(HOMING_RANGE) // cible verrouillée prioritaire, sinon le plus proche visible
     if (target) {
       this.fireProjectile(target.x, target.y, target)

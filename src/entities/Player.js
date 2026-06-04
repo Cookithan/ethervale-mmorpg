@@ -216,7 +216,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
     this.coldResist = coldResist
     this.heatResist = heatResist
-    this.attackPower = this.baseAttack + atk
+    // MAINS NUES (aucune arme équipée — ex. après casse) : peu de dégâts (moins qu'une dague) pour
+    // inciter à réparer/se rééquiper. Sinon attaque = base + bonus des items.
+    this.unarmed = !this.equipped.weapon
+    this.attackPower = this.unarmed ? Math.max(2, Math.round((this.baseAttack + atk) * 0.4)) : this.baseAttack + atk
     this.defense = this.baseDefense + def
     this.maxHp = this.baseMaxHp + hp
     this.maxMana = (this.baseMana ?? 0) + mana
