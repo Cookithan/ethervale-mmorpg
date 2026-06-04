@@ -493,6 +493,28 @@ export default class BootScene extends Phaser.Scene {
       g.destroy()
     }
 
+    // 'icon_sun' / 'icon_moon' : petites icônes 22×22 pour l'indicateur jour/nuit du HUD (générées).
+    if (!this.textures.exists('icon_sun')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0xffd24d, 1) // rayons
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2
+        g.fillRect(11 + Math.cos(a) * 9 - 1, 11 + Math.sin(a) * 9 - 1, 2.5, 2.5)
+      }
+      g.fillStyle(0xffe08a, 1); g.fillCircle(11, 11, 6.5) // halo
+      g.fillStyle(0xffc63a, 1); g.fillCircle(11, 11, 5) // disque
+      g.generateTexture('icon_sun', 22, 22)
+      g.destroy()
+    }
+    if (!this.textures.exists('icon_moon')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0xe6ecff, 1); g.fillCircle(11, 11, 7.5) // pleine lune pâle
+      g.fillStyle(0xc3cef0, 1) // cratères
+      g.fillCircle(8, 8, 1.6); g.fillCircle(14, 12, 2.1); g.fillCircle(9, 14, 1.3)
+      g.generateTexture('icon_moon', 22, 22)
+      g.destroy()
+    }
+
     // clôture en bois : 'fence_h' (course horizontale) + 'fence_v' (course verticale)
     if (!this.textures.exists('fence_h')) {
       const g = this.make.graphics({ x: 0, y: 0, add: false })

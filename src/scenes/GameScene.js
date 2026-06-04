@@ -149,6 +149,10 @@ const TEMP_MAX_SLOW = 0.45 // ralenti maxi (-45 % de vitesse au tout froid/chaud
 const TEMP_CHIP_START = 90 // |temp| où les dégâts (gelure/coup de chaud) commencent
 const TEMP_CHIP_INTERVAL = 1000 // ms entre deux ticks de dégâts
 const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en zone Glacial/Brûlant
+// CYCLE JOUR/NUIT : voile bleu nuit plein écran dont l'opacité suit l'heure. Cycle complet = 20 min.
+const DAY_CYCLE_MS = 1200000 // durée d'un cycle jour->nuit->jour (20 min)
+const NIGHT_MAX_ALPHA = 0.55 // opacité du voile au plus profond de la nuit (nuit "moyenne", lisible)
+const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -360,6 +364,10 @@ export default class GameScene extends Phaser.Scene {
     this.trees = []
     this.destructibles = [] // obstacles (arbres de forêt) détruits par l'onde de choc à l'ouverture d'une arène
     this.campfires = [] // foyers posés par le joueur (zone-refuge de température)
+    // VOILE de nuit : rectangle couvrant TOUT le monde (depth au-dessus des sprites, sous les flashs/toasts
+    // et sous le HUD qui est dans UIScene). Opacité/couleur pilotées par updateDayNight. Inactif en preview.
+    this.dayDarkness = 0
+    this.nightOverlay = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0x070d28, 1).setOrigin(0, 0).setDepth(9000).setAlpha(0)
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
@@ -4487,6 +4495,7 @@ export default class GameScene extends Phaser.Scene {
       this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES[biome])
     }
 
+    this.updateDayNight(time) // cycle jour/nuit (20 min) : voile de nuit + dayDarkness
     this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
     this.updateCampfires(time) // foyers posés : animation + extinction (zone-refuge de température)
 
@@ -4576,6 +4585,9 @@ export default class GameScene extends Phaser.Scene {
       if (target < 0 && fireOn) target = 0 // potion de feu -> pas de froid de lisière
       if (target > 0 && frostOn) target = 0 // potion de givre -> pas de chaleur de lisière
     }
+    // NUIT : il fait plus froid (renforce la température) -> décale la cible vers le froid. La potion de feu
+    // (immunité au froid) annule ce refroidissement. neige plus dure / désert qui se rafraîchit / léger frais ailleurs.
+    if (!fireOn && this.dayDarkness > 0) target = Phaser.Math.Clamp(target - this.dayDarkness * NIGHT_TEMP_SHIFT, -TEMP_MAX, TEMP_MAX)
     // FEU DE CAMP : un foyer RÉCHAUFFE -> il n'annule que le FROID (cible < 0). Aucun effet sur la chaleur du désert.
     if (target < 0 && this.nearCampfire(p.x, p.y)) target = 0
     const dt = Math.min(delta, 60) / 1000 // borne le pas (onglet en arrière-plan -> pas de saut géant)
@@ -4680,8 +4692,22 @@ export default class GameScene extends Phaser.Scene {
       const f = this.campfires[i]
       if (time >= f.until) { this.campfires.splice(i, 1); this.extinguishCampfire(f); continue }
       const t = time / 240 + f.seed
-      f.glow.setAlpha(0.10 + 0.05 * Math.sin(t)).setScale(1 + 0.06 * Math.sin(t * 1.3))
+      const night = 1 + 1.3 * (this.dayDarkness ?? 0) // halo plus marqué la nuit (le voile assombrit le reste)
+      f.glow.setAlpha((0.10 + 0.05 * Math.sin(t)) * night).setScale(1 + 0.06 * Math.sin(t * 1.3))
     }
+  }
+
+  /** CYCLE JOUR/NUIT : fait varier l'opacité (et la teinte) du voile de nuit sur DAY_CYCLE_MS.
+   *  `dayDarkness` (0 = plein jour, 1 = minuit) est lu par la température (nuit = plus froid) et par
+   *  l'icône soleil/lune du HUD. f=0 (début de partie) = lever du jour. */
+  updateDayNight(time) {
+    if (!this.nightOverlay) return
+    const f = (time % DAY_CYCLE_MS) / DAY_CYCLE_MS
+    const n = (1 - Math.cos(f * Math.PI * 2)) / 2 // courbe douce : 0 au lever (f=0) -> 1 à minuit (f=0.5)
+    this.dayDarkness = n
+    // teinte : crépuscule/aube mauve (n modéré) -> bleu nuit profond (minuit), opacité ∝ n
+    this.nightOverlay.setFillStyle(lerpHex(0x3a2e54, 0x070d28, n), 1)
+    this.nightOverlay.setAlpha(NIGHT_MAX_ALPHA * n)
   }
 
   /** true si (x,y) est à portée d'un foyer ALLUMÉ (zone-refuge de température). */

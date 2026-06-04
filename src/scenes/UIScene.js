@@ -356,6 +356,13 @@ export default class UIScene extends Phaser.Scene {
     compass(mmX + 2, mmY + mmSize / 2, 'O', 0, 0.5)
     reg(this.add.text(mmX + mmSize / 2, mmY + mmSize + 3, 'M = carte du monde', { fontFamily: 'monospace', fontSize: '9px', color: '#cfe8ff', stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 0))
 
+    // --- indicateur JOUR/NUIT : pastille (soleil le jour, lune la nuit) juste à gauche de la minimap ---
+    const dnx = mmX - 18
+    const dny = mmY + 13
+    reg(this.add.circle(dnx, dny, 13, 0x0a1018, 0.78).setStrokeStyle(2, GOLD, 0.7))
+    this.sunIcon = reg(this.add.image(dnx, dny, 'icon_sun').setDepth(135))
+    this.moonIcon = reg(this.add.image(dnx, dny, 'icon_moon').setDepth(135).setAlpha(0))
+
     // --- barre de BOSS (haut-centre, cachée hors combat de boss, style MMO) ---
     const bw = Math.min(440, cw * 0.62)
     const bcx = cw / 2
@@ -1844,6 +1851,15 @@ export default class UIScene extends Phaser.Scene {
     }
   }
 
+  /** Indicateur jour/nuit : crossfade soleil -> lune selon dayDarkness (0 jour, 1 minuit) de GameScene. */
+  updateDayNightIcon() {
+    if (!this.sunIcon) return
+    const n = this.game_?.dayDarkness ?? 0
+    const t = Phaser.Math.Clamp((n - 0.35) / 0.3, 0, 1) // bascule soleil->lune entre n=0.35 et 0.65
+    this.sunIcon.setAlpha(1 - t)
+    this.moonIcon.setAlpha(t)
+  }
+
   /** Allume/éteint un émetteur de particules selon `on`, en mémorisant l'état dans `this[flag]` pour ne
    *  (re)démarrer/arrêter qu'aux transitions ; ajuste la fréquence (densité) quand il est actif. */
   setEmitter(emitter, flag, on, frequency) {
@@ -1865,6 +1881,7 @@ export default class UIScene extends Phaser.Scene {
 
     this.updateQuestTracker(p)
     this.updateTempGauge(p)
+    this.updateDayNightIcon()
     const ratio = Phaser.Math.Clamp(p.hp / p.maxHp, 0, 1)
     this.hpBar.setSize(this.hpBarW * ratio, this.hpBarH)
     this.hpBar.fillColor = ratio > 0.5 ? 0x4caf50 : ratio > 0.25 ? 0xff9800 : 0xe23b3b
