@@ -64,10 +64,10 @@ export const ITEMS = {
   healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'wpn_wand', iconTint: 0x9be88f, rarity: 'rare', price: 220, stats: { attack: 8 }, dur: 60 },
   relic: { id: 'relic', name: 'Relique sacrée', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', rarity: 'epic', price: 540, stats: { attack: 12 }, dur: 80 },
 
-  // ===== ARMURES (slot 'armor') -> PV / défense. Un seul sprite `eq_armor`, TEINTÉ par tier. =====
-  leather: { id: 'leather', name: 'Tunique de cuir', slot: 'armor', icon: 'eq_armor', iconTint: 0xc89a63, rarity: 'common', price: 90, stats: { hp: 16 }, dur: 50 },
-  chainmail: { id: 'chainmail', name: 'Cotte de mailles', slot: 'armor', icon: 'eq_armor', iconTint: 0xb6c0cc, rarity: 'rare', price: 240, stats: { hp: 26, defense: 4 }, dur: 80 },
-  plate: { id: 'plate', name: 'Armure de plaques', slot: 'armor', icon: 'eq_armor', iconTint: 0x9fb4d6, rarity: 'epic', price: 560, stats: { hp: 42, defense: 8 }, dur: 120 },
+  // ===== ARMURES (slot 'armor') -> PV / défense. Icônes Kyrise DISTINCTES par pièce (armor_01 a/b/c/e). =====
+  leather: { id: 'leather', name: 'Tunique de cuir', slot: 'armor', icon: 'eq_leather', rarity: 'common', price: 90, stats: { hp: 16 }, dur: 50 },
+  chainmail: { id: 'chainmail', name: 'Cotte de mailles', slot: 'armor', icon: 'eq_mail', rarity: 'rare', price: 240, stats: { hp: 26, defense: 4 }, dur: 80 },
+  plate: { id: 'plate', name: 'Armure de plaques', slot: 'armor', icon: 'eq_plate', rarity: 'epic', price: 560, stats: { hp: 42, defense: 8 }, dur: 120 },
   // Armures THÉMATIQUES (résistance à la température) : à équiper avant d'explorer neige/désert.
   furcloak: { id: 'furcloak', name: 'Cape de fourrure', slot: 'armor', icon: 'eq_armor', iconTint: 0xe6f0ff, rarity: 'rare', price: 230, stats: { hp: 22, defense: 2, coldResist: 55 }, dur: 70 },
   desertgarb: { id: 'desertgarb', name: 'Habit du désert', slot: 'armor', icon: 'eq_armor', iconTint: 0xe8c987, rarity: 'rare', price: 230, stats: { hp: 22, defense: 2, heatResist: 55 }, dur: 70 },
@@ -90,7 +90,7 @@ export const ITEMS = {
   legend_hammer: { id: 'legend_hammer', name: 'Marteau des Titans', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'legendary', price: 600, stats: { attack: 34 }, dur: 220, fx: 'fx-circslash' },
   legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
   legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', iconTint: 0xffe6a0, rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
-  legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_armor', iconTint: 0xffd27a, rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
+  legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_dragon', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
   legend_focus: { id: 'legend_focus', name: 'Cœur du Dragon', slot: 'focus', icon: 'foc_fire', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
   legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'ring_red', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
 
