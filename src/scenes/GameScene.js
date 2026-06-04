@@ -359,6 +359,7 @@ export default class GameScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup()
     this.trees = []
     this.destructibles = [] // obstacles (arbres de forêt) détruits par l'onde de choc à l'ouverture d'une arène
+    this.campfires = [] // foyers posés par le joueur (zone-refuge de température)
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
@@ -4487,6 +4488,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
+    this.updateCampfires(time) // foyers posés : animation + extinction (zone-refuge de température)
 
     // musique : un boss engagé impose un thème de combat (tiré au hasard au début du combat,
     // gardé jusqu'au désengagement), sinon la musique de la zone. playMusic court-circuite si
@@ -4574,6 +4576,8 @@ export default class GameScene extends Phaser.Scene {
       if (target < 0 && fireOn) target = 0 // potion de feu -> pas de froid de lisière
       if (target > 0 && frostOn) target = 0 // potion de givre -> pas de chaleur de lisière
     }
+    // FEU DE CAMP : un foyer RÉCHAUFFE -> il n'annule que le FROID (cible < 0). Aucun effet sur la chaleur du désert.
+    if (target < 0 && this.nearCampfire(p.x, p.y)) target = 0
     const dt = Math.min(delta, 60) / 1000 // borne le pas (onglet en arrière-plan -> pas de saut géant)
     let temp = p.temp ?? 0
     const recovering = Math.abs(target) < Math.abs(temp)
@@ -4636,6 +4640,58 @@ export default class GameScene extends Phaser.Scene {
       this.burnFx = this.add.sprite(p.x, p.y, 'fx_flam').setOrigin(0.5, 1).setBlendMode(Phaser.BlendModes.ADD).play('fx-flam')
     }
     this.burnFx.setVisible(true).setPosition(p.x, p.y + 8).setDepth(p.y + 1).setScale(0.42 + 0.28 * intensity).setAlpha(0.7 + 0.3 * intensity)
+  }
+
+  /** Pose un FEU DE CAMP temporaire à l'endroit du héros : foyer + flamme animée + halo chaud au sol.
+   *  Crée une zone-refuge (cf. updateTemperature : la jauge revient au neutre à portée). 3 foyers max
+   *  (le plus ancien s'éteint si on dépasse). Renvoie false si on ne peut pas (mort / en bateau). */
+  placeCampfire(item) {
+    if (this.gameOver || this.player?.sailing) return false
+    this.campfires ||= []
+    if (this.campfires.length >= 3) this.extinguishCampfire(this.campfires.shift(), 300) // remplace le plus vieux
+    const x = Math.round(this.player.x)
+    const y = Math.round(this.player.y)
+    const radius = item?.fireRadius ?? 64
+    const dur = item?.fireDur ?? 90000
+    const seed = this.campfires.length * 1.7
+    const glow = this.add.circle(x, y + 4, radius, 0xff7a1a, 0.12).setBlendMode(Phaser.BlendModes.ADD).setDepth(y - 1)
+    const sprite = this.add.image(x, y, 'campfire').setOrigin(0.5, 0.82).setScale(1.5).setDepth(y)
+    const flame = this.add.sprite(x, y - 10, 'fx_flam').setOrigin(0.5, 1).setBlendMode(Phaser.BlendModes.ADD).setScale(0.55).setDepth(y + 1).play('fx-flam')
+    this.campfires.push({ x, y, radius, until: this.time.now + dur, sprite, flame, glow, seed })
+    Audio.sfx('sfx_el_fire', { vol: 0.55 })
+    return true
+  }
+
+  /** Éteint un foyer : fondu puis destruction des sprites (le retire de la liste active AVANT, donc il ne
+   *  réchauffe plus pendant l'extinction). `delay` = durée du fondu. */
+  extinguishCampfire(f, delay = 700) {
+    if (!f || f.dying) return
+    f.dying = true
+    this.tweens.add({
+      targets: [f.sprite, f.flame, f.glow], alpha: 0, duration: delay,
+      onComplete: () => { f.sprite.destroy(); f.flame.destroy(); f.glow.destroy() },
+    })
+  }
+
+  /** Anime les foyers (halo qui respire) et éteint ceux dont la durée est écoulée. */
+  updateCampfires(time) {
+    if (!this.campfires?.length) return
+    for (let i = this.campfires.length - 1; i >= 0; i--) {
+      const f = this.campfires[i]
+      if (time >= f.until) { this.campfires.splice(i, 1); this.extinguishCampfire(f); continue }
+      const t = time / 240 + f.seed
+      f.glow.setAlpha(0.10 + 0.05 * Math.sin(t)).setScale(1 + 0.06 * Math.sin(t * 1.3))
+    }
+  }
+
+  /** true si (x,y) est à portée d'un foyer ALLUMÉ (zone-refuge de température). */
+  nearCampfire(x, y) {
+    if (!this.campfires?.length) return false
+    for (const f of this.campfires) {
+      const dx = x - f.x, dy = y - f.y
+      if (dx * dx + dy * dy <= f.radius * f.radius) return true
+    }
+    return false
   }
 
   handleDeath() {

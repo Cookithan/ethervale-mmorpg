@@ -523,6 +523,17 @@ export default class UIScene extends Phaser.Scene {
   useConsumable(item) {
     const p = this.game_.player
     if (this.game_.gameOver) return
+    // FEU DE CAMP À POSER : crée un foyer temporaire (zone-refuge) à l'endroit du héros.
+    if (item.placeFire) {
+      if (this.game_.placeCampfire(item)) {
+        p.removeItem(item)
+        this.showToast('Feu de camp allumé', '#ffb060')
+      } else {
+        this.showToast('Impossible d’allumer un feu ici', '#e0a866')
+        this.playDenied()
+      }
+      return
+    }
     // POTION DE TEMPÉRATURE (feu = immunité froid, givre = immunité chaud) pendant tempDur (10 min)
     if (item.tempBuff) {
       if (!p.tempBuff) p.tempBuff = { fire: 0, frost: 0 }
