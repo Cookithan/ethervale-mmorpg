@@ -133,6 +133,16 @@ Une panoplie = **Arme + Armure + Relique + Anneau** (vert émeraude).
 
 ---
 
+## AVANCEMENT (2026-06-04)
+- ✅ **1. Rareté** : relabel Rare/Épique + helpers `itemColor`/`itemTint` (champ `set` → émeraude). Commit `3566694`.
+- ✅ **2. Slot Relique** : label « Relique » (clé interne `focus`), cooldown retiré, `spellPower`/`spellDuration` (+ `spellDurationMul` Player). Commit `4d19fe4`.
+- ✅ **3. Assets** : Kyrise (CC BY 4.0), RPG Ability Icons (CC0), Admurin's Armory (free) dans `Full_Asset/`, crédités. Commits `184d32a`/`cbff2de`.
+- ✅ **4. Catalogue (icônes)** : armures (`d4b2ce9`), anneaux (`b3a2a55`), reliques=cristaux (`265c727`), potions/matériaux (`3b7d18f`), 4 légendaires Admurin (`3c22ba6`). Armes de base = restées Ninja (variées + bon swing). Champ `swingTex` ajouté (icône Admurin diagonale → swing Ninja).
+- ⏭️ Reste : 5 (sorts Mage/Soigneur), 6 (panoplies), 7 (compétences de set), 8 (drops+pity), 9 (barre de compétences), 10 (onglet perso).
+
+### 🗺️ Cartographie Admurin (`Full_Asset/32x32_PixelWeapons_Free.png`, grille 14×14 de 32px, col,row à partir de 0)
+Outil de découpe : recréer un script `_crop.mjs` (zlib, RGBA8) — voir historique. **Colonnes** (moitié gauche) : col0=épées, col1=lances/bâtons, col2=masses/sceptres, col3=arcs, col4/5=boucliers, col6=marteaux/divers. **Lignes** : 0-4 = paliers métal (bronze→acier→sombre), **ligne 5 = ORNÉ OR (légendaires)**, ligne 6 = orné turquoise. **Lignes 7-11 = PANOPLIES ÉLÉMENTAIRES complètes** (givre / **VERT ÉMERAUDE [row 8] = armes de SET toutes prêtes** / feu / clair / cyan), ligne 12 = bois/sombre. Moitié haute-droite (cols 7-13, rows 0-6) = pièces d'**armure** (casque/plastron/jambes/bottes). **Légendaires déjà extraits** : (0,5) épée or, (1,5) masse or, (2,5) sceptre or, (2,6) sceptre cosmique bleu. **Pour l'étape 6, armes de set = ligne 8 (émeraude)** : (0,8) épée, (1,8) lance/bâton, (2,8) sceptre, etc.
+
 ## Ordre d'implémentation (étape par étape, commit entre chaque)
 1. **Rareté** : relabel des affichages (Commun/Rare/Épique/Légendaire) + marquage set vert émeraude.
 2. **Slot Relique** : renommer `focus`→Relique, retirer le cooldown, ajouter `spellDuration` / `spellPower`.
