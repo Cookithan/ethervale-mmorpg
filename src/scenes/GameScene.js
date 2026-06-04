@@ -3366,9 +3366,11 @@ export default class GameScene extends Phaser.Scene {
     const cy = p.y + dir[1] * 14
     const RANGE = 20 // rayon de la zone de frappe (généreux)
 
-    // arme équipée -> son sprite fait un MOUVEMENT DE COUP (swing) ; sinon simple arc blanc
+    // arme équipée -> son sprite fait un MOUVEMENT DE COUP (swing) ; sinon simple arc blanc.
+    // `swingTex` (optionnel) = sprite dédié à l'animation de coup quand l'icône d'inventaire (ex. Admurin,
+    // orientée en diagonale) ne s'aligne pas sur l'arc du swing -> on swingue le sprite Ninja à la place.
     const weapon = p.equipped?.weapon
-    const wIcon = weapon?.icon
+    const wIcon = weapon?.swingTex || weapon?.icon
     if (wIcon && this.textures.exists(wIcon)) this.showWeaponSwing(p.x, p.y, p.facing, wIcon)
     else this.showSlash(p.x, p.y, p.facing)
     // tranche FX selon le TYPE d'arme (lame = tranche courbée, masse = slash circulaire)

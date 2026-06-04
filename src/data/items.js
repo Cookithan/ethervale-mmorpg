@@ -86,10 +86,12 @@ export const ITEMS = {
   signet: { id: 'signet', name: 'Anneau de saphir', slot: 'ring', icon: 'eq_ring_sapphire', rarity: 'epic', price: 520, stats: { mana: 58, defense: 3, manaRegen: 3 } },
 
   // ===== LÉGENDAIRES (or) — EXCLUSIFS AUX BOSS (jamais au marchand/butin normal, cf. SHOP_STOCK / equipmentOfTier) =====
-  legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
-  legend_hammer: { id: 'legend_hammer', name: 'Marteau des Titans', slot: 'weapon', classes: ['tank'], icon: 'wpn_hammer', rarity: 'legendary', price: 600, stats: { attack: 34 }, dur: 220, fx: 'fx-circslash' },
-  legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_stick', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
-  legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_bone', iconTint: 0xffe6a0, rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
+  // LÉGENDAIRES d'arme = sprites spectaculaires Admurin (icône). Les classes de mêlée gardent un `swingTex`
+  // Ninja pour l'animation de coup (l'icône Admurin est orientée en diagonale, pas alignée sur l'arc du swing).
+  legend_sword: { id: 'legend_sword', name: "Lame d'Excalibur", slot: 'weapon', classes: ['warrior'], icon: 'wpn_legend_sword', swingTex: 'wpn_sword', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 200, fx: 'fx-slash' },
+  legend_hammer: { id: 'legend_hammer', name: 'Marteau des Titans', slot: 'weapon', classes: ['tank'], icon: 'wpn_legend_mace', swingTex: 'wpn_hammer', rarity: 'legendary', price: 600, stats: { attack: 34 }, dur: 220, fx: 'fx-circslash' },
+  legend_staff: { id: 'legend_staff', name: 'Bâton Cosmique', slot: 'weapon', classes: ['mage'], icon: 'wpn_legend_staff', rarity: 'legendary', price: 600, stats: { attack: 40 }, dur: 160 },
+  legend_relic: { id: 'legend_relic', name: 'Relique Divine', slot: 'weapon', classes: ['healer'], icon: 'wpn_legend_scepter', rarity: 'legendary', price: 560, stats: { attack: 26 }, dur: 160 },
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_dragon', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
   legend_focus: { id: 'legend_focus', name: 'Cristal Cosmique', slot: 'focus', icon: 'rel_cosmic', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
   legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'eq_ring_ruby', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },

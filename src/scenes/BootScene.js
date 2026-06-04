@@ -197,7 +197,8 @@ export default class BootScene extends Phaser.Scene {
       this.load.image(key, `assets/items/${key}.png`)
     }
     // sprites d'ARMES (Items/Weapons) : servent d'icône d'inventaire ET de sprite qui swingue à l'attaque
-    for (const key of ['wpn_sword', 'wpn_sword2', 'wpn_katana', 'wpn_rapier', 'wpn_dagger', 'wpn_ninjaku', 'wpn_club', 'wpn_hammer', 'wpn_axe', 'wpn_lance2', 'wpn_bigsword', 'wpn_wand', 'wpn_book', 'wpn_stick', 'wpn_bone']) {
+    for (const key of ['wpn_sword', 'wpn_sword2', 'wpn_katana', 'wpn_rapier', 'wpn_dagger', 'wpn_ninjaku', 'wpn_club', 'wpn_hammer', 'wpn_axe', 'wpn_lance2', 'wpn_bigsword', 'wpn_wand', 'wpn_book', 'wpn_stick', 'wpn_bone',
+      'wpn_legend_sword', 'wpn_legend_mace', 'wpn_legend_scepter', 'wpn_legend_staff']) { // 4 légendaires spectaculaires (Admurin's Armory)
       this.load.image(key, `assets/weapons/${key}.png`)
     }
 
