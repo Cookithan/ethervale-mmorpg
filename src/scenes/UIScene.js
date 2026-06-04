@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
+import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
@@ -469,7 +469,7 @@ export default class UIScene extends Phaser.Scene {
     for (let i = 0; i < display; i++) {
       const bx = gx + i * (cell + gap)
       const item = p.inventory[i]
-      const border = item ? RARITY[item.rarity]?.tint ?? CELL_BORDER : CELL_BORDER
+      const border = item ? itemTint(item) ?? CELL_BORDER : CELL_BORDER
       reg(this.add.rectangle(bx, gy, cell, cell, CELL, 1).setStrokeStyle(item ? 2 : 1, border))
       if (!item) continue
       reg(this.rarityBg(bx, gy, cell - 6, item.rarity)) // filigrane de rareté
@@ -655,7 +655,7 @@ export default class UIScene extends Phaser.Scene {
       const pos = place[slot]
       reg(this.add.text(pos.lx, pos.ly, SLOT_LABELS[slot], { fontFamily: 'monospace', fontSize: '11px', color: '#9fb6cc' }).setOrigin(0.5))
       const item = p.equipped[slot]
-      const border = item ? RARITY[item.rarity]?.tint ?? GOLD : GOLD
+      const border = item ? itemTint(item) ?? GOLD : GOLD
       const c = reg(this.add.rectangle(pos.x, pos.y, cellSz, cellSz, CELL, 1).setStrokeStyle(2, border))
       if (item) {
         reg(this.rarityBg(pos.x, pos.y, cellSz - 8, item.rarity)) // filigrane de rareté
@@ -877,11 +877,10 @@ export default class UIScene extends Phaser.Scene {
 
   /** Ligne compacte d'objet (boutique) : icône + nom (+×qté) + bouton à droite. */
   drawShopRow(reg, x, y, w, h, item, qty, btn) {
-    const rc = RARITY[item.rarity]
-    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(1.5, rc ? rc.tint : CELL_BORDER))
+    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(1.5, itemTint(item) ?? CELL_BORDER))
     reg(this.rarityBg(x + 16, y + h / 2, 24, item.rarity))
     this.addItemIcon(reg, x + 16, y + h / 2, item, 20)
-    reg(this.add.text(x + 30, y + 5, itemName(item) + (qty > 1 ? ` ×${qty}` : ''), { fontFamily: 'monospace', fontSize: '9px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 94 } }).setOrigin(0, 0))
+    reg(this.add.text(x + 30, y + 5, itemName(item) + (qty > 1 ? ` ×${qty}` : ''), { fontFamily: 'monospace', fontSize: '9px', color: itemColor(item), wordWrap: { width: w - 94 } }).setOrigin(0, 0))
     const hov = reg(this.add.rectangle(x, y, w - 62, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive())
     hov.on('pointerover', () => this.showTip(item, x + w / 2, y))
     hov.on('pointerout', () => this.hideTip())
@@ -979,11 +978,10 @@ export default class UIScene extends Phaser.Scene {
 
   /** Carte d'objet (icône + nom + durabilité + libellé de prix), cliquable. */
   drawCard(reg, x, y, w, h, item, footer) {
-    const rc = RARITY[item.rarity]
-    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, rc ? rc.tint : CELL_BORDER))
+    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, itemTint(item) ?? CELL_BORDER))
     reg(this.rarityBg(x + 20, y + 22, 30, item.rarity)) // filigrane de rareté derrière l'icône
     this.addItemIcon(reg, x + 20, y + 22, item, 26)
-    reg(this.add.text(x + 38, y + 8, itemName(item), { fontFamily: 'monospace', fontSize: '10px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 44 } }).setOrigin(0, 0))
+    reg(this.add.text(x + 38, y + 8, itemName(item), { fontFamily: 'monospace', fontSize: '10px', color: itemColor(item), wordWrap: { width: w - 44 } }).setOrigin(0, 0))
     if (hasDurability(item)) this.drawDurBar(reg, x + 38, y + h - 20, w - 46, item)
     reg(this.add.text(x + w - 6, y + h - 8, footer.text, { fontFamily: 'monospace', fontSize: '10px', color: footer.color }).setOrigin(1, 1))
     const z = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
@@ -1083,12 +1081,11 @@ export default class UIScene extends Phaser.Scene {
 
   /** Carte de forge : objet + durabilité + 2 boutons (Réparer / Améliorer). */
   drawForgeCard(reg, x, y, w, h, item, equipped) {
-    const rc = RARITY[item.rarity]
     const p = this.game_.player
-    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, rc ? rc.tint : CELL_BORDER))
+    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, itemTint(item) ?? CELL_BORDER))
     reg(this.rarityBg(x + 22, y + 26, 34, item.rarity)) // filigrane de rareté derrière l'icône
     this.addItemIcon(reg, x + 22, y + 26, item, 30)
-    reg(this.add.text(x + 44, y + 8, itemName(item) + (equipped ? '  (équipé)' : ''), { fontFamily: 'monospace', fontSize: '10px', color: rc ? rc.color : '#fff', wordWrap: { width: w - 50 } }).setOrigin(0, 0))
+    reg(this.add.text(x + 44, y + 8, itemName(item) + (equipped ? '  (équipé)' : ''), { fontFamily: 'monospace', fontSize: '10px', color: itemColor(item), wordWrap: { width: w - 50 } }).setOrigin(0, 0))
     const cur = item.durability ?? item.dur
     this.drawDurBar(reg, x + 44, y + 38, w - 54, item)
     reg(this.add.text(x + 44, y + 42, `${cur}/${item.dur}`, { fontFamily: 'monospace', fontSize: '8px', color: '#9fb6cc' }).setOrigin(0, 0))
@@ -1172,8 +1169,7 @@ export default class UIScene extends Phaser.Scene {
     item.durability = item.dur // l'amélioration répare aussi
     p.invVersion++
     if (p.equipped[item.slot] === item) p.recomputeStats()
-    const rc = RARITY[item.rarity]
-    this.showToast(`Amélioré : ${itemName(item)}`, rc ? rc.color : '#ffe066')
+    this.showToast(`Amélioré : ${itemName(item)}`, itemColor(item))
     this.buildForge()
   }
 
@@ -1673,8 +1669,8 @@ export default class UIScene extends Phaser.Scene {
    *  par-dessus en semi-transparence (comme la teinte de l'eau) -> l'objet prend la couleur de sa rareté. */
   addItemIcon(reg, x, y, item, fit) {
     const base = reg(this.addIcon(x, y, item.icon, fit, item.iconTint))
-    const rc = RARITY[item.rarity]
-    if (rc) reg(this.addIcon(x, y, item.icon, fit, rc.tint)).setAlpha(0.42)
+    const tint = itemTint(item) // émeraude si pièce de set, sinon teinte de rareté
+    if (tint != null) reg(this.addIcon(x, y, item.icon, fit, tint)).setAlpha(0.42)
     return base
   }
 
@@ -1687,8 +1683,7 @@ export default class UIScene extends Phaser.Scene {
 
   showTip(item, centerX, topY, droppable = false) {
     this._cancelTipHide()
-    const r = RARITY[item.rarity]
-    this.tip.setColor(r ? r.color : '#ffffff')
+    this.tip.setColor(itemColor(item))
     this.tip.setText(`${item.name}\n${describeItem(item)}`).setVisible(true)
     if (droppable) {
       // on remonte l'infobulle de la hauteur du bouton pour que « ✖ Lâcher » se cale juste au-dessus de l'objet
@@ -1808,8 +1803,7 @@ export default class UIScene extends Phaser.Scene {
 
   /** Toast pour un objet (préfixe + nom coloré selon la rareté). */
   showItemToast(prefix, item) {
-    const rc = RARITY[item.rarity]
-    this.showToast(`${prefix} : ${item.name}`, rc ? rc.color : '#ffffff')
+    this.showToast(`${prefix} : ${item.name}`, itemColor(item))
   }
 
   /** Thermomètre LEGO-Fortnite : une AIGUILLE coulisse le long de la barre zonée selon p.temp (-100…+100),
@@ -2028,8 +2022,7 @@ export default class UIScene extends Phaser.Scene {
           reg(this.addIcon(ix, iy - 3, 'drop_gold', sz - 8).setDepth(D))
           reg(this.add.text(ix, iy + cellW / 2 - 4, `${summary.gold}`, { fontFamily: 'monospace', fontSize: '10px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(D))
         } else {
-          const rc = RARITY[c.it.rarity]
-          reg(this.add.rectangle(ix, iy, cellW, cellW, 0x161b24, 0.95).setStrokeStyle(2, rc ? rc.tint : 0x888888).setDepth(D))
+          reg(this.add.rectangle(ix, iy, cellW, cellW, 0x161b24, 0.95).setStrokeStyle(2, itemTint(c.it) ?? 0x888888).setDepth(D))
           reg(this.addIcon(ix, iy, c.it.icon, sz - 8, c.it.iconTint).setDepth(D))
         }
         ix += cellW + gap

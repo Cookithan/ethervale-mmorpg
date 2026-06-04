@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { RARITY } from '../data/items.js'
+import { RARITY, itemTint } from '../data/items.js'
 
 // table des types ramassables : texture + libellé du texte flottant + couleur
 export const DROP_TYPES = {
@@ -47,7 +47,7 @@ export default class Drop extends Phaser.Physics.Arcade.Sprite {
     const RANK = { common: 0, rare: 1, epic: 2, legendary: 3 }
     if (item && item.rarity && RARITY[item.rarity]) {
       const rank = RANK[item.rarity] ?? 0
-      const tint = RARITY[item.rarity].tint
+      const tint = itemTint(item) // émeraude si pièce de set, sinon teinte de rareté
       const radius = 9 + rank * 3 // 9..18 px selon la rareté
       this.glow = scene.add
         .ellipse(x, y + 2, radius * 2, radius * 1.25, tint, 0.18 + rank * 0.1)

@@ -4,14 +4,32 @@
  * rareté, prix d'achat, et bonus de stats appliqués quand il est équipé.
  */
 
-// 4 paliers de rareté (brief §5) : Commun(gris) · Magique(bleu) · Rare(violet) · Légendaire(or).
+// 4 paliers de rareté : Commun(gris) · Rare(bleu) · Épique(violet) · Légendaire(or, BOSS only).
 // ⚠️ Les CLÉS internes sont conservées pour ne rien casser dans le code existant :
-//   'rare' = palier MAGIQUE (bleu) · 'epic' = palier RARE (violet) · 'legendary' = nouveau (or, BOSS only).
+//   'rare' = palier RARE (bleu) · 'epic' = palier ÉPIQUE (violet) · 'legendary' (or).
 export const RARITY = {
   common: { label: 'Commun', color: '#dcdcdc', tint: 0x9aa4b0, weight: 60 },
-  rare: { label: 'Magique', color: '#4aa3ff', tint: 0x3a7fd0, weight: 25 },
-  epic: { label: 'Rare', color: '#c77dff', tint: 0xa335ee, weight: 12 },
+  rare: { label: 'Rare', color: '#4aa3ff', tint: 0x3a7fd0, weight: 25 },
+  epic: { label: 'Épique', color: '#c77dff', tint: 0xa335ee, weight: 12 },
   legendary: { label: 'Légendaire', color: '#ffb02e', tint: 0xffae22, weight: 3 },
+}
+
+// Marquage des PIÈCES DE PANOPLIE (champ `item.set`) : couleur VERT ÉMERAUDE distincte, prioritaire
+// sur la rareté pour la couleur/contour/filigrane (le palier reste légendaire/épique en interne pour
+// le butin et le scaling). Vide pour les items normaux. Voir helpers itemColor/itemTint ci-dessous.
+export const SET_COLOR = '#3ddc84' // émeraude (texte/contours)
+export const SET_TINT = 0x2ecc71 // émeraude (teintes de sprite/filigrane)
+
+/** Couleur d'affichage (texte) d'un objet : émeraude si pièce de set, sinon couleur de rareté. */
+export function itemColor(item) {
+  if (item?.set) return SET_COLOR
+  return RARITY[item?.rarity]?.color ?? '#ffffff'
+}
+
+/** Teinte (contours/filigranes) d'un objet : émeraude si pièce de set, sinon teinte de rareté. */
+export function itemTint(item) {
+  if (item?.set) return SET_TINT
+  return RARITY[item?.rarity]?.tint ?? null
 }
 
 // `dur` = durabilité max (armes/armures s'usent au combat ; à 0 l'objet casse et se
