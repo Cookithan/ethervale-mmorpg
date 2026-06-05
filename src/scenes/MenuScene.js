@@ -45,7 +45,7 @@ export default class MenuScene extends Phaser.Scene {
 
     // --- boutons ---
     // Nouvelle partie : on NE coupe PAS le village -> il reste en fond de la création (continuité)
-    const buttons = [{ label: 'Nouvelle partie', cb: () => this.scene.start('IntroScene') }]
+    const buttons = [{ label: 'Nouvelle partie', cb: () => this.onNewGame() }]
     if (hasSave()) {
       const s = loadSave()
       const who = s?.character?.name ? `Continuer — ${s.character.name} (Niv.${s.level ?? 1})` : 'Continuer'
@@ -75,6 +75,42 @@ export default class MenuScene extends Phaser.Scene {
 
   onResize() {
     if (this.scene.isActive('MenuScene')) this.scene.restart()
+  }
+
+  /** Nouvelle partie : si une sauvegarde existe, DEMANDE confirmation (elle sera écrasée). */
+  onNewGame() {
+    if (hasSave()) {
+      this.confirmDialog('Une sauvegarde existe déjà.\nLancer une nouvelle partie effacera\ntoute ta progression. Continuer ?', () => this.scene.start('IntroScene'))
+    } else {
+      this.scene.start('IntroScene')
+    }
+  }
+
+  /** Boîte de confirmation modale (Confirmer / Annuler) par-dessus le menu. */
+  confirmDialog(message, onConfirm) {
+    const cw = this.scale.width
+    const ch = this.scale.height
+    const objs = []
+    const reg = (o) => { objs.push(o); return o }
+    const close = () => objs.forEach((o) => o.destroy())
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.62).setOrigin(0, 0).setDepth(50).setInteractive()) // bloque les clics derrière
+    const W = 440
+    const H = 200
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, DARK, 0.98).setStrokeStyle(2, BORDER).setDepth(51))
+    reg(this.add.text(cw / 2, ch / 2 - 46, message, { fontFamily: 'monospace', fontSize: '15px', color: '#ffe0b0', align: 'center', lineSpacing: 5, wordWrap: { width: W - 40 } }).setOrigin(0.5).setDepth(52))
+    this.modalButton(reg, cw / 2 - 100, ch / 2 + 46, 180, 'Confirmer', () => { Audio.sfx('ui_accept', { detune: 0 }); close(); onConfirm() })
+    this.modalButton(reg, cw / 2 + 100, ch / 2 + 46, 180, 'Annuler', () => { Audio.sfx('ui_cancel', { detune: 0 }); close() })
+  }
+
+  /** Petit bouton de modale (objets enregistrés via `reg` pour pouvoir les détruire à la fermeture). */
+  modalButton(reg, x, y, w, label, cb) {
+    const h = 48
+    const bg = reg(this.add.rectangle(x, y, w, h, BTN, 1).setStrokeStyle(2, BORDER).setDepth(52))
+    const txt = reg(this.add.text(x, y, label, { fontFamily: 'monospace', fontSize: '18px', fontStyle: 'bold', color: '#ffe0b0' }).setOrigin(0.5).setDepth(53))
+    const zone = reg(this.add.rectangle(x, y, w, h, 0xffffff, 0.001).setInteractive({ useHandCursor: true }).setDepth(53))
+    zone.on('pointerover', () => { bg.setFillStyle(BTN_HOVER, 1); bg.setStrokeStyle(2, 0xffd27a); txt.setColor('#fff6df') })
+    zone.on('pointerout', () => { bg.setFillStyle(BTN, 1); bg.setStrokeStyle(2, BORDER); txt.setColor('#ffe0b0') })
+    zone.on('pointerdown', cb)
   }
 
   /** Stoppe l'aperçu du village puis exécute la navigation (évite un GameScene fantôme). */
