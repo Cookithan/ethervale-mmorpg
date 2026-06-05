@@ -3,7 +3,7 @@ import { HEROES } from '../data/classes.js'
 import { Audio } from '../data/sound.js'
 
 // monstres (sprites mon_<nom>.png, grille 4x4) — chargement + animations directionnelles
-const MONSTER_SPRITES = ['mushroom', 'lizard', 'racoon', 'snake', 'spider', 'bear', 'owl', 'skull', 'spirit', 'flam']
+const MONSTER_SPRITES = ['mushroom', 'lizard', 'racoon', 'snake', 'spider', 'bear', 'owl', 'skull', 'spirit', 'flam', 'trex', 'bluebat']
 
 // PNJ (sprites 4×7, par colonne = direction) : villageois du bourg (statiques) + civils baladeurs de
 // la prairie (apparences distinctes, ni villageois ni perso de classe). Tout est chargé + animé pareil.

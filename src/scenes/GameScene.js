@@ -127,8 +127,8 @@ const SPELL_ELEMENT_BY_HERO = { hero_flam: 'fire', hero_spirit: 'light', hero_ma
 const MONSTERS_BY_BIOME = {
   prairie: ['lizard'], // (zone sûre : pas de spawn de toute façon)
   forest: ['lizard', 'racoon', 'mushroom'],
-  desert: ['snake', 'spider'],
-  snow: ['owl', 'bear'],
+  desert: ['snake', 'spider', 'trex'],
+  snow: ['owl', 'bear', 'bluebat'],
   cursed: ['skull', 'spirit', 'flam'],
 }
 

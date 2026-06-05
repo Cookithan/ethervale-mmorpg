@@ -67,6 +67,17 @@ export const MONSTER_TYPES = {
     tier: 'epic', loot: { gold: [7, 14], mat: 'mat_crystal', matChance: 0.5, gear: 0.22 },
     mobAtk: { type: 'shoot', range: 180, windup: 520, cooldown: 2400, projSpeed: 165, dmgMul: 1.1, fx: { tex: 'fx_fireball', anim: 'fx-fireball', scale: 1.3 } }, // boule de feu
   },
+  // mobs supplémentaires (brief polish) : DÉSERT = Raptor (charge vite, peu de PV) ; NEIGE = Chauve-souris givrée (plonge).
+  trex: {
+    key: 'mon_trex', hp: 28, speed: 90, damage: 12, xp: 26, aggro: 145, scale: 1.0, name: 'Raptor',
+    tier: 'common', loot: { gold: [2, 6], mat: 'mat_leather', matChance: 0.45, gear: 0.12 },
+    mobAtk: { type: 'lunge', range: 165, windup: 340, speed: 370, duration: 240, dmgMul: 1.7, cooldown: 2400, hitRadius: 16 }, // ruée éclair (glass cannon)
+  },
+  bluebat: {
+    key: 'mon_bluebat', hp: 36, speed: 100, damage: 14, xp: 28, aggro: 150, scale: 0.9, name: 'Chauve-souris givrée',
+    tier: 'rare', loot: { gold: [3, 8], mat: 'mat_essence', matChance: 0.5, gear: 0.16 },
+    mobAtk: { type: 'lunge', range: 175, windup: 320, speed: 390, duration: 230, dmgMul: 1.6, cooldown: 2200, hitRadius: 15 }, // plongée rapide
+  },
 
   // --- BOSS DE RAID (intuables en solo, contenu verrouillé / multijoueur Phase 4) ---
   // rig = sprites dédiés (mono-orientation, anims idle/walk/hit) ; raid = PV-mur + dégâts qui écrasent.
