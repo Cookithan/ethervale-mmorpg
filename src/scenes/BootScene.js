@@ -74,6 +74,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('desert_rock2', 'assets/deco/desert_rock2.png') // 47×34 — gros rocher de grès
     // sables mouvants animés (Ninja, 8 frames de 32×32) — piège qui aspire dans le désert
     this.load.spritesheet('quicksand', 'assets/deco/quicksand.png', { frameWidth: 32, frameHeight: 32 })
+    // flocons de neige (Ninja, 7 frames de 8×8) — particules de chute de neige dans le biome neige
+    this.load.spritesheet('snow', 'assets/deco/snow.png', { frameWidth: 8, frameHeight: 8 })
     this.load.image('moneybag', 'assets/items/moneybag.png') // sac de mort (14×15) déposé à l'endroit de la mort (A1)
 
     // nature (arbres, rochers...) en spritesheet 16x16 pour placer des tuiles

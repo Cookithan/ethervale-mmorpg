@@ -230,7 +230,13 @@ function lerpHex(a, b, t) {
 
 // --- éléments du TilesetNature (nature.png, 24 colonnes) ---
 const TREE = { tl: 0, tr: 1, bl: 24, br: 25 } // arbre vert (forêt/prairie)
-const TREE_SNOW = { tl: 12, tr: 13, bl: 36, br: 37 } // sapin enneigé (neige)
+const TREE_SNOW = { tl: 12, tr: 13, bl: 36, br: 37 } // sapin enneigé (neige) — tout blanc
+// 3 variantes de sapins de neige (TilesetNature) -> variété dans le biome neige : givré léger, enneigé, tout blanc
+const SNOW_TREES = [
+  { tl: 8, tr: 9, bl: 32, br: 33 }, // sapin givré (vert + neige)
+  { tl: 10, tr: 11, bl: 34, br: 35 }, // sapin enneigé
+  { tl: 12, tr: 13, bl: 36, br: 37 }, // sapin tout blanc
+]
 const TREE_DEAD = { tl: 4, tr: 5, bl: 28, br: 29 } // arbre mort (maudit / désert sec)
 const ROCKS = [295, 296, 297]
 const FLOWERS = [264, 265, 267] // tournesol, fleur, tulipe
@@ -382,6 +388,7 @@ export default class GameScene extends Phaser.Scene {
     // spawnDecor() retiré : plus de buissons/touffes d'herbe en prairie (demandé)
     this.spawnBiomeProps() // props par biome (cactus, cristaux, souches, congères...)
     this.scatterDesertProps() // déco étoffée du désert : palmiers nains + rochers de grès
+    this.scatterSnowProps() // déco étoffée de la neige : sapins de neige variés (grille uniforme)
     this.physics.add.collider(this.player, this.obstacles)
     // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
     // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
@@ -499,6 +506,21 @@ export default class GameScene extends Phaser.Scene {
       cam.setZoom(3)
       cam.setRoundPixels(true)
       this.setupMinimap() // 2e caméra dézoomée (haut-droite) qui suit le joueur
+      // CHUTE DE NEIGE (particules) : émetteur unique en avant-plan, activé seulement dans le biome neige
+      // (updateSnowfall repositionne la zone d'émission sur le bord haut de la vue + start/stop selon le biome).
+      this.snowEmitter = this.add.particles(0, 0, 'snow', {
+        frame: [0, 1, 2, 3, 5, 6],
+        lifespan: 4200,
+        speedY: { min: 40, max: 80 },
+        speedX: { min: -22, max: 22 },
+        scale: { min: 0.7, max: 1.25 },
+        alpha: { start: 0.9, end: 0.4 },
+        frequency: 35,
+        quantity: 3,
+        rotate: { min: 0, max: 360 },
+        emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, 900, 6) },
+      }).setDepth(8500)
+      this.snowEmitter.stop()
     }
 
     // --- entrées combat (désactivées en mode aperçu) ---
@@ -1784,8 +1806,8 @@ export default class GameScene extends Phaser.Scene {
     for (let x = 1; x < MAP_W - 2; x += 2) {
       for (let y = 1; y < MAP_H - 2; y += 2) {
         const b = this.biomeAt(x, y)
-        if (b === 'snow' && Phaser.Math.Between(0, 100) < 24) place(x, y, TREE_SNOW)
-        else if (b === 'cursed' && Phaser.Math.Between(0, 100) < 32) place(x, y, TREE_DEAD)
+        // neige : sapins répartis en grille jittered dans scatterSnowProps (couverture uniforme + remplit les arènes)
+        if (b === 'cursed' && Phaser.Math.Between(0, 100) < 32) place(x, y, TREE_DEAD)
         // désert : arbres morts répartis en grille jittered dans scatterDesertProps (couverture uniforme, sans amas/trous)
       }
     }
@@ -2048,6 +2070,24 @@ export default class GameScene extends Phaser.Scene {
     const cy = ty * TILE + TILE
     this.add.sprite(cx, cy, 'quicksand').setDepth(-6).setAlpha(0.72).play('quicksand') // décal de sol semi-transparent (laisse voir le sable dessous)
     this.quicksands.push({ x: cx, y: cy, r: 17 })
+  }
+
+  /** Déco ÉTOFFÉE de la NEIGE : sapins de neige VARIÉS (3 variantes) en grille jittered -> couverture
+   *  uniforme (pas d'amas/trous). Ils REMPLISSENT aussi les arènes (clairière 4 tuiles autour du boss)
+   *  et sont DESTRUCTIBLES (pulvérisés par l'onde de choc), exactement comme la forêt et le désert. */
+  scatterSnowProps() {
+    const lairs = Object.values(this.bossLairs || {}).flat()
+    const STEP = 5
+    for (let gy = 2; gy < MAP_H - 3; gy += STEP) {
+      for (let gx = 2; gx < MAP_W - 3; gx += STEP) {
+        const tx = gx + Phaser.Math.Between(-1, 2)
+        const ty = gy + Phaser.Math.Between(-1, 2)
+        if (this.biomeAt(tx, ty) !== 'snow') continue
+        if (this.nearSpawn(tx, ty, 5) || this.onPath(tx, ty, 2) || this.onWater(tx, ty, 2)) continue
+        if (lairs.some((l) => this.dist(tx, ty, l.tx, l.ty) < 4)) continue // petite clairière autour du boss
+        if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty, Phaser.Utils.Array.GetRandom(SNOW_TREES), true)
+      }
+    }
   }
 
   /** Déco sans collision : massifs de fleurs serrées + touffes de buissons/herbes. */
@@ -4795,6 +4835,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.updateDayNight(time) // cycle jour/nuit (20 min) : voile de nuit + dayDarkness
     this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
+    this.updateSnowfall(biome) // chute de neige (particules) dans le biome neige
     this.updateCampfires(time) // foyers posés : animation + extinction (zone-refuge de température)
 
     // musique : un boss engagé impose un thème de combat (tiré au hasard au début du combat,
@@ -4960,6 +5001,19 @@ export default class GameScene extends Phaser.Scene {
       this.time.delayedCall(100, () => p.active && p.clearTint())
       this.cameras.main.shake(90, 0.004)
     }
+  }
+
+  /** Chute de neige : déplace la zone d'émission sur le bord HAUT de la vue (zone large centrée) et
+   *  démarre/arrête l'émetteur selon qu'on est dans le biome neige. Les flocons déjà tombés finissent
+   *  leur chute (fondu) en sortant du biome. */
+  updateSnowfall(biome) {
+    const e = this.snowEmitter
+    if (!e) return
+    const v = this.cameras.main.worldView
+    e.setPosition(v.centerX - 450, v.y - 14) // zone large (900) centrée sur la vue
+    const snowing = biome === 'snow'
+    if (snowing && !e.emitting) e.start()
+    else if (!snowing && e.emitting) e.stop()
   }
 
   /** Renvoie -1 si de la NEIGE est proche, +1 si du DÉSERT est proche, 0 sinon (échantillonne 8 directions
