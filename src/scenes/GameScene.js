@@ -3565,6 +3565,7 @@ export default class GameScene extends Phaser.Scene {
       mon.knockbackUntil = this.time.now + 220 // l'IA ne reprend pas la main pendant le recul
     }
     if (mon.isBoss) mon.wake(this.time.now) // TAPER un boss le réveille (-> arène) + délai avant sa 1re attaque
+    this.floatingDamage(mon, amount, '#fff3b0') // chiffre de dégâts (jaune) au-dessus du monstre, AVANT sa mort éventuelle
     mon.takeDamage(Math.round(amount))
   }
 
@@ -4666,9 +4667,8 @@ export default class GameScene extends Phaser.Scene {
     } else if (drop.type === 'heart') {
       const healed = p.heal(drop.amount)
       if (healed <= 0) return // PV déjà au max : pas de texte trompeur
-      text = `+${healed} PV`
-      color = '#ff8088'
       Audio.sfx('sfx_pickup', { vol: 0.5, detune: 0 })
+      return // le chiffre vert est déjà affiché par heal() — pas de double texte
     } else if (drop.type === 'equip') {
       const it = drop.item
       if (it?.type === 'material') {
@@ -4737,19 +4737,29 @@ export default class GameScene extends Phaser.Scene {
     return true
   }
 
-  /** Petit texte qui monte et s'efface (ramassage, soin...). */
-  floatingText(x, y, text, color) {
+  /** Petit texte qui monte et s'efface (ramassage, soin, chiffres de dégâts...).
+   *  `opts` : { size (px), rise (montée px), duration (ms) }. */
+  floatingText(x, y, text, color, opts = {}) {
     const t = this.add
       .text(x, y - 8, text, {
         fontFamily: 'monospace',
-        fontSize: '9px',
+        fontSize: `${opts.size ?? 9}px`,
+        fontStyle: opts.size ? 'bold' : 'normal',
         color,
         stroke: '#000000',
         strokeThickness: 3,
       })
       .setOrigin(0.5)
       .setDepth(20000)
-    this.tweens.add({ targets: t, y: t.y - 14, alpha: 0, duration: 800, onComplete: () => t.destroy() })
+    this.tweens.add({ targets: t, y: t.y - (opts.rise ?? 14), alpha: 0, duration: opts.duration ?? 800, onComplete: () => t.destroy() })
+  }
+
+  /** Chiffre de dégâts qui jaillit au-dessus d'une entité touchée (léger décalage aléatoire anti-chevauchement). */
+  floatingDamage(target, amount, color) {
+    const n = Math.round(amount)
+    if (n <= 0 || !target) return
+    const top = target.y - (target.displayHeight || 16) / 2 - 2
+    this.floatingText(target.x + Phaser.Math.Between(-5, 5), top, `${n}`, color, { size: 12, rise: 20, duration: 700 })
   }
 
   onLevelUp() {

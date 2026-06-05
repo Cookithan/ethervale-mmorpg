@@ -433,6 +433,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       if (this.shieldHp <= 0) this.scene.onShieldBroken?.(this) // bulle disparaît quand le bouclier casse
     }
     if (dmg > 0) this.hp = Math.max(0, this.hp - dmg)
+    // chiffre flottant : rouge = dégâts encaissés, bleu = entièrement absorbé par le bouclier
+    if (dmg > 0) this.scene.floatingDamage?.(this, dmg, '#ff6b6b')
+    else this.scene.floatingText?.(this.x, this.y - 14, 'absorbé', '#9fe0ff', { size: 10, rise: 18 })
     Audio.sfx(SFX.hurt, { vol: 0.5 }) // le héros encaisse (toutes sources : morsure, sort...)
     this.invulnUntil = now + HURT_IFRAMES
     this.setTintFill(dmg > 0 ? 0xffffff : 0x9fe0ff) // flash blanc, ou BLEU si entièrement absorbé
@@ -453,7 +456,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
   heal(amount) {
     const before = this.hp
     this.hp = Math.min(this.maxHp, this.hp + amount)
-    return this.hp - before
+    const gained = this.hp - before
+    if (gained > 0) this.scene.floatingDamage?.(this, gained, '#7cfc9a') // chiffre de soin (vert) au-dessus du héros
+    return gained
   }
 
   /** Ajoute de l'XP, gère le(s) passage(s) de niveau (cap 50). */
