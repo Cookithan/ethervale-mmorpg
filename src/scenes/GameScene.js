@@ -202,6 +202,9 @@ const CURSED_ISLE = { ox: -100, oy: 60, r: 28 } // [offset tuiles depuis le cent
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
 const ARENA_RADIUS = 160 // rayon de la zone scellée (px), centrée sur le repaire du boss
+// teinte de l'arène selon le BIOME (ambiance) : forêt brun-vert sombre · désert rouge-orangé ·
+// neige bleu glacé · terres maudites violet maléfique · côte cyan. Défaut = rouge.
+const ARENA_BIOME_COLOR = { forest: 0x5b7d3a, desert: 0xe07b2e, snow: 0x57b6e6, cursed: 0x9a3fd0, coast: 0x2fb6c0 }
 const ARENA_TRIGGER = 110 // distance (px) au CENTRE du repaire qui déclenche le verrouillage (< rayon -> on est dedans)
 const BOSS_CLEAR_TILES = 12 // rayon (tuiles) dégagé d'arbres/rochers/props autour de chaque repaire = clairière d'arène
 
@@ -2737,7 +2740,7 @@ export default class GameScene extends Phaser.Scene {
     // (il peut avoir aggro le boss depuis le bord/à distance) -> jamais piégé DEHORS du cercle.
     const base = boss.arenaR ?? ARENA_RADIUS
     const r = Phaser.Math.Clamp(this.dist(this.player.x, this.player.y, cx, cy) + 28, base, 360)
-    const col = boss.isRaid ? 0x8b2fd6 : 0xd23a3a // raid = violet, boss solo = rouge
+    const col = ARENA_BIOME_COLOR[boss.bossBiome] ?? (boss.isRaid ? 0x8b2fd6 : 0xd23a3a) // teinte d'ambiance par biome
     const fill = this.add.circle(cx, cy, r, col, 0.07).setDepth(1) // sol scellé teinté
     const ring = this.add.circle(cx, cy, r, col, 0).setStrokeStyle(3, col, 0.9).setDepth(900000) // bord toujours visible
     this.tweens.add({ targets: [fill, ring], alpha: 0.45, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
