@@ -1,9 +1,13 @@
 # Brief Éthervale — État du jeu & feuille de route
 
 > Document de synthèse pour reprendre le projet (humain OU nouvelle session Claude).
-> Dernière mise à jour : **2026-06-04**, dernier commit `f4850c6` (branche `main`, arbre propre).
+> Dernière mise à jour : **2026-06-05**, dernier commit `fb6ce78` (branche `main`, poussé `origin/main`, arbre propre).
 >
-> ⚡ **NOUVEAU depuis le 2026-06-04** (par rapport à `080e714`) : équilibrage trinité de classes, patterns de boss (Gélées slam / Cyclopes bull-rush / Tengu déluge+transfo), **système de température** (froid/chaud), **ponts en bois**, **2e compétence par classe** (niv 10), **feu de camp posable**, **cycle jour/nuit 20 min**, et **sols de biomes anti-mosaïque**. Détail dans les sections ci-dessous (et exhaustif dans la mémoire Claude `mmorpg-project.md` → bloc « UPDATE 2026-06-04 »).
+> ⚡ **NOUVEAU depuis le 2026-06-05** (par rapport à `f4850c6`) :
+> - **Refonte items/sets/sorts/UI (« Brief A ») FAITE** (jusqu'à `d266af3`) : raretés + relique, armes par classe, **PANOPLIES** (sort de set touche 3 + drops boss + pity), **Mage élémentaire** (sorts par apparence : feu/glace/ombre), Soigneur bouclier, **barre de compétences façon WoW**, **fiche perso paper-doll**. (Détail exhaustif dans la mémoire Claude `brief-a-refonte-items-fait.md`.)
+> - **Passes déco biomes FAITES** (`16cefb6` désert, `fb6ce78` neige) : on a étoffé la déco **comme la forêt**. Désert = palmiers nains + rochers de grès + arbres morts répartis en grille (qui **remplissent les arènes** et sont **destructibles** par l'onde de choc) + **sables mouvants animés** (piège qui aspire) ; maisons du désert retirées. Neige = **sapins variés en grille** (destructibles) + **chute de neige animée**. (Détail : mémoire `deco-biomes-desert-fait.md`.)
+> - ⛔ **RELIEF / MONTAGNES = écarté** par l'utilisateur (« c'est très bien sans montagne »). **Ne pas reproposer.**
+> - (Rappel `f4850c6` et avant : équilibrage trinité, patterns boss Gélées/Cyclopes/Tengu, température, ponts, 2e compétence niv 10, feu de camp, cycle jour/nuit, sols anti-mosaïque, **quêtes** (17, data-driven), bateau, mort douce.)
 
 ---
 
@@ -95,17 +99,20 @@ Philosophie : **solo d'abord**, **MVP strict**, multijoueur repoussé en **Phase
 
 ## 3. CE QU'IL RESTE À FAIRE (dans l'ordre conseillé)
 
-### A. Finir le polish map / déco (en cours)
-1. **Déco animée restante** : **cascades** (`Waterfall`, demande un dénivelé → à coupler avec le relief, ou bouche de rivière), **moulin à VENT** (`MillPropeller` sur une tour, champ/désert), **rides d'eau** (`Water Ripples`), fleurs/plantes animées, drapeaux ailleurs.
-2. **Reliefs / montagnes** : vraies falaises/plateaux (Sprout `Hills` + Ninja `TilesetRelief/ReliefDetail`) avec collisions, intégrés aux biomes.
-3. **Intérieurs / donjons** (gros chantier, nouvelles scènes/transitions) : entrer dans les maisons et grottes (`TilesetHouse/Interior`, `TilesetDungeon`). `TilesetFloor.png` contient de **vrais sols** (sable/neige/glace) si besoin un jour.
+### A. Polish map / déco
+- ✅ **Déco biomes FAITE pour les 4 biomes** : forêt (chênes Mystic + sous-bois), **désert** (palmiers/rochers de grès/arbres morts/sables mouvants — `16cefb6`), **neige** (sapins variés/chute de neige — `fb6ce78`). Méthode = grille jittered uniforme, arbres destructibles qui remplissent les arènes (cf. `scatterDesertProps`/`scatterSnowProps`/`addTree(...,true)`).
+- ⛔ **Reliefs / montagnes : ÉCARTÉ** (l'utilisateur n'en veut pas — ne pas reproposer).
+1. **Déco animée restante** (optionnel) : **moulin à VENT** (`MillPropeller` sur une tour, désert), **rides d'eau** (`Water Ripples`), fleurs/plantes animées, drapeaux ailleurs. (Cascades : demandaient un dénivelé → sans objet maintenant que le relief est écarté, sauf à une bouche de rivière.)
+2. **Intérieurs / donjons** (gros chantier, nouvelles scènes/transitions) : entrer dans les maisons et grottes (`TilesetHouse/Interior`, `TilesetDungeon` ; entrées de grotte dispo dans `TilesetReliefDetail`). `TilesetFloor.png` contient de **vrais sols** (sable/neige/glace) si besoin un jour.
+
+> **PROCHAINE SESSION — l'utilisateur choisira parmi** : **Artisanat chez Aldric** (recettes data-driven, brief polish §5), **Brouillard de guerre + carte M** (révélation persistante, brief polish §4), **plus de déco animée** (ci-dessus), **plus d'ennemis / patterns de boss** (cf. §B). Donjons = à part (gros).
 
 ### B. Boss & monstres
 4. **Patterns d'attaque des boss restants** : Gélées (slam), Cyclopes (bull-rush), Tengu (déluge+transfo) sont **FAITS** ; il reste **Bambou / Crâne / autres** qui n'ont que contact/charge.
 5. **Plus d'ennemis** : ~10 monstres utilisés sur ~70 dispo dans `Actor/Monster/`.
 
 ### C. Contenu de jeu
-6. **📜 QUÊTES** (§10 du brief original, **le plus structurant**) : système data-driven, PNJ avec `!`/`?`, objectifs, récompenses.
+6. ✅ **📜 QUÊTES FAITES** : système data-driven (`src/data/quests.js`, ~17 quêtes en chaîne, types talk/kill/collect, marqueurs `!`/`?`, journal touche J, palier end-game « battre les Gardiens »). **Artisanat chez Aldric** (recettes data-driven, brief polish §5) reste un bon prochain pas structurant.
 7. **🐾 Animaux d'ambiance** (`Actor/Animal/` ~26) : critters / familiers / montures.
 8. **FX élémentaires manquants** (Glace/Foudre/Plante/Eau) — surtout cosmétique tant qu'aucune mécanique ne les pilote (l'élément vient de l'apparence du Mage : feu/lumière/ombre). *(Potions de soin/mana/température = déjà au marchand.)*
 9. **Idées en réserve** : PNJ/village qui s'allument la nuit ; mobs nocturnes ; passifs/stats secondaires (crit/vitesse/vol-de-vie) ; rations chaudes/eau fraîche (anti-chaleur côté désert).
