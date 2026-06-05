@@ -151,6 +151,18 @@ export const ITEMS = {
   set_heal_relic: { id: 'set_heal_relic', name: 'Reliquaire Béni', slot: 'focus', classes: ['healer'], icon: 'rel_emerald', set: 'healer', rarity: 'epic', price: 800, spellPower: 0.3, stats: { manaRegen: 3 } },
   set_heal_ring: { id: 'set_heal_ring', name: 'Anneau Béni', slot: 'ring', classes: ['healer'], icon: 'eq_ring_emerald', set: 'healer', rarity: 'epic', price: 800, stats: { mana: 70, manaRegen: 4 } },
 
+  // ===== ÉQUIPEMENT FORGÉ (champ `craftedOnly`) — EXCLUSIF À L'ARTISANAT chez Aldric (jamais marchand/butin,
+  // cf. SHOP_STOCK / equipmentOfTier). Gamme « milieu de gamme » qui comble le trou entre commun et épique :
+  // se fabrique avec les matériaux qui dorment (Cuir/Os/Lingot/Cristal). Voir RECIPES. =====
+  forged_blade: { id: 'forged_blade', name: 'Lame du Forgeron', slot: 'weapon', classes: ['warrior'], icon: 'aw_katana', craftedOnly: true, rarity: 'rare', price: 260, stats: { attack: 13 }, dur: 90, fx: 'fx-slash' },
+  forged_maul: { id: 'forged_maul', name: 'Masse du Forgeron', slot: 'weapon', classes: ['tank'], icon: 'at_warhammer', craftedOnly: true, rarity: 'rare', price: 270, stats: { attack: 12 }, dur: 110, fx: 'fx-circslash' },
+  forged_rod: { id: 'forged_rod', name: 'Bâton gravé', slot: 'weapon', classes: ['mage'], icon: 'am_archstaff', craftedOnly: true, rarity: 'rare', price: 270, stats: { attack: 13 }, dur: 80 },
+  forged_scepter: { id: 'forged_scepter', name: 'Sceptre gravé', slot: 'weapon', classes: ['healer'], icon: 'ah_healwand', craftedOnly: true, rarity: 'rare', price: 240, stats: { attack: 9 }, dur: 80 },
+  forged_mail: { id: 'forged_mail', name: 'Maille forgée', slot: 'armor', icon: 'eq_mail', craftedOnly: true, rarity: 'rare', price: 250, stats: { hp: 30, defense: 5 }, dur: 100 },
+  forged_plate: { id: 'forged_plate', name: 'Harnois renforcé', slot: 'armor', icon: 'eq_plate', craftedOnly: true, rarity: 'epic', price: 600, stats: { hp: 50, defense: 11 }, dur: 150 },
+  forged_focus: { id: 'forged_focus', name: 'Talisman gravé', slot: 'focus', icon: 'rel_emerald', craftedOnly: true, rarity: 'rare', price: 250, spellPower: 0.22, stats: { manaRegen: 2 } },
+  forged_ring: { id: 'forged_ring', name: 'Anneau serti', slot: 'ring', icon: 'eq_ring_sapphire', craftedOnly: true, rarity: 'rare', price: 250, stats: { mana: 40, defense: 2, manaRegen: 2 } },
+
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'pot_heal', rarity: 'common', price: 40, heal: 45 },
   potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, heal: 120 },
@@ -174,8 +186,32 @@ export const ITEMS = {
 // matériaux exposés à part (ordre d'affichage de la poche de ressources)
 export const MATERIALS = ['mat_leather', 'mat_bone', 'mat_essence', 'mat_crystal']
 
-// stock du marchand = tout le catalogue SAUF les légendaires ET les pièces de set (exclusifs aux boss)
-export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set)
+// ===== ARTISANAT (brief polish §5) — RECETTES data-driven fabriquées chez Aldric le Forgeron =====
+// Chaque recette : `result` = id de l'objet produit (consommable existant OU item forgé) ; `mats` = matériaux
+// consommés {id: qté} ; `gold` = or consommé ; `cat` = onglet ('potion' | 'gear'). Les recettes d'arme sont
+// filtrées par classe (canEquip) à l'affichage. Chiffres = points de départ à équilibrer.
+export const RECIPES = [
+  // -- Potions & consommables (donne enfin un usage à l'Os, inutilisé par l'amélioration) --
+  { id: 'r_potion', result: 'potion', mats: { mat_bone: 2 }, gold: 8, cat: 'potion' },
+  { id: 'r_potion_mana', result: 'potion_mana', mats: { mat_bone: 2 }, gold: 10, cat: 'potion' },
+  { id: 'r_potion_big', result: 'potion_big', mats: { mat_bone: 3, mat_leather: 1 }, gold: 30, cat: 'potion' },
+  { id: 'r_potion_mana_big', result: 'potion_mana_big', mats: { mat_bone: 2, mat_crystal: 1 }, gold: 25, cat: 'potion' },
+  { id: 'r_potion_fire', result: 'potion_fire', mats: { mat_leather: 2, mat_bone: 2 }, gold: 50, cat: 'potion' },
+  { id: 'r_potion_frost', result: 'potion_frost', mats: { mat_leather: 2, mat_bone: 2 }, gold: 50, cat: 'potion' },
+  { id: 'r_campfire', result: 'campfire_kit', mats: { mat_leather: 3, mat_essence: 1 }, gold: 150, cat: 'potion' },
+  // -- Équipement forgé (milieu de gamme). Les armes sont propres à chaque classe (filtrées à l'affichage). --
+  { id: 'r_forged_blade', result: 'forged_blade', mats: { mat_essence: 2, mat_leather: 2 }, gold: 100, cat: 'gear' },
+  { id: 'r_forged_maul', result: 'forged_maul', mats: { mat_essence: 2, mat_leather: 2 }, gold: 100, cat: 'gear' },
+  { id: 'r_forged_rod', result: 'forged_rod', mats: { mat_essence: 2, mat_crystal: 1 }, gold: 100, cat: 'gear' },
+  { id: 'r_forged_scepter', result: 'forged_scepter', mats: { mat_essence: 2, mat_crystal: 1 }, gold: 100, cat: 'gear' },
+  { id: 'r_forged_mail', result: 'forged_mail', mats: { mat_leather: 3, mat_essence: 1 }, gold: 90, cat: 'gear' },
+  { id: 'r_forged_focus', result: 'forged_focus', mats: { mat_essence: 1, mat_crystal: 1 }, gold: 110, cat: 'gear' },
+  { id: 'r_forged_ring', result: 'forged_ring', mats: { mat_essence: 1, mat_crystal: 1 }, gold: 110, cat: 'gear' },
+  { id: 'r_forged_plate', result: 'forged_plate', mats: { mat_essence: 3, mat_crystal: 2 }, gold: 280, cat: 'gear' },
+]
+
+// stock du marchand = catalogue SAUF légendaires, pièces de set ET objets forgés (artisanat uniquement)
+export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set && !it.craftedOnly)
 
 // BATEAU (brief A3) : achat SPÉCIAL au marchand (onglet dédié) — déverrouille la navigation sur l'eau
 // (le héros embarque dès qu'il marche sur l'eau) → accès aux Terres maudites end-game. Pas un objet de

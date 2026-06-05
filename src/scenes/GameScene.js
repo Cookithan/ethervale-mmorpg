@@ -4632,8 +4632,8 @@ export default class GameScene extends Phaser.Scene {
   /** Renvoie une COPIE d'un ÉQUIPEMENT de rareté `tier`. `biasClass` (smart loot MIX) : 60 % du temps on
    *  restreint aux objets utilisables par la classe (les ARMES surtout ; armure/focus/anneau restent universels). */
   equipmentOfTier(tier, biasClass = null) {
-    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged && !it.set) // slot = équipement ; lancer/set = exclus du butin normal
-    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged && !it.set) // garde-fou
+    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged && !it.set && !it.craftedOnly) // slot = équipement ; lancer/set/forgé = exclus du butin normal
+    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged && !it.set && !it.craftedOnly) // garde-fou
     if (biasClass && Math.random() < 0.6) {
       const usable = pool.filter((it) => !it.classes || it.classes.includes(biasClass))
       if (usable.length) pool = usable
@@ -4646,7 +4646,7 @@ export default class GameScene extends Phaser.Scene {
     if (drop.pickableAt && this.time.now < drop.pickableAt) return // pas encore ramassable (objet lâché à l'instant)
     const p = this.player
     // SAC PLEIN (cap strict) : l'équipement reste au sol (sauf MATÉRIAU -> poche de ressources à part).
-    if (drop.type === 'equip' && drop.item?.type !== 'material' && p.bagFull()) {
+    if (drop.type === 'equip' && drop.item?.type !== 'material' && !p.canAccept(drop.item)) {
       this.scene.get('UIScene')?.showBagFull?.()
       return
     }
@@ -5210,7 +5210,8 @@ export default class GameScene extends Phaser.Scene {
     const b = p.deathBag
     if (!b) return
     p.gold += b.gold
-    for (const it of b.items) p.inventory.push(it) // on récupère TOUT (peut dépasser 5 le temps de gérer/vendre)
+    for (const it of b.items) p.inventory.push(it) // on récupère TOUT (peut dépasser le cap le temps de gérer/vendre)
+    p.consolidateInventory() // ré-empile les consommables récupérés
     p.invVersion++
     p.deathBag = null
     p.deathsSinceRecovery = 0

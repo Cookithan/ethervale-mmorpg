@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS, MATERIALS, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
+import { ITEMS, MATERIALS, RECIPES, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
 import { SKILL_ICONS } from '../data/classes.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
@@ -35,6 +35,8 @@ export default class UIScene extends Phaser.Scene {
     this.dialogueObjects = []
     this.forgeOpen = false
     this.forgeObjects = []
+    this.forgeTab = 'craft' // onglet du panneau forge par défaut : 'craft' (fabriquer) | 'upgrade' (réparer/améliorer)
+    this.craftCat = 'potion' // sous-catégorie de l'onglet Fabriquer : 'potion' | 'gear'
     this.pauseOpen = false
     this.pauseObjects = []
     this.mapOpen = false
@@ -470,6 +472,8 @@ export default class UIScene extends Phaser.Scene {
       reg(this.rarityBg(bx, gy, cell - 6, item.rarity)) // filigrane de rareté
       const c = reg(this.add.rectangle(bx, gy, cell, cell, 0x000000, 0).setInteractive({ useHandCursor: true }))
       this.addItemIcon(reg, bx, gy, item, cell - 12)
+      const qty = item.qty ?? 1 // pile de consommables : badge en bas à droite
+      if (qty > 1) reg(this.add.text(bx + cell / 2 - 3, gy + cell / 2 - 2, `${qty}`, { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#ffffff', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 1))
       c.on('pointerdown', () => {
         // son PAR RÉSULTAT : validation si l'action aboutit, refus (throttlé) sinon -> pas de spam
         if (item.type === 'consumable') {
@@ -528,7 +532,7 @@ export default class UIScene extends Phaser.Scene {
     // FEU DE CAMP À POSER : crée un foyer temporaire (zone-refuge) à l'endroit du héros.
     if (item.placeFire) {
       if (this.game_.placeCampfire(item)) {
-        p.removeItem(item)
+        p.takeOne(item)
         this.showToast('Feu de camp allumé', '#ffb060')
       } else {
         this.showToast('Impossible d’allumer un feu ici', '#e0a866')
@@ -540,7 +544,7 @@ export default class UIScene extends Phaser.Scene {
     if (item.tempBuff) {
       if (!p.tempBuff) p.tempBuff = { fire: 0, frost: 0 }
       p.tempBuff[item.tempBuff] = this.game_.time.now + (item.tempDur ?? 600000)
-      p.removeItem(item)
+      p.takeOne(item)
       const label = item.tempBuff === 'fire' ? 'Protégé du froid' : 'Protégé de la chaleur'
       this.showToast(`${label} — 10 min`, item.tempBuff === 'fire' ? '#ffb060' : '#a0e6ff')
       Audio.sfx('ui_accept', { detune: 0 })
@@ -565,7 +569,7 @@ export default class UIScene extends Phaser.Scene {
       const got = Math.round(p.mana - before)
       if (got > 0) parts.push(`+${got} mana`)
     }
-    p.removeItem(item) // retire la potion (invVersion++ -> le sac se reconstruit)
+    p.takeOne(item) // retire UNE potion de la pile (invVersion++ -> le sac se reconstruit)
     this.showToast(parts.join('   '), '#6fdc6f')
   }
 
@@ -781,8 +785,8 @@ export default class UIScene extends Phaser.Scene {
   buyItem(item) {
     const p = this.game_.player
     if (p.gold < item.price) return
-    if (p.bagFull()) {
-      // cap strict : on n'achète pas si le sac est plein (l'objet n'a nulle part où aller)
+    if (!p.canAccept(item)) {
+      // cap strict : refus seulement si rien ne peut accueillir l'objet (pas de case libre NI de pile à compléter)
       this.showToast(`Sac plein (${p.invMax}) — vends ou lâche un objet`, '#e0a866')
       this.playDenied()
       return
@@ -795,7 +799,7 @@ export default class UIScene extends Phaser.Scene {
 
   sellItem(item) {
     const p = this.game_.player
-    if (p.removeItem(item)) {
+    if (p.takeOne(item)) { // vend UNE unité de la pile par clic
       p.gold += sellPrice(item)
       this.buildShop()
     }
@@ -862,7 +866,7 @@ export default class UIScene extends Phaser.Scene {
     const total = owned.reduce((s, id) => s + sellPrice(ITEMS[id]) * p.resources[id], 0)
     const by = y + rows * (cardH + gap) + 6
     this.drawForgeBtn(reg, x + w / 2 - 90, by, 180, true, `Tout vendre  (+${total} or)`, () => this.sellAllResources())
-    reg(this.add.text(x + w / 2, by + 26, 'Les matériaux servent aussi à AMÉLIORER ton équipement chez Aldric le forgeron.', { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066', align: 'center', wordWrap: { width: w } }).setOrigin(0.5, 0))
+    reg(this.add.text(x + w / 2, by + 26, 'Les matériaux servent aussi à AMÉLIORER et FABRIQUER de l\'équipement chez Aldric le forgeron.', { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066', align: 'center', wordWrap: { width: w } }).setOrigin(0.5, 0))
   }
 
   /** Vend tout un stack de matériau. */
@@ -969,7 +973,7 @@ export default class UIScene extends Phaser.Scene {
   drawSellColumn(reg, x, y, w, bottom) {
     const p = this.game_.player
     const rows = []
-    for (const it of p.inventory) rows.push({ item: it, qty: 1, btn: { label: `+${sellPrice(it)}`, enabled: true, onClick: () => this.sellItem(it) } })
+    for (const it of p.inventory) rows.push({ item: it, qty: it.qty ?? 1, btn: { label: `+${sellPrice(it)}`, enabled: true, onClick: () => this.sellItem(it) } })
     for (const id of MATERIALS) {
       const q = p.resources[id] ?? 0
       if (q > 0) rows.push({ item: ITEMS[id], qty: q, btn: { label: `+${sellPrice(ITEMS[id]) * q}`, enabled: true, onClick: () => this.sellResource(id) } })
@@ -1098,21 +1102,26 @@ export default class UIScene extends Phaser.Scene {
     const y0 = ch / 2 - H / 2
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD).setInteractive()) // absorbe les clics DANS le panneau
     this.drawPanelHeader(reg, x0, y0, W, 'npc_villager', 0, 'Aldric le Forgeron', p.gold)
-    reg(this.add.text(x0 + 58, y0 + 38, 'Répare et améliore tes armes & armures', { fontFamily: 'monospace', fontSize: '9px', color: '#cfe8ff' }).setOrigin(0, 0))
+
+    // deux onglets : Forger (réparer/améliorer l'existant) | Fabriquer (artisanat data-driven)
+    const tabs = [{ key: 'craft', label: 'Fabriquer' }, { key: 'upgrade', label: 'Forger' }]
+    tabs.forEach((t, i) => this.drawTab(reg, x0 + 58 + i * 102, y0 + 36, t.label, this.forgeTab === t.key, () => { this.forgeTab = t.key; this.buildForge() }, 96))
+
+    if (this.forgeTab === 'craft') { this.drawForgeCraft(reg, x0, y0, W, H) ; return }
 
     // objets forgeables = armes/armures équipées + dans le sac (durabilité requise)
     const gear = []
     for (const slot of ['weapon', 'armor']) if (p.equipped[slot]) gear.push({ item: p.equipped[slot], equipped: true })
     for (const it of p.inventory) if (hasDurability(it)) gear.push({ item: it, equipped: false })
 
-    const gridY = y0 + 64
+    const gridY = y0 + 70
     if (gear.length === 0) {
       reg(this.add.text(cw / 2, gridY + 70, 'Aucune arme ni armure à forger', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
     }
     const cols = 2
     const gap = 10
     const cardW = (W - 32 - (cols - 1) * gap) / cols
-    const cardH = 96
+    const cardH = 92
     gear.slice(0, 6).forEach((g, i) => {
       const r = Math.floor(i / cols)
       const c = i % cols
@@ -1122,6 +1131,90 @@ export default class UIScene extends Phaser.Scene {
       reg(this.add.text(cw / 2, gridY + 3 * (cardH + gap), `+${gear.length - 6} autres (équipe-les ou vends-en)`, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(0.5, 0))
     }
     reg(this.add.text(cw / 2, y0 + H - 14, 'Réparer = durabilité pleine  ·  Améliorer = +stats (max +5)  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5))
+  }
+
+  /** Onglet « Fabriquer » : sous-catégories (Potions / Équipement) + grille de recettes data-driven. */
+  drawForgeCraft(reg, x0, y0, W, H) {
+    const p = this.game_.player
+    const cw = this.scale.width
+    // sous-onglets de catégorie
+    const cats = [{ key: 'potion', label: 'Potions' }, { key: 'gear', label: 'Équipement' }]
+    cats.forEach((c, i) => this.drawTab(reg, x0 + 16 + i * 104, y0 + 70, c.label, this.craftCat === c.key, () => { this.craftCat = c.key; this.buildForge() }, 100))
+
+    // recettes de la catégorie ; les armes forgées sont filtrées par classe (canEquip)
+    const recipes = RECIPES.filter((r) => {
+      if (r.cat !== this.craftCat) return false
+      const it = ITEMS[r.result]
+      return it && (it.slot !== 'weapon' || canEquip(it, p.className))
+    })
+
+    const gridY = y0 + 100
+    const cols = 2
+    const gap = 8
+    const cardW = (W - 32 - (cols - 1) * gap) / cols
+    const cardH = 78
+    if (recipes.length === 0) {
+      reg(this.add.text(cw / 2, gridY + 70, 'Aucune recette', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
+    }
+    recipes.forEach((rcp, i) => {
+      const r = Math.floor(i / cols)
+      const c = i % cols
+      this.drawRecipeCard(reg, x0 + 16 + c * (cardW + gap), gridY + r * (cardH + gap), cardW, cardH, rcp)
+    })
+    reg(this.add.text(cw / 2, y0 + H - 14, 'Les matériaux se récoltent sur les monstres  ·  Échap = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5))
+  }
+
+  /** Carte de recette : objet produit + coût (matériaux colorés selon stock + or) + bouton Fabriquer. */
+  drawRecipeCard(reg, x, y, w, h, recipe) {
+    const p = this.game_.player
+    const item = ITEMS[recipe.result]
+    if (!item) return
+    reg(this.add.rectangle(x, y, w, h, CELL, 1).setOrigin(0, 0).setStrokeStyle(2, itemTint(item) ?? CELL_BORDER))
+    reg(this.rarityBg(x + 22, y + 24, 34, item.rarity))
+    this.addItemIcon(reg, x + 22, y + 24, item, 30)
+    reg(this.add.text(x + 44, y + 6, itemName(item), { fontFamily: 'monospace', fontSize: '10px', color: itemColor(item), wordWrap: { width: w - 50 } }).setOrigin(0, 0))
+    // ligne des matériaux : chaque matériau coloré (vert = en stock, rouge = manquant)
+    let mx = x + 44
+    const my = y + 26
+    for (const [id, q] of Object.entries(recipe.mats)) {
+      const have = p.resources[id] ?? 0
+      const t = reg(this.add.text(mx, my, `${q} ${ITEMS[id].name}`, { fontFamily: 'monospace', fontSize: '8px', color: have >= q ? '#9be8a0' : '#e07070' }).setOrigin(0, 0))
+      mx += t.width + 8
+    }
+    reg(this.add.text(x + 44, y + 38, `${recipe.gold} or`, { fontFamily: 'monospace', fontSize: '8px', color: p.gold >= recipe.gold ? '#ffd84d' : '#e07070' }).setOrigin(0, 0))
+    // infobulle au survol (stats de l'objet produit)
+    const hov = reg(this.add.rectangle(x, y, w, h - 22, 0xffffff, 0.001).setOrigin(0, 0).setInteractive())
+    hov.on('pointerover', () => this.showTip(item, x + w / 2, y))
+    hov.on('pointerout', () => this.hideTip())
+    // bouton Fabriquer (grisé si matériaux/or insuffisants ou rien pour accueillir l'objet)
+    const okMats = this.hasMats(recipe.mats)
+    const noRoom = !p.canAccept(item)
+    const enabled = okMats && p.gold >= recipe.gold && !noRoom
+    const label = noRoom ? 'Sac plein' : 'Fabriquer'
+    this.drawForgeBtn(reg, x + 8, y + h - 22, w - 16, enabled, label, () => this.craftRecipe(recipe))
+  }
+
+  /** Fabrique l'objet d'une recette : consomme matériaux + or, ajoute le produit au sac. */
+  craftRecipe(recipe) {
+    const p = this.game_.player
+    const item = ITEMS[recipe.result]
+    if (!item) return
+    if (!this.hasMats(recipe.mats) || p.gold < recipe.gold) {
+      this.showToast('Matériaux ou or insuffisants', '#e06666')
+      this.playDenied()
+      return
+    }
+    if (!p.canAccept(item)) {
+      this.showToast(`Sac plein (${p.invMax}) — fais de la place`, '#e0a866')
+      this.playDenied()
+      return
+    }
+    for (const [id, q] of Object.entries(recipe.mats)) p.removeResource(id, q)
+    p.gold -= recipe.gold
+    p.addItem(cloneItem(item))
+    Audio.sfx('ui_coin', { detune: 0 })
+    this.showToast(`Fabriqué : ${itemName(item)}`, itemColor(item))
+    this.buildForge()
   }
 
   /** Carte de forge : objet + durabilité + 2 boutons (Réparer / Améliorer). */
@@ -1817,8 +1910,11 @@ export default class UIScene extends Phaser.Scene {
   /** Lâche l'objet visé au sol (libère une place de sac). */
   dropItem(item) {
     const p = this.game_.player
-    if (!p || !p.removeItem(item)) return
-    this.game_.dropItemOnGround?.(item)
+    if (!p) return
+    // pile de >1 : on lâche UNE unité (clone) et la pile reste ; sinon on lâche l'objet lui-même
+    const ground = (item.qty ?? 1) > 1 ? { ...item, qty: 1 } : item
+    if (!p.takeOne(item)) return
+    this.game_.dropItemOnGround?.(ground)
     this.showItemToast('Lâché', item)
     Audio.sfx('ui_cancel', { detune: 0 })
     this._cancelTipHide()

@@ -10,6 +10,13 @@ const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
 const SHOOT_COOLDOWN = 360 // délai mini entre deux tirs à distance (ms) — attaque de base à distance
 const MANA_REGEN = 3 // mana/s de BASE (compromis : la mana mord un peu ; des items de régén la complèteront)
 const INV_MAX = 6 // capacité du SAC (cap strict) — l'équipement des 4 slots est à part (= nb de cases de la hotbar)
+const STACK_MAX = 6 // taille maxi d'une PILE de consommables (potions...) dans UNE case du sac
+
+/** Empilable dans une seule case ? Seuls les consommables (potions, feu de camp...) le sont — chaque
+ *  équipement reste unique (durabilité/amélioration propres). Une pile porte un champ `qty` (1..STACK_MAX). */
+function isStackable(item) {
+  return !!item && item.type === 'consumable'
+}
 
 // Progression « façon WoW » (brief A2) : cap niveau 50, courbe d'XP exponentielle DOUCE.
 // Montée très rapide au début (le joueur accroche), mur de plus en plus raide vers 50 (le farm
@@ -164,6 +171,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
     if (s.inventory) this.inventory = s.inventory
+    this.consolidateInventory() // empile les consommables (migre les saves d'avant le stacking)
     // migration d'apparence : rafraîchit icônes/noms des objets sauvegardés depuis le catalogue actuel
     // (les sprites d'items ont changé -> sinon une vieille save garde les anciennes icônes Ninja).
     for (const slot of Object.keys(this.equipped)) if (this.equipped[slot]) refreshItemDef(this.equipped[slot])
@@ -276,21 +284,78 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return true
   }
 
-  /** Ajoute un objet au sac. Renvoie false si le sac est PLEIN (cap strict). */
+  /** Vrai si on peut accueillir `item` : place libre, OU pile existante non pleine (consommable empilable). */
+  canAccept(item) {
+    if (!this.bagFull()) return true
+    if (isStackable(item)) return this.inventory.some((it) => it.id === item.id && isStackable(it) && (it.qty ?? 1) < STACK_MAX)
+    return false
+  }
+
+  /** Ajoute un objet au sac. Les consommables s'EMPILENT (max STACK_MAX par case) sur une pile existante
+   *  avant d'occuper une nouvelle case. Renvoie false si tout n'a pas pu rentrer (sac plein). */
   addItem(item) {
+    if (isStackable(item)) {
+      let remaining = item.qty ?? 1
+      // 1) compléter les piles existantes du même type
+      for (const it of this.inventory) {
+        if (remaining <= 0) break
+        if (it.id === item.id && isStackable(it)) {
+          const room = STACK_MAX - (it.qty ?? 1)
+          if (room > 0) { const add = Math.min(room, remaining); it.qty = (it.qty ?? 1) + add; remaining -= add }
+        }
+      }
+      // 2) ouvrir de nouvelles cases tant qu'il reste de la place
+      while (remaining > 0 && !this.bagFull()) {
+        const add = Math.min(STACK_MAX, remaining)
+        this.inventory.push({ ...item, qty: add })
+        remaining -= add
+      }
+      this.invVersion++
+      return remaining <= 0
+    }
     if (this.bagFull()) return false
     this.inventory.push(item)
     this.invVersion++
     return true
   }
 
-  /** Retire un objet du sac (revente). Renvoie true si trouvé. */
+  /** Retire ENTIÈREMENT une case du sac (la pile complète). Renvoie true si trouvée. */
   removeItem(item) {
     const i = this.inventory.indexOf(item)
     if (i === -1) return false
     this.inventory.splice(i, 1)
     this.invVersion++
     return true
+  }
+
+  /** Retire `n` unité(s) d'une pile (potion bue, vendue, lâchée). La case disparaît une fois vide. */
+  takeOne(item, n = 1) {
+    const i = this.inventory.indexOf(item)
+    if (i === -1) return false
+    const q = item.qty ?? 1
+    if (q > n) item.qty = q - n
+    else this.inventory.splice(i, 1)
+    this.invVersion++
+    return true
+  }
+
+  /** Fusionne les consommables identiques en piles (max STACK_MAX) — migre les vieilles sauvegardes
+   *  (objets non empilés) et range le sac après récupération du sac de mort. */
+  consolidateInventory() {
+    const out = []
+    for (const it of this.inventory) {
+      if (!isStackable(it)) { out.push(it); continue }
+      let remaining = it.qty ?? 1
+      for (const s of out) {
+        if (remaining <= 0) break
+        if (s.id === it.id && isStackable(s)) {
+          const room = STACK_MAX - (s.qty ?? 1)
+          if (room > 0) { const add = Math.min(room, remaining); s.qty = (s.qty ?? 1) + add; remaining -= add }
+        }
+      }
+      while (remaining > 0) { const add = Math.min(STACK_MAX, remaining); out.push({ ...it, qty: add }); remaining -= add }
+    }
+    this.inventory = out
   }
 
   /** Équipe un objet du sac (renvoie l'ancien du même slot au sac).

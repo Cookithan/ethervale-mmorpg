@@ -21,7 +21,7 @@ export const MONSTER_TYPES = {
   },
   racoon: {
     key: 'mon_racoon', hp: 55, speed: 46, damage: 8, xp: 16, aggro: 105, scale: 1.1, name: 'Raton',
-    tier: 'common', loot: { gold: [2, 5], mat: 'mat_leather', matChance: 0.45, gear: 0.12 },
+    tier: 'common', loot: { gold: [2, 5], mat: 'mat_bone', matChance: 0.45, gear: 0.12 }, // Os dès la zone de départ (base des potions)
   },
 
   // --- désert ---
