@@ -202,9 +202,9 @@ const CURSED_ISLE = { ox: -100, oy: 60, r: 28 } // [offset tuiles depuis le cent
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
 const ARENA_RADIUS = 160 // rayon de la zone scellée (px), centrée sur le repaire du boss
-// teinte de l'arène selon le BIOME (ambiance) : forêt brun-vert sombre · désert rouge-orangé ·
-// neige bleu glacé · terres maudites violet maléfique · côte cyan. Défaut = rouge.
-const ARENA_BIOME_COLOR = { forest: 0x5b7d3a, desert: 0xe07b2e, snow: 0x57b6e6, cursed: 0x9a3fd0, coast: 0x2fb6c0 }
+// teinte de l'arène selon le BIOME (ambiance), volontairement CLAIRE/vive pour rester visible sur tout sol
+// (forêt = ambre doré, PAS vert -> contraste sur l'herbe ; désert orange · neige bleu glacé · maudit violet · côte cyan).
+const ARENA_BIOME_COLOR = { forest: 0xe6b13c, desert: 0xf2743a, snow: 0x8fd4f5, cursed: 0xc86ef0, coast: 0x5fd8d8 }
 const ARENA_TRIGGER = 110 // distance (px) au CENTRE du repaire qui déclenche le verrouillage (< rayon -> on est dedans)
 const BOSS_CLEAR_TILES = 12 // rayon (tuiles) dégagé d'arbres/rochers/props autour de chaque repaire = clairière d'arène
 
