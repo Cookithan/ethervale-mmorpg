@@ -1938,8 +1938,8 @@ export default class UIScene extends Phaser.Scene {
     this.playDenied()
   }
 
-  /** Bandeau de zone (nom du biome) qui apparaît en grand puis s'efface. */
-  showZoneBanner(name) {
+  /** Bandeau de zone (nom du biome / jour-nuit) qui apparaît en grand puis s'efface. `color` optionnelle. */
+  showZoneBanner(name, color = '#ffe9a8') {
     if (!name) return
     if (this.zoneBanner) {
       this.tweens.killTweensOf(this.zoneBanner)
@@ -1950,7 +1950,7 @@ export default class UIScene extends Phaser.Scene {
         fontFamily: 'Georgia, serif',
         fontSize: '36px',
         fontStyle: 'bold',
-        color: '#ffe9a8',
+        color,
         stroke: '#2a1c08',
         strokeThickness: 6,
       })

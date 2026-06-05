@@ -9,6 +9,10 @@ import Phaser from 'phaser'
 const LS_KEY = 'mmorpg_audio_v1'
 const DEFAULTS = { muted: false, music: 0.45, sfx: 0.7 }
 
+// Musiques à BOUCLE PAR CROSSFADE (au lieu d'un loop sec) : on reboucle au bout de `loopSec` en lançant
+// une nouvelle instance depuis le début et en faisant un fondu croisé de `xfade` s -> retour fluide.
+const XFADE_LOOPS = { mus_forest_night: { loopSec: 35, xfade: 2.5 } }
+
 // Pools de bruitages : on tire au hasard dans la liste + un léger detune -> moins répétitif.
 export const SFX = {
   slash: ['sfx_slash', 'sfx_slash2', 'sfx_sword'], // coup d'arme de mêlée
@@ -145,6 +149,7 @@ class AudioManager {
   /** Musique de fond en boucle, avec fondu enchaîné. `scene` sert aux tweens du fondu. */
   playMusic(scene, key) {
     if (!this.game || !key) return
+    if (this.victoryActive) return // un jingle de victoire est en cours -> on ne lance pas la musique de zone par-dessus
     // court-circuit sur la CLÉ voulue uniquement : si on veut déjà ce morceau, on ne touche à rien.
     // (NE PAS tester curMusic.isPlaying : ce flag peut être transitoirement faux -> recréation par
     //  frame depuis update -> empilement de dizaines d'instances -> FREEZE. Vécu.)
@@ -164,6 +169,14 @@ class AudioManager {
 
   _startMusic(key, scene) {
     if (!this.game || !this.game.cache.audio.exists(key)) return
+    this._clearXfade() // stoppe une éventuelle boucle à crossfade en cours
+    // BOUCLE À CROSSFADE (ex. thème nocturne de la forêt) : géré à part (pas de loop:true sec).
+    if (XFADE_LOOPS[key]) {
+      this._killMusic(this.curMusic)
+      this.curMusic = null
+      this._startXfadeLoop(key, scene, XFADE_LOOPS[key])
+      return
+    }
     // COUPE IMMÉDIATE de l'ancienne musique (pas de tween de sortie qui se chevauche avec un autre).
     // ⚠️ NE JAMAIS tweener l'objet Sound directement, ni le détruire pendant qu'un tween le vise :
     // deux tweens concurrents sur `volume` + destroy = FREEZE (vécu, surtout quand un boss force un
@@ -191,6 +204,67 @@ class AudioManager {
     }
   }
 
+  /** Joue un JINGLE de victoire UNE fois (non bouclé), par-dessus rien : coupe la musique courante,
+   *  bloque la musique de zone (`victoryActive`) jusqu'à la fin, puis la laisse repartir (curKey=null). */
+  playVictory(scene, key) {
+    if (!this.game || !key || !this.game.cache.audio.exists(key) || this.game.sound.locked) return
+    this.victoryActive = true
+    this.curKey = null // pour que la musique de zone reparte (avec fondu) une fois le jingle fini
+    this._clearXfade() // coupe une boucle nocturne en cours
+    this._killMusic(this.curMusic)
+    const snd = this.game.sound.add(key, { loop: false, volume: this.settings.music })
+    this.curMusic = snd
+    const done = () => { this.victoryActive = false; this._killMusic(snd); if (this.curMusic === snd) this.curMusic = null }
+    snd.once('complete', done)
+    snd.once('stop', done)
+    snd.play()
+  }
+
+  /** Fondu de volume SÛR d'un Sound via objet proxy (jamais tweener le Sound directement). */
+  _fadeSound(scene, snd, to, ms, onDone) {
+    if (!snd) { onDone && onDone(); return }
+    if (!scene || !scene.tweens) { if (snd.setVolume) snd.setVolume(to); onDone && onDone(); return }
+    const px = { v: snd.volume ?? 0 }
+    scene.tweens.add({
+      targets: px, v: to, duration: ms,
+      onUpdate: () => { if (snd.setVolume && snd.isPlaying) snd.setVolume(px.v) },
+      onComplete: () => onDone && onDone(),
+    })
+  }
+
+  /** Démarre une boucle à crossfade pour `key` (config { loopSec, xfade }). Auto-entretenue par timers. */
+  _startXfadeLoop(key, scene, cfg) {
+    this._xf = { key, scene, cfg, timer: null, sounds: [] }
+    this._xfadeCycle()
+  }
+
+  /** Un cycle : lance une instance (fondu d'entrée), programme le crossfade vers la suivante à loopSec-xfade. */
+  _xfadeCycle() {
+    const xf = this._xf
+    if (!xf || !this.game?.cache.audio.exists(xf.key)) return
+    const { key, scene, cfg } = xf
+    const snd = this.game.sound.add(key, { loop: false, volume: 0 })
+    snd.play()
+    xf.sounds.push(snd)
+    this.curMusic = snd // pour le réglage de volume / cohérence
+    this._fadeSound(scene, snd, this.settings.music, cfg.xfade * 1000)
+    snd.once('complete', () => { const i = xf.sounds.indexOf(snd); if (i >= 0) xf.sounds.splice(i, 1); try { snd.destroy() } catch (e) { /* déjà détruit */ } })
+    xf.timer = scene.time.delayedCall(Math.max(100, (cfg.loopSec - cfg.xfade) * 1000), () => {
+      if (this._xf !== xf) return // boucle changée/annulée entre-temps
+      this._fadeSound(scene, snd, 0, cfg.xfade * 1000, () => { const i = xf.sounds.indexOf(snd); if (i >= 0) xf.sounds.splice(i, 1); try { snd.stop(); snd.destroy() } catch (e) { /* ignore */ } })
+      this._xfadeCycle() // démarre l'instance suivante en chevauchement -> boucle fluide
+    })
+  }
+
+  /** Stoppe la boucle à crossfade en cours (timer + toutes ses instances). */
+  _clearXfade() {
+    const xf = this._xf
+    if (!xf) return
+    this._xf = null
+    if (xf.timer) xf.timer.remove(false)
+    for (const s of xf.sounds) { try { s.stop(); s.destroy() } catch (e) { /* ignore */ } }
+  }
+
   /** Détruit proprement une instance de musique (sans tween). */
   _killMusic(snd) {
     if (!snd) return
@@ -204,6 +278,7 @@ class AudioManager {
 
   stopMusic() {
     this.curKey = null
+    this._clearXfade()
     this._killMusic(this.curMusic)
     this.curMusic = null
   }

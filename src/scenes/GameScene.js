@@ -106,6 +106,9 @@ const MUSIC_BY_BIOME = {
   cursed: 'mus_cursed',
 }
 
+// thème NOCTURNE par biome : prend le relais de la musique de zone quand il fait nuit (fondu via playMusic)
+const NIGHT_MUSIC = { forest: 'mus_forest_night', cursed: 'mus_cursed_night' }
+
 // musique de combat de boss : on tire l'un des 3 au hasard à chaque combat
 const BOSS_MUSIC = ['mus_boss1', 'mus_boss2', 'mus_boss3']
 
@@ -4582,6 +4585,7 @@ export default class GameScene extends Phaser.Scene {
     if (i >= 0) this.bosses.splice(i, 1)
     if (this.activeBoss === mon) this.activeBoss = null
     if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
+    Audio.playVictory(this, 'mus_victory') // jingle de victoire (coupe le thème de combat, puis la zone reprend)
     this.questKill(mon) // progression d'une quête « battre un boss » (cible = clé du boss, count 1)
 
     // butin de BOSS : UN SEUL légendaire (biaisé classe) + 2 objets épiques/rares + gros or + gros soin
@@ -4892,11 +4896,22 @@ export default class GameScene extends Phaser.Scene {
     // gardé jusqu'au désengagement), sinon la musique de la zone. playMusic court-circuite si
     // le morceau voulu joue déjà -> pas de coût par frame.
     if (this.activeBoss) {
-      if (!this.bossTrack) this.bossTrack = Phaser.Utils.Array.GetRandom(BOSS_MUSIC)
+      // boss de RAID (très durs, intuables solo) = thème dédié ; boss normaux = un des 3 thèmes au hasard
+      if (!this.bossTrack) this.bossTrack = this.activeBoss.isRaid ? 'mus_boss_raid' : Phaser.Utils.Array.GetRandom(BOSS_MUSIC)
       Audio.playMusic(this, this.bossTrack)
     } else {
       this.bossTrack = null
-      Audio.playMusic(this, MUSIC_BY_BIOME[biome] || 'mus_village')
+      let track = MUSIC_BY_BIOME[biome] || 'mus_village'
+      // thème NOCTURNE de zone (forêt, terres maudites) : prend le relais la nuit (fondu via playMusic).
+      // Hystérésis (0.42↔0.5) pour ne pas osciller à la frontière jour/nuit.
+      const nightTrack = NIGHT_MUSIC[biome]
+      if (nightTrack) {
+        const dark = this.dayDarkness ?? 0
+        const playingNight = Audio.curKey === nightTrack
+        track = playingNight ? (dark < 0.42 ? track : nightTrack) // reste nocturne jusqu'à dark<0.42
+          : (dark > 0.5 ? nightTrack : track) // bascule en nocturne au-delà de 0.5
+      }
+      Audio.playMusic(this, track)
     }
 
     // ambiance : vent qui monte près de la côte. On (re)calcule la proximité de l'océan
@@ -5141,6 +5156,15 @@ export default class GameScene extends Phaser.Scene {
     const f = (time % DAY_CYCLE_MS) / DAY_CYCLE_MS
     const n = (1 - Math.cos(f * Math.PI * 2)) / 2 // courbe douce : 0 au lever (f=0) -> 1 à minuit (f=0.5)
     this.dayDarkness = n
+    // ANNONCE jour/nuit : bandeau quand on franchit le seuil (n=0.5). Pas d'annonce à l'initialisation ni en aperçu.
+    const night = n > 0.5
+    if (this._wasNight === undefined) this._wasNight = night
+    else if (night !== this._wasNight && !this.preview) {
+      this._wasNight = night
+      const ui = this.scene.get('UIScene')
+      if (night) ui?.showZoneBanner?.('La nuit tombe', '#9fb6ff')
+      else ui?.showZoneBanner?.('Le jour se lève', '#ffe9a8')
+    } else { this._wasNight = night }
     // teinte : crépuscule/aube mauve (n modéré) -> bleu nuit profond (minuit), opacité ∝ n
     this.nightOverlay.setFillStyle(lerpHex(0x3a2e54, 0x070d28, n), 1)
     this.nightOverlay.setAlpha(NIGHT_MAX_ALPHA * n)
