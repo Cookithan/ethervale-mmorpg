@@ -152,6 +152,7 @@ const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en
 // CYCLE JOUR/NUIT : voile bleu nuit plein écran dont l'opacité suit l'heure. Cycle complet = 20 min.
 const DAY_CYCLE_MS = 1200000 // durée d'un cycle jour->nuit->jour (20 min)
 const NIGHT_MAX_ALPHA = 0.55 // opacité du voile au plus profond de la nuit (nuit "moyenne", lisible)
+const VILLAGE_LIGHT_R = 22 * TILE // rayon (px) du trou dans le voile de nuit : village + prairie restent de jour
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
@@ -377,6 +378,25 @@ export default class GameScene extends Phaser.Scene {
     // et sous le HUD qui est dans UIScene). Opacité/couleur pilotées par updateDayNight. Inactif en preview.
     this.dayDarkness = 0
     this.nightOverlay = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0x070d28, 1).setOrigin(0, 0).setDepth(9000).setAlpha(0)
+    // REFUGE : le village + la prairie ne subissent PAS la nuit. On PERCE un trou dans le voile via un
+    // masque radial inversé (plein jour au cœur, fondu doux vers la nuit au bord de la prairie).
+    if (!this.textures.exists('nightHole')) {
+      const S = 256
+      const ctex = this.textures.createCanvas('nightHole', S, S)
+      const cx = ctex.getContext()
+      const grd = cx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2)
+      grd.addColorStop(0, 'rgba(255,255,255,1)') // cœur = trou plein (aucune nuit)
+      grd.addColorStop(0.62, 'rgba(255,255,255,1)') // plein jour jusqu'au bord de la prairie
+      grd.addColorStop(1, 'rgba(255,255,255,0)') // fondu vers la nuit au-delà
+      cx.fillStyle = grd
+      cx.fillRect(0, 0, S, S)
+      ctex.refresh()
+    }
+    this.nightHoleImg = this.add.image((this.icx + VILLAGE_OFF_X) * TILE, (this.icy + VILLAGE_OFF_Y) * TILE, 'nightHole')
+      .setDisplaySize(VILLAGE_LIGHT_R * 2, VILLAGE_LIGHT_R * 2).setVisible(false)
+    const nightMask = this.nightHoleImg.createBitmapMask()
+    nightMask.invertAlpha = true // le voile est RETIRÉ là où le masque est opaque (= sur le village/prairie)
+    this.nightOverlay.setMask(nightMask)
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
@@ -5104,6 +5124,7 @@ export default class GameScene extends Phaser.Scene {
     // teinte : crépuscule/aube mauve (n modéré) -> bleu nuit profond (minuit), opacité ∝ n
     this.nightOverlay.setFillStyle(lerpHex(0x3a2e54, 0x070d28, n), 1)
     this.nightOverlay.setAlpha(NIGHT_MAX_ALPHA * n)
+    // (le village/prairie reste de jour : trou permanent dans le voile via le masque radial inversé)
   }
 
   /** true si (x,y) est à portée d'un foyer ALLUMÉ (zone-refuge de température). */
