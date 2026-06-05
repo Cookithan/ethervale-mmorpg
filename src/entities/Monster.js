@@ -260,8 +260,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     const dmgLvlMul = boss ? 1 : Math.pow(MOB_DMG_MUL, scaleLevel - 1) // dégâts (plus doux que les PV)
     this.lvlMul = lvlMul
     this.displayLevel = scaleLevel
-    const eliteHpMul = elite ? 2 : 1 // élite = même zone mais plus costaud (à plat, contrôlable)
-    const eliteDmgMul = elite ? 1.5 : 1
+    const eliteHpMul = elite ? 4 : 1 // élite = RARE mais un vrai défi : énormément de PV (mini-boss)...
+    const eliteDmgMul = elite ? 2 : 1 // ...et de dégâts (pas juste +x%)
     const hpMul = this.isRaid ? RAID_HP_MUL : boss ? BOSS_HP_MUL : 1
     const dmgMul = this.isRaid ? RAID_DMG_MUL : boss ? BOSS_DMG_MUL : 1
     const xpMul = boss ? BOSS_XP_MUL : elite ? 3 : 1

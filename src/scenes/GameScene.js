@@ -3,7 +3,7 @@ import Player from '../entities/Player.js'
 import Monster, { MONSTER_TYPES } from '../entities/Monster.js'
 import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
-import { ITEMS, cloneItem, RARITY, itemColor, itemTint } from '../data/items.js'
+import { ITEMS, cloneItem, RARITY, itemColor, itemTint, ELITE_DROP } from '../data/items.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 import { DEFAULT_CHARACTER, KNIGHT_CHARACTER } from '../data/classes.js'
 import { makeSave, writeSave, hasSave, loadSave } from '../data/save.js'
@@ -161,8 +161,7 @@ const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la temp�
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
 const BRIDGE_V = 8
-const SHINY_CHANCE = 5 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin)
-const TIER_UP = { common: 'rare', rare: 'epic', epic: 'epic' } // élite = un cran de rareté au-dessus
+const SHINY_CHANCE = 2 // % de chance qu'un monstre soit ÉLITE "shiny" (nommé, +fort, +butin) — RARE
 const ELITE_NAMES = ['Kraugg', 'Morvex', 'Sslyth', 'Gorthak', 'Vnira', 'Brakka', 'Zhul', 'Naxxis', 'Ferrok', 'Ombrelle', 'Dargoth', 'Yssrah']
 
 // BOSS DE BIOME (un par zone, repaire FIXE au fond du biome -> "boss de monde" style WoW).
@@ -4701,12 +4700,18 @@ export default class GameScene extends Phaser.Scene {
     if (loot.mat && ITEMS[loot.mat] && Math.random() < (loot.matChance ?? 0)) {
       this.drops.add(new Drop(this, mon.x - 8, mon.y + 6, 'equip', 0, cloneItem(ITEMS[loot.mat])))
     }
-    // ÉQUIPEMENT : proba propre au mob (garanti sur élite), rareté pondérée + SCALING par niveau de zone,
-    // smart loot MIX (60 % biaisé vers la classe du joueur, 40 % aléatoire).
-    if (mon.elite || Math.random() < (loot.gear ?? 0.18)) {
-      let tier = this.rollDropRarity(lvl)
-      if (mon.elite) tier = TIER_UP[tier] ?? tier
-      if (mon.elite && lvl <= 2 && tier === 'epic') tier = 'rare' // une élite de bas niveau ne lâche pas d'épique (TIER_UP l'aurait promue)
+    // ÉQUIPEMENT. ÉLITE = drop ÉPIQUE GARANTI (biaisé classe), rare seulement en zone de bas niveau (≤2).
+    // Mob normal : faible proba, rareté pondérée + scaling de zone, smart loot MIX (60 % classe).
+    if (mon.elite) {
+      // ÉLITE : item DÉDIÉ à l'espèce (épique, universel) en zone normale ; en zone de bas niveau (≤2) on
+      // reste sur un rare générique (pacing début de jeu). Item dédié = récompense unique propre à la famille.
+      const eliteId = ELITE_DROP[mon.typeKey]
+      const item = (lvl > 2 && eliteId && ITEMS[eliteId])
+        ? cloneItem(ITEMS[eliteId])
+        : this.equipmentOfTier(lvl <= 2 ? 'rare' : 'epic', this.player.className)
+      this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, item))
+    } else if (Math.random() < (loot.gear ?? 0.18)) {
+      const tier = this.rollDropRarity(lvl)
       this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.equipmentOfTier(tier, this.player.className)))
     }
   }
@@ -4726,8 +4731,8 @@ export default class GameScene extends Phaser.Scene {
   /** Renvoie une COPIE d'un ÉQUIPEMENT de rareté `tier`. `biasClass` (smart loot MIX) : 60 % du temps on
    *  restreint aux objets utilisables par la classe (les ARMES surtout ; armure/focus/anneau restent universels). */
   equipmentOfTier(tier, biasClass = null) {
-    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged && !it.set && !it.craftedOnly) // slot = équipement ; lancer/set/forgé = exclus du butin normal
-    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged && !it.set && !it.craftedOnly) // garde-fou
+    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged && !it.set && !it.craftedOnly && !it.eliteOnly) // slot = équipement ; lancer/set/forgé/élite = exclus du butin normal
+    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged && !it.set && !it.craftedOnly && !it.eliteOnly) // garde-fou
     if (biasClass && Math.random() < 0.6) {
       const usable = pool.filter((it) => !it.classes || it.classes.includes(biasClass))
       if (usable.length) pool = usable

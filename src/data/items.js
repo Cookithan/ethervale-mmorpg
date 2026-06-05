@@ -163,6 +163,21 @@ export const ITEMS = {
   forged_focus: { id: 'forged_focus', name: 'Talisman gravé', slot: 'focus', icon: 'rel_emerald', craftedOnly: true, rarity: 'rare', price: 250, spellPower: 0.22, stats: { manaRegen: 2 } },
   forged_ring: { id: 'forged_ring', name: 'Anneau serti', slot: 'ring', icon: 'eq_ring_sapphire', craftedOnly: true, rarity: 'rare', price: 250, stats: { mana: 40, defense: 2, manaRegen: 2 } },
 
+  // ===== ITEMS D'ÉLITE (champ `eliteOnly`) — lâchés UNIQUEMENT par l'élite (★) de l'espèce correspondante
+  // (cf. ELITE_DROP). Épiques, UNIVERSELS (pas de restriction de classe -> toujours utiles). Hors marchand/butin/craft. =====
+  elite_lizard: { id: 'elite_lizard', name: 'Mue du Lézard', slot: 'armor', icon: 'eq_leather', iconTint: 0x9fe0a0, eliteOnly: true, rarity: 'epic', price: 600, stats: { hp: 42, defense: 6 }, dur: 130 },
+  elite_racoon: { id: 'elite_racoon', name: 'Anneau du Maraudeur', slot: 'ring', icon: 'eq_ring_topaz', eliteOnly: true, rarity: 'epic', price: 600, stats: { mana: 40, attack: 6 } },
+  elite_snake: { id: 'elite_snake', name: 'Croc venimeux', slot: 'focus', icon: 'rel_emerald', eliteOnly: true, rarity: 'epic', price: 620, spellPower: 0.3, stats: { attack: 4 } },
+  elite_spider: { id: 'elite_spider', name: "Carapace d'Arachne", slot: 'armor', icon: 'eq_mail', iconTint: 0xc0a0ff, eliteOnly: true, rarity: 'epic', price: 640, stats: { hp: 50, defense: 9 }, dur: 140 },
+  elite_owl: { id: 'elite_owl', name: 'Œil du Hibou', slot: 'focus', icon: 'rel_frost', eliteOnly: true, rarity: 'epic', price: 620, spellDuration: 0.35, stats: { manaRegen: 3 } },
+  elite_bear: { id: 'elite_bear', name: "Fourrure d'Ursak", slot: 'armor', icon: 'eq_armor', iconTint: 0xe6f0ff, eliteOnly: true, rarity: 'epic', price: 680, stats: { hp: 64, defense: 10, coldResist: 40 }, dur: 160 },
+  elite_skull: { id: 'elite_skull', name: 'Crâne hanté', slot: 'focus', icon: 'rel_thunder', eliteOnly: true, rarity: 'epic', price: 660, spellPower: 0.34, stats: { manaRegen: 3 } },
+  elite_spirit: { id: 'elite_spirit', name: 'Murmure spectral', slot: 'ring', icon: 'eq_ring_sapphire', eliteOnly: true, rarity: 'epic', price: 660, stats: { mana: 72, manaRegen: 4 } },
+  elite_flam: { id: 'elite_flam', name: 'Cœur de Braise', slot: 'focus', icon: 'rel_flame', eliteOnly: true, rarity: 'epic', price: 700, spellPower: 0.42 },
+  elite_mushroom: { id: 'elite_mushroom', name: 'Cuirasse Sporifère', slot: 'armor', icon: 'eq_plate', iconTint: 0xb6e09a, eliteOnly: true, rarity: 'epic', price: 660, stats: { hp: 72, defense: 12 }, dur: 160 },
+  elite_trex: { id: 'elite_trex', name: 'Serre de Raptor', slot: 'ring', icon: 'eq_ring_ruby', eliteOnly: true, rarity: 'epic', price: 640, stats: { attack: 10, hp: 20 } },
+  elite_bluebat: { id: 'elite_bluebat', name: 'Aile Givrée', slot: 'ring', icon: 'eq_ring_emerald', iconTint: 0xbfe0ff, eliteOnly: true, rarity: 'epic', price: 640, stats: { mana: 50, defense: 3, manaRegen: 2 } },
+
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'pot_heal', rarity: 'common', price: 40, heal: 45 },
   potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, heal: 120 },
@@ -210,8 +225,15 @@ export const RECIPES = [
   { id: 'r_forged_plate', result: 'forged_plate', mats: { mat_essence: 3, mat_crystal: 2 }, gold: 280, cat: 'gear' },
 ]
 
-// stock du marchand = catalogue SAUF légendaires, pièces de set ET objets forgés (artisanat uniquement)
-export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set && !it.craftedOnly)
+// ITEM DÉDIÉ lâché par l'ÉLITE de chaque espèce (★) — récompense unique propre à la famille (cf. spawnDrop)
+export const ELITE_DROP = {
+  lizard: 'elite_lizard', racoon: 'elite_racoon', snake: 'elite_snake', spider: 'elite_spider',
+  owl: 'elite_owl', bear: 'elite_bear', skull: 'elite_skull', spirit: 'elite_spirit',
+  flam: 'elite_flam', mushroom: 'elite_mushroom', trex: 'elite_trex', bluebat: 'elite_bluebat',
+}
+
+// stock du marchand = catalogue SAUF légendaires, pièces de set, objets forgés ET items d'élite
+export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set && !it.craftedOnly && !it.eliteOnly)
 
 // BATEAU (brief A3) : achat SPÉCIAL au marchand (onglet dédié) — déverrouille la navigation sur l'eau
 // (le héros embarque dès qu'il marche sur l'eau) → accès aux Terres maudites end-game. Pas un objet de
