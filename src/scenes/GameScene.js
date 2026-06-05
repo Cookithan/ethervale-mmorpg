@@ -4091,6 +4091,7 @@ export default class GameScene extends Phaser.Scene {
       const cy = p.y + Math.sin(a) * 34
       const c = this.mageClones.create(cx, cy, p.heroKey, 0)
       c.setTint(col).setDepth(cy)
+      c.tintColor = col // mémorise la couleur du Mage pour la ré-appliquer après un flash de coup
       c.hp = cloneHp
       c.maxHp = cloneHp
       c.facing = p.facing
@@ -4196,7 +4197,7 @@ export default class GameScene extends Phaser.Scene {
     mon.nextCloneBiteAt = now + 700
     clone.hp -= mon.damage
     clone.setTintFill(0xffffff)
-    this.time.delayedCall(80, () => clone.active && clone.setTint(0x9fd8ff))
+    this.time.delayedCall(80, () => clone.active && clone.setTint(clone.tintColor ?? 0x9fd8ff)) // ré-applique la couleur du Mage
     if (clone.hp <= 0) this.removeMageClone(clone)
   }
 
@@ -4342,8 +4343,14 @@ export default class GameScene extends Phaser.Scene {
     this.cameras.main.shake(160, 0.006)
     const burst = this.add.sprite(p.x, p.y - 2, 'fx_spark').setDepth(p.y + 6).setScale(3.2).setTint(0xff5a4a)
     if (this.anims.exists('fx-spark')) { burst.play('fx-spark'); burst.once('animationcomplete', () => burst.destroy()) } else burst.destroy()
-    const ring = this.add.circle(p.x, p.y, R, 0xff4a3a, 0.28).setDepth(p.y - 1).setScale(0.2)
-    this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 460, ease: 'Quad.easeOut', onComplete: () => ring.destroy() })
+    // halo rouge plein qui pulse
+    const halo = this.add.circle(p.x, p.y, R, 0xff4a3a, 0.26).setDepth(p.y - 2).setScale(0.2)
+    this.tweens.add({ targets: halo, scale: 1, alpha: 0, duration: 460, ease: 'Quad.easeOut', onComplete: () => halo.destroy() })
+    // ONDES DE CRI : 3 anneaux concentriques qui jaillissent en décalé (effet "cri sonore")
+    for (let k = 0; k < 3; k++) {
+      const ring = this.add.circle(p.x, p.y, R, 0xff4a3a, 0).setStrokeStyle(4, 0xff7a5a, 0.9).setDepth(p.y - 1).setScale(0.12)
+      this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 540, delay: k * 130, ease: 'Quad.easeOut', onComplete: () => ring.destroy() })
+    }
     this.monsters.getChildren().forEach((m) => {
       if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
         m.fear?.(3500) // fuit le héros
@@ -4363,6 +4370,11 @@ export default class GameScene extends Phaser.Scene {
     if (this.anims.exists('fx-magic-circle')) circle.play('fx-magic-circle')
     const aura = this.add.sprite(p.x, p.y - 2, 'fx_aura').setDepth(p.y + 6).setScale(2.2).setTint(0xfff0a0)
     if (this.anims.exists('fx-aura')) { aura.play('fx-aura'); aura.once('animationcomplete', () => aura.destroy()) } else aura.destroy()
+    // motes de lumière dorées qui montent (bénédiction)
+    for (let k = 0; k < 8; k++) {
+      const mote = this.add.circle(p.x + Phaser.Math.Between(-12, 12), p.y + 6, Phaser.Math.Between(1, 2), 0xfff3b0, 0.95).setDepth(p.y + 61)
+      this.tweens.add({ targets: mote, y: p.y - Phaser.Math.Between(22, 38), alpha: 0, duration: Phaser.Math.Between(750, 1150), delay: k * 70, ease: 'Sine.out', onComplete: () => mote.destroy() })
+    }
     this.time.delayedCall(2500, () => this.tweens.add({ targets: circle, alpha: 0, duration: 400, onComplete: () => circle.destroy() }))
     Audio.sfx(SFX.heal, { vol: 0.75 })
     this.floatingText(p.x, p.y - 20, 'Bénédiction de résurrection', '#ffe9a0')
