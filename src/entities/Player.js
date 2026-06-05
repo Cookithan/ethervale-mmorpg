@@ -8,7 +8,7 @@ const ATTACK_MS = 260 // durée de l'animation d'attaque (déplacement bloqué)
 const ATTACK_COOLDOWN = 340 // cadence de l'attaque de base : rapide/spammable mais pas "mitraillette"
 const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
 const SHOOT_COOLDOWN = 360 // délai mini entre deux tirs à distance (ms) — attaque de base à distance
-const MANA_REGEN = 3 // mana/s de BASE (compromis : la mana mord un peu ; des items de régén la complèteront)
+const MANA_REGEN = 1.6 // mana/s de BASE (volontairement BAS : la barre se remplit lentement -> la mana limite les sorts ; les items de régén la complètent)
 const INV_MAX = 6 // capacité du SAC (cap strict) — l'équipement des 4 slots est à part (= nb de cases de la hotbar)
 const STACK_MAX = 6 // taille maxi d'une PILE de consommables (potions...) dans UNE case du sac
 
