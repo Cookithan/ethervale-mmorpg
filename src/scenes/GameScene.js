@@ -139,7 +139,7 @@ const MONSTERS_BY_BIOME = {
 const ZONE_WARP = 16 // déformation (tuiles) des frontières de zones (Voronoi) -> bords organiques, pas droits
 // rayon (tuiles) de la CLAIRIÈRE de prairie autour du village (= zone sûre). Agrandi pour un vrai hub
 // « façon WoW » (objectif 50 joueurs). Utilisé par biomeAt, paintGrassBiomes et le mur de zone sûre.
-const VILLAGE_CLEAR_R = 18
+const VILLAGE_CLEAR_R = 20
 const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île -> casse la symétrie (décalé à l'EST)
 const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
@@ -158,7 +158,7 @@ const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en
 // CYCLE JOUR/NUIT : voile bleu nuit plein écran dont l'opacité suit l'heure. Cycle complet = 20 min.
 const DAY_CYCLE_MS = 1200000 // durée d'un cycle jour->nuit->jour (20 min)
 const NIGHT_MAX_ALPHA = 0.55 // opacité du voile au plus profond de la nuit (nuit "moyenne", lisible)
-const VILLAGE_LIGHT_R = 24 * TILE // rayon (px) du trou dans le voile de nuit : village + prairie restent de jour (clairière agrandie)
+const VILLAGE_LIGHT_R = 30 * TILE // rayon (px) du trou dans le voile de nuit : village + prairie restent de jour (clairière agrandie)
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
@@ -373,8 +373,8 @@ export default class GameScene extends Phaser.Scene {
 
     // --- physique / héros ---
     this.physics.world.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
-    const spawnX = this.saveData ? this.saveData.x : this.cx * TILE // au VILLAGE (décalé du centre)
-    const spawnY = this.saveData ? this.saveData.y : this.cy * TILE
+    const spawnX = this.saveData ? this.saveData.x : this.cx * TILE + 8 // place du village (juste au sud du feu de camp central)
+    const spawnY = this.saveData ? this.saveData.y : (this.cy + 2) * TILE + 8
     this.player = new Player(this, spawnX, spawnY, { character: this.character, save: this.saveData })
     // le pseudo au-dessus du héros est dessiné par UIScene (scène non-zoomée) pour rester net/stable
     // barque (A3) : sprite affiché SOUS le héros quand il navigue sur l'eau (caché par défaut)
@@ -1183,7 +1183,7 @@ export default class GameScene extends Phaser.Scene {
           if (t) {
             const dv = Math.hypot(tx - this.cx, ty - this.cy)
             const ang = Math.atan2(ty - this.cy, tx - this.cx)
-            const clearR = VILLAGE_CLEAR_R * (1 + 0.25 * Math.sin(ang * 2 + 1)) + this.noise2D(tx, ty) * 2 // = bord de prairie
+            const clearR = this.villageClearR(ang) + this.noise2D(tx, ty) * 2.6 // = bord de prairie (forme organique + bruit)
             const k = Phaser.Math.Clamp((dv - clearR) / 3 + this.noise2D(tx, ty) * 0.06, 0, 1) // bande courte (~3 tuiles)
             // forêt profonde : 3 verts proches par TACHES MOYENNES (bruit CONTINU quantifié) -> ni damier par
             // tuile, ni énormes nappes : des zones de vert de quelques tuiles.
@@ -1243,12 +1243,17 @@ export default class GameScene extends Phaser.Scene {
    *  défini par VORONOI sur des graines (this.zoneSeeds), avec distances DÉFORMÉES par le bruit ->
    *  frontières organiques qui s'emboîtent (pas de bandes, pas d'anneau radial). Les graines de
    *  neige tendent vers le Nord, celles de désert vers le Sud, mais décalées (patchwork). */
+  /** Rayon de la clairière de prairie à l'angle `ang` — forme ORGANIQUE (variation multi-fréquences, pas un cercle). */
+  villageClearR(ang) {
+    return VILLAGE_CLEAR_R * (1 + 0.2 * Math.sin(ang * 2 + 1) + 0.12 * Math.sin(ang * 3 + 2.4) + 0.07 * Math.sin(ang * 5 + 0.7))
+  }
+
   biomeAt(tx, ty) {
     if (this.isCursedIsland(tx, ty)) return 'cursed' // île maudite au large (end-game verrouillé)
     // petit bourg dégagé autour du village (clairière irrégulière ~11 tuiles) -> le village est DANS
     // la forêt, ce n'est PAS un grand ovale concentrique
     const dv = Math.hypot(tx - this.cx, ty - this.cy)
-    const clearR = VILLAGE_CLEAR_R * (1 + 0.25 * Math.sin(Math.atan2(ty - this.cy, tx - this.cx) * 2 + 1)) + this.noise2D(tx, ty) * 2
+    const clearR = this.villageClearR(Math.atan2(ty - this.cy, tx - this.cx)) + this.noise2D(tx, ty) * 2.6
     if (dv < clearR) return 'prairie'
     // zone (graine) la plus proche en distance DÉFORMÉE -> Voronoi à frontières organiques
     const wx = tx + this.noise2D(tx, ty) * ZONE_WARP
@@ -2242,7 +2247,7 @@ export default class GameScene extends Phaser.Scene {
     const dx = mon.x - cxp
     const dy = mon.y - cyp
     const ang = Math.atan2(dy, dx)
-    const wallR = VILLAGE_CLEAR_R * (1 + 0.25 * Math.sin(ang * 2 + 1)) + 2 // bord externe de la prairie (en tuiles)
+    const wallR = this.villageClearR(ang) + 2 // bord externe de la prairie (en tuiles)
     if (Math.hypot(dx, dy) / TILE >= wallR) return // déjà dehors -> rien
     const nx = Math.cos(ang) // direction VERS L'EXTÉRIEUR
     const ny = Math.sin(ang)
@@ -2897,9 +2902,9 @@ export default class GameScene extends Phaser.Scene {
     // (marchand = entrée `merchant:true` -> place la maison + porte, mais PAS de villageois bavard ;
     //  le sprite du marchand s'y tient, posé par spawnMerchant.)
     this.villagers = [
-      { hx: cx + 7, hy: cy - 4, key: 'store', merchant: true }, // DROITE = boutique du marchand (bâtisse 2 étages distincte)
+      { hx: cx + 7, hy: cy - 1, key: 'apothecary', merchant: true, place: 'Marché' }, // EST du cercle = marchand (échoppe verte)
       {
-        hx: cx - 8, hy: cy - 3, key: 'house_long', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge',
+        hx: cx - 9, hy: cy - 1, key: 'house_long', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge', place: 'Forge', // OUEST du cercle
         lines: [
           'Je suis Aldric, le forgeron. Apporte-moi tes armes et armures.',
           'Je peux les réparer quand elles s\'usent, et les améliorer contre de l\'or.',
@@ -2907,7 +2912,7 @@ export default class GameScene extends Phaser.Scene {
       },
       // MIRA tient l'AUBERGE (grande bâtisse, à la place de son ancienne maison) + donneuse de quêtes
       {
-        hx: cx - 1, hy: cy - 13, key: 'cabin', tex: 'npc_woman', name: 'Mira', enter: 'inn', // reculée (nord) + décalée à droite (libère le chemin vers la taverne)
+        hx: cx - 2, hy: cy - 12, key: 'cabin', tex: 'npc_woman', name: 'Mira', enter: 'inn', place: 'Auberge', // NORD du cercle
         lines: [
           'Bienvenue à l\'auberge, voyageur ! Je suis Mira, je tiens ces lieux.',
           'Appuie sur C pour ta fiche (équipe armes/armures). Le marchand est à droite — parle-lui avec E.',
@@ -2916,32 +2921,32 @@ export default class GameScene extends Phaser.Scene {
       },
       // --- BÂTIMENTS DE SERVICE (entrées préparées via `enter` pour les intérieurs à venir) ---
       {
-        hx: cx + 9, hy: cy - 9, key: 'tavern', tex: 'npc_master', name: 'Brewen le tavernier', enter: 'tavern',
+        hx: cx + 5, hy: cy - 8, key: 'tavern', tex: 'npc_master', name: 'Brewen le tavernier', enter: 'tavern', place: 'Taverne', // NORD-EST du cercle
         lines: [
           'Bienvenue à la taverne du Dernier Repos, aventurier !',
           'Pousse la porte quand tu veux : bientôt, j\'aurai chopes et ragoûts qui requinquent (bonus passagers).',
         ],
       },
       {
-        hx: cx + 11, hy: cy + 2, key: 'apothecary', tex: 'npc_shaman', name: 'Ylva l\'apothicaire', enter: 'apothecary',
+        hx: cx + 6, hy: cy + 5, key: 'store', tex: 'npc_shaman', name: 'Ylva l\'apothicaire', enter: 'apothecary', place: 'Apothicaire', // SUD-EST du cercle
         lines: [
           'Je suis Ylva, apothicaire. Mes potions soignent, restaurent la mana, et bravent le froid comme la chaleur.',
           'Mon échoppe ouvrira bientôt — en attendant, le marchand en vend quelques-unes.',
         ],
       },
       {
-        hx: cx - 13, hy: cy + 3, key: 'bank', tex: 'npc_inspector', name: 'Cornélius le banquier', enter: 'bank',
+        hx: cx - 7, hy: cy - 8, key: 'bank', tex: 'npc_inspector', name: 'Cornélius le banquier', enter: 'bank', place: 'Banque', // NORD-OUEST du cercle
         lines: [
           'La banque d\'Iroas gardera tes biens en sûreté — même après une mauvaise chute.',
           'Le coffre ouvrira bientôt. Patience, l\'or appelle l\'or.',
         ],
       },
       {
-        hx: cx + 2, hy: cy + 8, key: 'cottage', tex: 'npc_noble', name: 'Sieur Aldwin',
+        hx: cx - 1, hy: cy + 7, key: 'house_orange', tex: 'npc_noble', name: 'Sieur Aldwin', place: 'Maison', // SUD du cercle (sprite distinct du cottage d'Elara)
         lines: ['Un noble de passage ? Non, j\'habite ici. Ce bourg grandit vite, n\'est-ce pas ?'],
       },
       {
-        hx: cx - 8, hy: cy - 9, key: 'cottage', tex: 'npc_princess', name: 'Dame Elara', // maison au NORD-OUEST (à gauche de l'auberge)
+        hx: cx - 7, hy: cy + 5, key: 'cottage', tex: 'npc_princess', name: 'Dame Elara', place: 'Maison', // SUD-OUEST du cercle
         lines: ['On dit qu\'avec assez d\'aventuriers, ce village deviendra une vraie cité. Tu y participes !'],
       },
     ]
@@ -2968,16 +2973,47 @@ export default class GameScene extends Phaser.Scene {
     }
     this.paintVillageGround() // place + chemins reliant les maisons (look "village")
     // (anciens "hameaux inhabités" du désert retirés : le désert se remplit d'arbres morts via scatterDesertProps)
-    this.spawnMarketStall() // étal de marché (bannières colorées). Drapeau + fleurs retirés (déco définitive à venir).
+    // (bannières de marché / drapeau / fleurs retirés — déco définitive à venir avec les assets)
     this.drawBuildingSigns() // panneaux-noms + halo de porte sur les bâtiments enterables
+    this.spawnVillageCampfire() // grand feu de camp animé au cœur du village
   }
 
-  /** Halo de porte clignotant sur les bâtiments enterables (signale qu'on pourra entrer — sans panneau). */
+  /** Feu de camp animé au centre du village (bûches + flamme animée + halo chaud + collision). */
+  spawnVillageCampfire() {
+    const x = this.cx * TILE + 8
+    const y = this.cy * TILE + 8
+    const depth = (this.cy + 1) * TILE // tri Y : le héros passe devant quand il est au sud
+    // halo chaud (additif) qui respire
+    const glow = this.add.circle(x, y + 2, 30, 0xff8a2a, 0.14).setBlendMode(Phaser.BlendModes.ADD).setDepth(this.cy * TILE - 1)
+    this.tweens.add({ targets: glow, scale: 1.12, alpha: 0.22, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    // bûches/pierres (base) + flamme animée par-dessus (plus petite)
+    this.add.image(x, y + 4, 'campfire').setOrigin(0.5, 0.85).setDepth(depth)
+    this.add.sprite(x, y - 1, 'fire_anim').setOrigin(0.5, 0.8).setScale(0.85).setDepth(depth + 1).play('fire-anim')
+    // COLLISION SOLIDE + RECUL FORT : au contact du feu, le héros est violemment repoussé vers l'extérieur.
+    const col = this.add.rectangle(x, y + 4, 15, 11)
+    this.physics.add.existing(col, true)
+    this.obstacles.add(col)
+    this.physics.add.collider(this.player, col, () => {
+      const dx = this.player.x - x; const dy = this.player.y - (y + 4); const d = Math.hypot(dx, dy) || 1
+      this.player.knockback((dx / d) * 150, (dy / d) * 150, 260) // recul (modéré)
+    })
+    this.occupied.add(this.key(this.cx, this.cy))
+  }
+
+  /** Nom du LIEU (Forge, Marché, Taverne…) au-dessus de chaque bâtiment de service + halo de porte (enterables). */
   drawBuildingSigns() {
     for (const v of this.villagers) {
-      if (!v.enter) continue
-      const glow = this.add.ellipse(v.nx * TILE + 8, (v.ny - 1) * TILE + 10, 22, 11, 0xffe08a, 0.0).setDepth((v.ny - 1) * TILE + 4)
-      this.tweens.add({ targets: glow, fillAlpha: 0.38, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      if (v.enter) { // halo doux clignotant sur la porte (signale qu'on pourra entrer)
+        const glow = this.add.ellipse(v.nx * TILE + 8, (v.ny - 1) * TILE + 10, 22, 11, 0xffe08a, 0.0).setDepth((v.ny - 1) * TILE + 4)
+        this.tweens.add({ targets: glow, fillAlpha: 0.38, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      }
+      if (!v.place) continue
+      // nom du lieu : texte lisible (crème + gros contour sombre), au-dessus du toit, sans panneau
+      const b = BUILDINGS[v.key]
+      const sx = (v.tx + b.w / 2) * TILE
+      const sy = v.ty * TILE - 3
+      this.add.text(sx, sy, v.place, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#ffb22e', stroke: '#241608', strokeThickness: 4 })
+        .setOrigin(0.5, 1).setDepth(9500).setResolution(3)
     }
   }
 
@@ -3036,9 +3072,9 @@ export default class GameScene extends Phaser.Scene {
     const cy = this.cy
     // grande esplanade centrale (herbe foncée) : ellipse autour du spawn/marchand (agrandie pour le hub)
     const plaza = new Set()
-    for (let dx = -15; dx <= 15; dx++) {
-      for (let dy = -12; dy <= 12; dy++) {
-        if ((dx * dx) / 225 + (dy * dy) / 144 <= 1) plaza.add(this.key(cx + dx, cy + dy))
+    for (let dx = -12; dx <= 12; dx++) {
+      for (let dy = -10; dy <= 10; dy++) {
+        if ((dx * dx) / 144 + (dy * dy) / 100 <= 1) plaza.add(this.key(cx + dx, cy + dy))
       }
     }
     // rabote les "tétons" d'1 tuile (haut/bas) : retire les cellules isolées horizontalement
@@ -3053,24 +3089,54 @@ export default class GameScene extends Phaser.Scene {
         for (let dy = 0; dy < rc.h; dy++) plaza.add(this.key(rc.tx + dx, rc.ty + dy))
       }
     }
-    // chemins de terre : de chaque porte vers le centre (tracé en L, largeur 2)
-    const road = new Set()
-    const put = (x, y) => {
-      if (x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1) road.add(this.key(x, y))
-    }
-    // chemins LARGEUR 3 CENTRÉS sur la porte (v.nx = colonne de la porte) : largeur impaire -> reste
-    // pile centré sous la porte (une largeur paire redécalerait), et assez large pour un vrai chemin.
-    const carveLine = (x0, y0, x1, y1) => {
-      const sx = Math.sign(x1 - x0) || 1
-      for (let x = x0; x !== x1 + sx; x += sx) { put(x, y0 - 1); put(x, y0); put(x, y0 + 1) }
-      const sy = Math.sign(y1 - y0) || 1
-      for (let y = y0; y !== y1 + sy; y += sy) { put(x1 - 1, y); put(x1, y); put(x1 + 1, y) }
-    }
-    for (const v of this.villagers) carveLine(v.nx, v.ny, cx, cy)
-
-    // place SOUS (couche sol), chemins de terre PAR-DESSUS (couche overlay)
+    // place (herbe foncée) SOUS, puis CHEMINS EN PLANCHES par-dessus.
     this.paintBlob(plaza, BLOB.darkGrass, true, this.groundLayer)
-    this.paintBlob(road, BLOB.dirt, true)
+    const road = new Set()
+    const placed = new Set() // anti-chevauchement (une planche par case)
+    const houseCells = new Set() // le chemin s'arrête au bord des maisons (ne déborde pas dessous)
+    for (const rc of this.villageFootprints || []) for (let dx = 0; dx < rc.w; dx++) for (let dy = 0; dy < rc.h; dy++) houseCells.add(this.key(rc.tx + dx, rc.ty + dy))
+    const mark = (x, y) => { if (x > 0 && y > 0 && x < MAP_W - 1 && y < MAP_H - 1) road.add(this.key(x, y)) }
+    // pose UNE planche "barreau" centrée sur (x,y), couvrant 3 cases perpendiculaires (2 au contact d'une maison).
+    const rung = (x, y, horizontal) => {
+      const key = this.key(x, y)
+      if (placed.has(key)) return
+      placed.add(key)
+      if (horizontal) { // chemin E-O : planche verticale étirée sur les rangées y-1..y+1
+        const up = houseCells.has(this.key(x, y - 1)); const dn = houseCells.has(this.key(x, y + 1))
+        const py = up && !dn ? y + 0.5 : dn && !up ? y - 0.5 : y; const h = up !== dn ? 2 : 3
+        this.add.image(x * TILE + 8, py * TILE + 8, 'plankpath', 14).setScale(1, h).setDepth(-1)
+        mark(x, y - 1); mark(x, y); mark(x, y + 1)
+      } else { // chemin N-S : planche horizontale étirée sur les colonnes x-1..x+1
+        const lf = houseCells.has(this.key(x - 1, y)); const rt = houseCells.has(this.key(x + 1, y))
+        const px = lf && !rt ? x + 0.5 : rt && !lf ? x - 0.5 : x; const w = lf !== rt ? 2 : 3
+        this.add.image(px * TILE + 8, y * TILE + 8, 'plankpath', 4).setScale(w, 1).setDepth(-1)
+        mark(x - 1, y); mark(x, y); mark(x + 1, y)
+      }
+    }
+    // CHEMIN EN ROND : un ANNEAU de planches autour de la place centrale + raccord de chaque porte vers l'anneau.
+    const doors = this.villagers.map((v) => ({ x: v.nx, y: v.ny }))
+    const RING_R = 6 // rayon de l'anneau (tuiles)
+    for (let i = 0; i < 72; i++) { // parcourt le cercle ; orientation de la planche = tangente (haut/bas = horizontale, côtés = verticale)
+      const a = (i / 72) * Math.PI * 2
+      const x = Math.round(cx + RING_R * Math.cos(a))
+      const y = Math.round(cy + RING_R * Math.sin(a))
+      rung(x, y, Math.abs(Math.sin(a)) >= Math.abs(Math.cos(a)))
+    }
+    for (const d of doors) { // raccord RADIAL court : de la porte vers le centre jusqu'à toucher l'anneau (pas de doublon parallèle)
+      let x = d.x; let y = d.y; let n = 0
+      while (Math.hypot(x - cx, y - cy) > RING_R + 0.5 && n < 8) {
+        if (Math.abs(x - cx) >= Math.abs(y - cy)) { x += Math.sign(cx - x); rung(x, y, true) } // se rapproche par l'axe le plus éloigné
+        else { y += Math.sign(cy - y); rung(x, y, false) }
+        n++
+      }
+    }
+    // MÉDAILLON central = l'étoile/soleil à 8 branches (4 tuiles centrales 5/6/9/10 de Paths.png), agrandie.
+    const cxp = cx * TILE + 8
+    const cyp = cy * TILE + 8
+    const N = 2 // agrandissement du soleil central (réduit)
+    for (const t of [{ f: 5, ox: -1, oy: -1 }, { f: 6, ox: 1, oy: -1 }, { f: 9, ox: -1, oy: 1 }, { f: 10, ox: 1, oy: 1 }]) {
+      this.add.image(cxp + t.ox * 8 * N, cyp + t.oy * 8 * N, 'plankpath', t.f).setScale(N).setDepth(-1)
+    }
     // la déco (fleurs/herbes) évite la place et les chemins du village
     this.plazaCells = plaza
     for (const k of road) this.pathCells.add(k)
@@ -3118,12 +3184,7 @@ export default class GameScene extends Phaser.Scene {
     this.merchant.body.setSize(12, 12).setOffset(2, 4)
     this.physics.add.collider(this.player, this.merchant)
 
-    // nom du marchand au-dessus (ORANGE = personnage important, se démarque des villageois)
-    this.add
-      .text(mx, my - 14, 'Marchand', { fontFamily: 'monospace', fontSize: '7px', color: '#ff9d3c', stroke: '#000000', strokeThickness: 3 })
-      .setOrigin(0.5, 1)
-      .setDepth(60000)
-      .setResolution(3)
+    // (nom du marchand CACHÉ — on affiche le nom du LIEU au-dessus du bâtiment à la place, cf. drawBuildingSigns)
     this.addBreathing(this.merchant, 1300) // idle vivant
 
     // indice "Parler (E)" affiché quand le héros est proche (au-dessus du nom)
@@ -3181,12 +3242,13 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, sprite)
     sprite.anims.play(`${texture}-idle-down`, true)
 
-    // étiquette de nom au-dessus (toujours visible) ; orange = PNJ de service (forgeron)
+    // étiquette de nom au-dessus — CACHÉE pour l'instant (on affiche les noms de LIEUX sur les bâtiments)
     const label = this.add
       .text(x, y - 14, name, { fontFamily: 'monospace', fontSize: '7px', color: role === 'forge' ? '#ff9d3c' : '#ffe066', stroke: '#000000', strokeThickness: 3 })
       .setOrigin(0.5, 1)
       .setDepth(60000)
       .setResolution(3)
+      .setVisible(false)
 
     // indice d'interaction (caché ; visible quand le héros est proche)
     const hintTxt = role === 'forge' ? 'Forger (E)' : 'Parler (E)'

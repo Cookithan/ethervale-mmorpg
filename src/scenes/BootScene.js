@@ -69,6 +69,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('flag_red', 'assets/deco/flag_red.png', { frameWidth: 16, frameHeight: 16 })
     // moulin à eau (Ninja Adventure, maison-moulin ronde, 3 frames de 34x36) -> berge d'une rivière
     this.load.spritesheet('watermill', 'assets/deco/watermill.png', { frameWidth: 34, frameHeight: 36 })
+    this.load.spritesheet('fire_anim', 'assets/deco/fire_anim.png', { frameWidth: 32, frameHeight: 32 }) // flamme animée (feu de camp central, 30 frames)
     this.load.image('boat', 'assets/deco/boat.png') // barque (80×32, vue de côté) — monture d'eau achetée au marchand (A3)
     // déco DÉSERT (Ninja TilesetDesert/Nature, extraites au pixel) : palmier nain + rochers de grès
     this.load.image('palm_desert', 'assets/deco/palm_desert.png') // 14×18 — petit palmier
@@ -88,6 +89,8 @@ export default class BootScene extends Phaser.Scene {
 
     // bâtiments (maisons, igloos, portails...) : spritesheet 16x16, 33 colonnes
     this.load.spritesheet('house', 'assets/tiles/house.png', { frameWidth: 16, frameHeight: 16 })
+    // chemin en planches du village (Sprout Paths, 4x4) : planche horizontale (frame 4) / verticale (frame 14)
+    this.load.spritesheet('plankpath', 'assets/tiles/plankpath.png', { frameWidth: 16, frameHeight: 16 })
 
     // héros : spritesheet 16x16 (NinjaGreen historique = 'player')
     this.load.spritesheet('player', 'assets/sprites/player.png', {
@@ -347,6 +350,9 @@ export default class BootScene extends Phaser.Scene {
     // moulin à eau : mécanisme qui tourne lentement (3 frames)
     if (!this.anims.exists('watermill')) {
       this.anims.create({ key: 'watermill', frames: this.anims.generateFrameNumbers('watermill', { start: 0, end: 2 }), frameRate: 4, repeat: -1 })
+    }
+    if (!this.anims.exists('fire-anim')) {
+      this.anims.create({ key: 'fire-anim', frames: this.anims.generateFrameNumbers('fire_anim', { start: 0, end: 29 }), frameRate: 16, repeat: -1 }) // flamme du feu de camp
     }
     // sables mouvants : tourbillon de sable qui tourne en boucle (8 frames)
     if (!this.anims.exists('quicksand')) {

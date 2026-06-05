@@ -482,6 +482,14 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.level >= this.maxLevel) this.xp = 0
   }
 
+  /** Repousse le héros (recul) : vélocité imposée + input ignoré pendant `ms` (ex. contact du feu de camp). */
+  knockback(vx, vy, ms = 240) {
+    this.setVelocity(vx, vy)
+    this.knockUntil = this.scene.time.now + ms
+    this.moveTarget = null
+    this.attacking = false
+  }
+
   update(time) {
     // régénération LENTE de mana (tourne aussi pendant l'attaque)
     if (this.maxMana > 0 && this.mana < this.maxMana) {
@@ -489,6 +497,11 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.mana = Math.min(this.maxMana, this.mana + ((this.manaRegen ?? MANA_REGEN) * dt) / 1000)
     }
     this._lastT = time
+    // RECUL (knockback, ex. au contact du feu de camp) : on garde la vélocité de recul, input ignoré
+    if (time < (this.knockUntil ?? 0)) {
+      this.anims.play(`${this.heroKey}-idle-${this.facing}`, true)
+      return
+    }
     // incantation (Météore) : le mage est ENRACINÉ (ne bouge pas) tant qu'il incante
     if (this.casting) {
       this.setVelocity(0, 0)
