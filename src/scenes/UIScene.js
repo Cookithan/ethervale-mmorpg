@@ -4,6 +4,9 @@ import { Audio } from '../data/sound.js'
 import { SKILL_ICONS } from '../data/classes.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
+// couleur du pseudo selon la classe (Guerrier rouge · Tank bleu · Mage violet · Soigneur vert)
+const CLASS_NAME_COLOR = { warrior: '#ff5b5b', tank: '#5b9bff', mage: '#c77dff', healer: '#7cfc9a' }
+
 // palette UI (style WoW lisible)
 const GOLD = 0xc8a24a
 const PANEL = 0x10141c
@@ -111,7 +114,7 @@ export default class UIScene extends Phaser.Scene {
     // chaque frame -> reste net et stable (pas de scintillement comme en espace-monde zoomé ×3).
     this.playerNameplate = this.add
       .text(0, 0, this.game_.character?.name ?? 'Héros', {
-        fontFamily: 'monospace', fontSize: '13px', color: '#7cfc9a',
+        fontFamily: 'monospace', fontSize: '13px', color: CLASS_NAME_COLOR[this.game_.character?.classKey] ?? '#ffffff',
         stroke: '#000000', strokeThickness: 4,
       })
       .setOrigin(0.5, 1)
@@ -2147,6 +2150,7 @@ export default class UIScene extends Phaser.Scene {
   updatePlayerNameplate(p) {
     const np = this.playerNameplate
     if (!np) return
+    if (!this._nameplateColored && p?.className) { np.setColor(CLASS_NAME_COLOR[p.className] ?? '#ffffff'); this._nameplateColored = true } // couleur par classe (1×)
     // caché si mort ou si un panneau plein écran est ouvert (boutique/fiche/forge/dialogue/pause)
     if (p.hp <= 0 || this.game_.gameOver || this.game_.uiBusy?.()) {
       np.setVisible(false)
