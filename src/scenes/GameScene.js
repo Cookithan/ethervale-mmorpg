@@ -273,6 +273,9 @@ const BUILDINGS = {
   house_long: { col: 0, row: 0, w: 4, h: 3, door: [1, 2] }, // orange chaume (variante)
   cabin: { col: 25, row: 7, w: 4, h: 7, door: [1, 6] }, // grande cabane A-frame BOIS (trop grande pour la place)
   tavern: { col: 12, row: 0, w: 4, h: 4, door: [1, 3] }, // grande bâtisse à TOIT ROUGE (taverne) — vérifié sur la grille
+  bank: { col: 16, row: 0, w: 3, h: 3, door: [1, 2] }, // bâtisse BLEUE/pierre à emblème (banque) — vérifié sur la grille
+  apothecary: { col: 19, row: 0, w: 4, h: 3, door: [3, 2], flip: true }, // échoppe à TOIT VERT + comptoir (apothicaire), RETOURNÉE (porte à gauche)
+  store: { col: 26, row: 0, w: 3, h: 3, door: [1, 2] }, // boutique ORANGE à 2 étages (marchand) — vérifié sur la grille
   // neige — VÉRIFIÉ
   igloo: { col: 0, row: 11, w: 3, h: 3, door: [1, 2] },
 }
@@ -2867,8 +2870,9 @@ export default class GameScene extends Phaser.Scene {
     const depth = (ty + b.h) * TILE
     for (let dy = 0; dy < b.h; dy++) {
       for (let dx = 0; dx < b.w; dx++) {
-        const frame = (b.row + dy) * HOUSE_COLS + (b.col + dx)
-        this.add.image((tx + dx) * TILE + 8, (ty + dy) * TILE + 8, 'house', frame).setDepth(depth)
+        const srcDx = b.flip ? (b.w - 1 - dx) : dx // miroir horizontal optionnel (b.flip) -> colonne source inversée
+        const frame = (b.row + dy) * HOUSE_COLS + (b.col + srcDx)
+        this.add.image((tx + dx) * TILE + 8, (ty + dy) * TILE + 8, 'house', frame).setDepth(depth).setFlipX(!!b.flip)
       }
     }
     // collision sur la BASE (2 rangées du bas) ; le toit déborde au-dessus (walk-behind)
@@ -2893,7 +2897,7 @@ export default class GameScene extends Phaser.Scene {
     // (marchand = entrée `merchant:true` -> place la maison + porte, mais PAS de villageois bavard ;
     //  le sprite du marchand s'y tient, posé par spawnMerchant.)
     this.villagers = [
-      { hx: cx + 7, hy: cy - 4, key: 'house_orange', merchant: true }, // DROITE = boutique du marchand (reculée + décalée à droite)
+      { hx: cx + 7, hy: cy - 4, key: 'store', merchant: true }, // DROITE = boutique du marchand (bâtisse 2 étages distincte)
       {
         hx: cx - 8, hy: cy - 3, key: 'house_long', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge',
         lines: [
@@ -2919,14 +2923,14 @@ export default class GameScene extends Phaser.Scene {
         ],
       },
       {
-        hx: cx + 11, hy: cy + 2, key: 'cottage', tex: 'npc_shaman', name: 'Ylva l\'apothicaire', enter: 'apothecary',
+        hx: cx + 11, hy: cy + 2, key: 'apothecary', tex: 'npc_shaman', name: 'Ylva l\'apothicaire', enter: 'apothecary',
         lines: [
           'Je suis Ylva, apothicaire. Mes potions soignent, restaurent la mana, et bravent le froid comme la chaleur.',
           'Mon échoppe ouvrira bientôt — en attendant, le marchand en vend quelques-unes.',
         ],
       },
       {
-        hx: cx - 13, hy: cy + 3, key: 'house_long', tex: 'npc_inspector', name: 'Cornélius le banquier', enter: 'bank',
+        hx: cx - 13, hy: cy + 3, key: 'bank', tex: 'npc_inspector', name: 'Cornélius le banquier', enter: 'bank',
         lines: [
           'La banque d\'Iroas gardera tes biens en sûreté — même après une mauvaise chute.',
           'Le coffre ouvrira bientôt. Patience, l\'or appelle l\'or.',
@@ -2942,6 +2946,7 @@ export default class GameScene extends Phaser.Scene {
       },
     ]
     this.villageFootprints = [] // emprises des maisons du village -> herbe foncée (plaza) garantie dessous
+    this.buildingEntrances = [] // portes des bâtiments enterables (préparé pour les intérieurs, étape C)
     for (const v of this.villagers) {
       // pose la maison ; si bloquée (chemin invisible/lac), repli en spirale -> garantit l'apparition
       let pos = this.placeBuilding(v.hx, v.hy, v.key)
@@ -2955,13 +2960,25 @@ export default class GameScene extends Phaser.Scene {
       const hx = pos ? pos.tx : v.hx
       const hy = pos ? pos.ty : v.hy
       this.villageFootprints.push({ tx: hx, ty: hy, w: b.w, h: b.h })
-      v.nx = hx + b.door[0] // PNJ devant la porte (même colonne)
+      v.nx = hx + (b.flip ? b.w - 1 - b.door[0] : b.door[0]) // PNJ devant la porte (colonne miroir si bâtiment retourné)
       v.ny = hy + b.h // une rangée sous la base de la maison réellement posée
+      v.tx = hx; v.ty = hy // origine réellement posée (pour les panneaux/halo d'entrée)
       if (v.merchant) this.merchantHome = { nx: v.nx, ny: v.ny } // porte de la maison du marchand
+      if (v.enter) this.buildingEntrances.push({ id: v.enter, x: v.nx * TILE + 8, y: (v.ny - 1) * TILE + 8 }) // porte (préparé étape C)
     }
     this.paintVillageGround() // place + chemins reliant les maisons (look "village")
     // (anciens "hameaux inhabités" du désert retirés : le désert se remplit d'arbres morts via scatterDesertProps)
     this.spawnMarketStall() // étal de marché (bannières colorées). Drapeau + fleurs retirés (déco définitive à venir).
+    this.drawBuildingSigns() // panneaux-noms + halo de porte sur les bâtiments enterables
+  }
+
+  /** Halo de porte clignotant sur les bâtiments enterables (signale qu'on pourra entrer — sans panneau). */
+  drawBuildingSigns() {
+    for (const v of this.villagers) {
+      if (!v.enter) continue
+      const glow = this.add.ellipse(v.nx * TILE + 8, (v.ny - 1) * TILE + 10, 22, 11, 0xffe08a, 0.0).setDepth((v.ny - 1) * TILE + 4)
+      this.tweens.add({ targets: glow, fillAlpha: 0.38, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    }
   }
 
   /** Moulin à eau (maison-moulin ronde animée) posé sur la berge NORD de la rivière sud, près du
