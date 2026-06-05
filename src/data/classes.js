@@ -27,7 +27,7 @@ export const CLASSES = {
     kit: 'Épée (Espace) · Charge (1)',
     heroes: [
       { key: 'hero_gladiator_blue', name: 'Gladiateur' },
-      { key: 'hero_barbarian', name: 'Barbare' }, // Caveman (remplace le samouraï), au MILIEU
+      { key: 'hero_blue', name: 'Ninja bleu' }, // NinjaBlue (remplace le Barbare), au MILIEU
       { key: 'hero_gladiator_red', name: 'Gladiateur rouge' },
     ],
   },
