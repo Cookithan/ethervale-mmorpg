@@ -201,6 +201,10 @@ const BIOME_BOSSES = {
 const CURSED_ISLE = { ox: -100, oy: 60, r: 28 } // [offset tuiles depuis le centre de l'île, rayon]
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
+// DÉLAI entre deux quêtes (respiration) : la 1re est immédiate ; ensuite délai croissant, plafonné.
+const QUEST_GAP_BASE = 25000 // 25 s de base après une remise
+const QUEST_GAP_STEP = 12000 // +12 s par quête déjà accomplie (les quêtes de fin = plus longues -> on farme)
+const QUEST_GAP_MAX = 180000 // plafond 3 min
 const ARENA_RADIUS = 160 // rayon de la zone scellée (px), centrée sur le repaire du boss
 // teinte de l'arène selon le BIOME (ambiance), volontairement CLAIRE/vive pour rester visible sur tout sol
 // (forêt = ambre doré, PAS vert -> contraste sur l'herbe ; désert orange · neige bleu glacé · maudit violet · côte cyan).
@@ -3196,12 +3200,21 @@ export default class GameScene extends Phaser.Scene {
     return this.player.quest ? QUESTS[this.player.quest.id] : null
   }
 
+  /** id de la prochaine quête RÉELLEMENT proposable : nextQuestId + DÉLAI de respiration écoulé
+   *  (après une remise, on attend un peu — délai croissant avec l'avancement, cf. claimQuest). */
+  availableQuestId() {
+    const nid = nextQuestId(this.player)
+    if (!nid) return null
+    if (this.player.questReadyAt && this.time.now < this.player.questReadyAt) return null
+    return nid
+  }
+
   /** Marqueur au-dessus d'un PNJ : '?' (quête à rendre), '!' (quête dispo), '' sinon. */
   questMark(npcName) {
     const p = this.player
     const aq = this.activeQuest()
     if (aq && aq.giver === npcName && questComplete(p, aq)) return '?'
-    const nid = nextQuestId(p)
+    const nid = this.availableQuestId()
     if (nid && QUESTS[nid].giver === npcName) return '!'
     return ''
   }
@@ -3220,8 +3233,8 @@ export default class GameScene extends Phaser.Scene {
       this.claimQuest(t)
       return true
     }
-    // OFFRE : donneur de la prochaine quête disponible
-    const nid = nextQuestId(p)
+    // OFFRE : donneur de la prochaine quête disponible (délai de respiration écoulé)
+    const nid = this.availableQuestId()
     if (nid && QUESTS[nid].giver === t.name) {
       this.acceptQuest(nid, t)
       return true
@@ -3253,6 +3266,9 @@ export default class GameScene extends Phaser.Scene {
     if (r.xp) p.gainXp(r.xp) // en dernier (peut déclencher un level up + son)
     p.questsDone.push(q.id)
     p.quest = null
+    // DÉLAI de respiration avant la quête suivante (croissant avec l'avancement -> les quêtes de fin
+    // forcent à farmer entre deux). Transitoire (non sauvegardé) : un rechargement le réinitialise.
+    p.questReadyAt = this.time.now + Math.min(QUEST_GAP_MAX, QUEST_GAP_BASE + p.questsDone.length * QUEST_GAP_STEP)
     this.saveGame()
     Audio.sfx('sfx_levelup', { vol: 0.5, detune: -200 })
     this.scene.get('UIScene')?.openDialogue?.(q.giver + ' — Quête accomplie !', ['« ' + q.title + ' » terminée.', 'Récompense : ' + this.rewardText(q) + extra], npc?.texture)
@@ -4637,6 +4653,7 @@ export default class GameScene extends Phaser.Scene {
     if (mon.elite || Math.random() < (loot.gear ?? 0.18)) {
       let tier = this.rollDropRarity(lvl)
       if (mon.elite) tier = TIER_UP[tier] ?? tier
+      if (mon.elite && lvl <= 2 && tier === 'epic') tier = 'rare' // une élite de bas niveau ne lâche pas d'épique (TIER_UP l'aurait promue)
       this.drops.add(new Drop(this, mon.x, mon.y, 'equip', 0, this.equipmentOfTier(tier, this.player.className)))
     }
   }

@@ -1538,7 +1538,10 @@ export default class UIScene extends Phaser.Scene {
       if (ready) reg(this.add.text(x0 + 20, oy + 38, '→ Retourne voir ' + q.giver + ' (icône ?).', { fontFamily: 'monospace', fontSize: '11px', color: '#7cfc9a' }).setOrigin(0, 0))
     } else {
       const nid = nextQuestId(p)
-      const msg = nid ? `Une quête t'attend chez ${QUESTS[nid].giver} — cherche l'icône « ! » au village.` : 'Toutes les quêtes sont terminées. Bravo, aventurier !'
+      const waiting = nid && p.questReadyAt && this.game_.time.now < p.questReadyAt // délai de respiration en cours
+      const msg = !nid ? 'Toutes les quêtes sont terminées. Bravo, aventurier !'
+        : waiting ? 'Reprends ton souffle... une nouvelle quête se présentera bientôt. (farme, explore, équipe-toi)'
+          : `Une quête t'attend chez ${QUESTS[nid].giver} — cherche l'icône « ! » au village.`
       reg(this.add.text(cw / 2, y + 30, msg, { fontFamily: 'monospace', fontSize: '12px', color: '#cfe2ff', align: 'center', wordWrap: { width: W - 50 } }).setOrigin(0.5, 0))
     }
     reg(this.add.text(cw / 2, y0 + H - 32, `Quêtes accomplies : ${(p.questsDone ?? []).length} / ${Object.keys(QUESTS).length}`, { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066' }).setOrigin(0.5, 0))
