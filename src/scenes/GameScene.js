@@ -238,7 +238,7 @@ const BUSHES = [240, 241, 242, 268, 269, 273] // buissons / herbes hautes
 
 // --- props SPÉCIFIQUES par biome (nature.png) pour différencier les zones ---
 const CACTI = [203, 227] // désert : cactus (collision)
-const DESERT_SHRUBS = [220, 221] // désert : arbustes secs (sans collision)
+const DESERT_SHRUBS = [220] // désert : buisson SEC brun (sans collision) — pas de plante verte (221 retiré : faisait "herbe", c'est la forêt)
 const STUMPS = [192, 193, 194, 195, 196, 197] // forêt : souches + troncs couchés (collision)
 const FERNS = [268, 269, 271, 272] // forêt : fougères / herbes hautes (sans collision)
 const CRYSTALS = [336, 337, 338, 339, 340, 341, 342] // maudites : cristaux + rochers à minerai (collision)
@@ -381,6 +381,7 @@ export default class GameScene extends Phaser.Scene {
     this.spawnRocks()
     // spawnDecor() retiré : plus de buissons/touffes d'herbe en prairie (demandé)
     this.spawnBiomeProps() // props par biome (cactus, cristaux, souches, congères...)
+    this.scatterDesertProps() // déco étoffée du désert : palmiers nains + rochers de grès
     this.physics.add.collider(this.player, this.obstacles)
     // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
     // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
@@ -1785,31 +1786,33 @@ export default class GameScene extends Phaser.Scene {
         const b = this.biomeAt(x, y)
         if (b === 'snow' && Phaser.Math.Between(0, 100) < 24) place(x, y, TREE_SNOW)
         else if (b === 'cursed' && Phaser.Math.Between(0, 100) < 32) place(x, y, TREE_DEAD)
-        else if (b === 'desert' && Phaser.Math.Between(0, 100) < 7) place(x, y, TREE_DEAD)
+        // désert : arbres morts répartis en grille jittered dans scatterDesertProps (couverture uniforme, sans amas/trous)
       }
     }
   }
 
-  addTree(tx, ty, frames = TREE) {
+  addTree(tx, ty, frames = TREE, destructible = false) {
     const px = tx * TILE
     const py = ty * TILE
     const baseY = py + 2 * TILE
     const TRUNK_DEPTH = -5 // tronc toujours derrière le perso, jamais devant la tête
 
     const leaves = []
-    this.add.image(px + 8, py + 24, 'nature', frames.bl).setDepth(TRUNK_DEPTH)
-    this.add.image(px + 24, py + 24, 'nature', frames.br).setDepth(TRUNK_DEPTH)
+    const sprites = [] // tous les sprites de l'arbre (pour la pulvérisation par l'onde de choc)
+    sprites.push(this.add.image(px + 8, py + 24, 'nature', frames.bl).setDepth(TRUNK_DEPTH))
+    sprites.push(this.add.image(px + 24, py + 24, 'nature', frames.br).setDepth(TRUNK_DEPTH))
     leaves.push(this.add.image(px + 8, py + 8, 'nature', frames.tl).setDepth(baseY))
     leaves.push(this.add.image(px + 24, py + 8, 'nature', frames.tr).setDepth(baseY))
+    sprites.push(...leaves)
 
     const trunk = this.add.rectangle(px + TILE, py + TILE + 8, 16, 9)
     this.physics.add.existing(trunk, true)
     this.obstacles.add(trunk)
 
-    this.trees.push({
-      leaves,
-      bounds: new Phaser.Geom.Rectangle(px, py, 2 * TILE, TILE + 12),
-    })
+    const entry = { leaves, bounds: new Phaser.Geom.Rectangle(px, py, 2 * TILE, TILE + 12) }
+    this.trees.push(entry)
+    // destructible : pulvérisé par l'onde de choc à l'ouverture de l'arène (comme les chênes de forêt)
+    if (destructible) this.destructibles.push({ x: px + TILE, y: py + TILE, body: trunk, sprites, entry })
   }
 
   /** Pré-assemble le chêne Mystic Woods (3×4 tuiles) en 2 textures : canopée 48×48 + tronc 48×16.
@@ -1972,6 +1975,79 @@ export default class GameScene extends Phaser.Scene {
           break
       }
     }
+  }
+
+  /** Déco ÉTOFFÉE du DÉSERT (assets Ninja extraits) : palmiers nains + rochers de grès, dispersés.
+   *  Objets multi-tuiles (réservation) avec collision au pied, tri en profondeur (depth = base au sol). */
+  scatterDesertProps() {
+    this.quicksands ||= [] // pièges de sable (aspiration) : {x, y, r}
+    // place un objet w×h tuiles UNIQUEMENT si toute l'emprise est du désert, libre, hors chemin/eau/arène.
+    const free = (tx, ty, w, h) => {
+      if (tx < 1 || ty < 1 || tx > MAP_W - w - 1 || ty > MAP_H - h - 1) return false
+      if (this.nearSpawn(tx, ty, 5)) return false
+      if (this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1)) return false
+      if (this.nearBossLair(tx, ty)) return false // clairière d'arène = dégagée
+      for (let dx = 0; dx < w; dx++) for (let dy = 0; dy < h; dy++) if (this.biomeAt(tx + dx, ty + dy) !== 'desert') return false
+      return this.reserve(tx, ty, w, h)
+    }
+    // ARBRES MORTS en GRILLE JITTERED : un nœud tous les STEP tuiles + décalage aléatoire -> couverture
+    // UNIFORME du désert (pas de gros trous sans arbre, pas d'amas). Posés EN PREMIER (priorité d'espace).
+    // les arbres REMPLISSENT aussi les arènes (juste une clairière ~4 tuiles autour du boss) ; ils sont
+    // DESTRUCTIBLES -> pulvérisés par l'onde de choc à l'ouverture de l'arène (comme la forêt). Plus de
+    // grand cercle vide autour des repaires.
+    const lairs = Object.values(this.bossLairs || {}).flat()
+    const STEP = 5
+    for (let gy = 2; gy < MAP_H - 3; gy += STEP) {
+      for (let gx = 2; gx < MAP_W - 3; gx += STEP) {
+        const tx = gx + Phaser.Math.Between(-1, 2)
+        const ty = gy + Phaser.Math.Between(-1, 2)
+        if (this.biomeAt(tx, ty) !== 'desert') continue
+        if (this.nearSpawn(tx, ty, 5) || this.onPath(tx, ty, 2) || this.onWater(tx, ty, 2)) continue
+        if (lairs.some((l) => this.dist(tx, ty, l.tx, l.ty) < 4)) continue // petite clairière autour du boss
+        if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty, TREE_DEAD, true)
+      }
+    }
+    for (let y = 2; y < MAP_H - 3; y++) {
+      for (let x = 2; x < MAP_W - 3; x++) {
+        if (this.biomeAt(x, y) !== 'desert') continue
+        const roll = Phaser.Math.Between(0, 1000)
+        if (roll < 16) { if (free(x, y, 1, 1)) this.addDesertPalm(x, y) } // palmiers nains (clairsemés)
+        else if (roll < 23) { const big = Phaser.Math.Between(0, 1) === 0; if (free(x, y, big ? 4 : 2, big ? 3 : 2)) this.addDesertRock(x, y, big) } // rochers de grès
+        else if (roll < 26) { if (free(x, y, 2, 2)) this.addQuicksand(x, y) } // sables mouvants (piège rare)
+      }
+    }
+  }
+
+  /** Palmier nain du désert : image (pied centré) + petite collision de tronc. */
+  addDesertPalm(tx, ty) {
+    const px = tx * TILE + 8
+    const baseY = ty * TILE + TILE
+    this.add.image(px, baseY, 'palm_desert').setOrigin(0.5, 1).setDepth(baseY)
+    const trunk = this.add.rectangle(px, baseY - 3, 6, 5)
+    this.physics.add.existing(trunk, true)
+    this.obstacles.add(trunk)
+  }
+
+  /** Rocher de grès : moyen (desert_rock1, 32×30, emprise 2×2) ou gros (desert_rock2, 62×46, emprise 4×3).
+   *  Image pied centré sur l'emprise réservée, collision basse, tri en profondeur. */
+  addDesertRock(tx, ty, big) {
+    const w = big ? 4 : 2
+    const h = big ? 3 : 2
+    const px = tx * TILE + (w * TILE) / 2
+    const baseY = ty * TILE + h * TILE
+    this.add.image(px, baseY, big ? 'desert_rock2' : 'desert_rock1').setOrigin(0.5, 1).setDepth(baseY)
+    const rect = this.add.rectangle(px, baseY - 6, big ? 50 : 26, 12)
+    this.physics.add.existing(rect, true)
+    this.obstacles.add(rect)
+  }
+
+  /** Sables mouvants (piège) : tourbillon animé au sol (sous le héros) + zone d'aspiration enregistrée
+   *  (this.quicksands). Pas de collision physique : c'est updateQuicksand qui tire/blesse le joueur. */
+  addQuicksand(tx, ty) {
+    const cx = tx * TILE + TILE // centre de l'emprise 2×2
+    const cy = ty * TILE + TILE
+    this.add.sprite(cx, cy, 'quicksand').setDepth(-6).setAlpha(0.72).play('quicksand') // décal de sol semi-transparent (laisse voir le sable dessous)
+    this.quicksands.push({ x: cx, y: cy, r: 17 })
   }
 
   /** Déco sans collision : massifs de fleurs serrées + touffes de buissons/herbes. */
@@ -2789,9 +2865,7 @@ export default class GameScene extends Phaser.Scene {
       if (v.merchant) this.merchantHome = { nx: v.nx, ny: v.ny } // porte de la maison du marchand
     }
     this.paintVillageGround() // place + chemins reliant les 3 maisons (look "village")
-    // hameaux inhabités du désert (bande du bas) : coins OPPOSÉS, loin du centre
-    this.placeBuildingNear(cx - 52, cy + 44, 'house_long') // désert sud-ouest
-    this.placeBuildingNear(cx + 50, cy + 44, 'house_orange') // désert sud-est
+    // (anciens "hameaux inhabités" du désert retirés : le désert se remplit d'arbres morts via scatterDesertProps)
     this.spawnVillageFlags() // bannières animées qui encadrent la place
   }
 
@@ -4676,6 +4750,7 @@ export default class GameScene extends Phaser.Scene {
     p.setDepth(p.y)
     this.updateHeldWeapon() // arme tenue en main (cachée pendant l'attaque, revient après)
     this.updateBoat() // barque sous le héros quand il navigue (A3)
+    this.updateQuicksand(time) // sables mouvants du désert : aspiration + dégâts (après player.update)
     this.updateTarget(time) // réticule de la cible verrouillée + libération si elle meurt
     // récupération du sac de mort (A1) : il faut d'abord s'en éloigner (armement), puis remarcher dessus
     if (p.deathBag && this.deathBagSprite) {
@@ -4850,6 +4925,40 @@ export default class GameScene extends Phaser.Scene {
     } else {
       this._tempChipAt = 0 // hors zone de danger -> prêt à re-piquer dès qu'on y retourne
       if (a < TEMP_SLOW_START) this._tempDanger = false // revenu au calme -> message réarmé
+    }
+  }
+
+  /** Sables mouvants : si le héros est dans une zone, il est ASPIRÉ vers le centre (force constante) et
+   *  ralenti (sable collant), avec dégâts progressifs tant qu'il y reste. Il s'en extrait en marchant vers
+   *  l'extérieur (le dash du Guerrier le traverse). Appelé APRÈS player.update (qui a posé la vélocité). */
+  updateQuicksand(time) {
+    const p = this.player
+    if (!this.quicksands?.length || !p || p.hp <= 0 || p.sailing || p.dashing) { this._qsIn = false; return }
+    let q = null
+    let best = Infinity
+    for (const s of this.quicksands) {
+      const d = Phaser.Math.Distance.Between(p.x, p.y, s.x, s.y)
+      if (d < s.r && d < best) { best = d; q = s }
+    }
+    if (!q) { this._qsIn = false; return }
+    const dx = q.x - p.x
+    const dy = q.y - p.y
+    const d = Math.hypot(dx, dy) || 1
+    const b = p.body
+    if (b) {
+      b.velocity.x = b.velocity.x * 0.7 + (dx / d) * 22 // sable collant (×0.7) + aspiration douce vers le centre
+      b.velocity.y = b.velocity.y * 0.7 + (dy / d) * 22
+    }
+    if (!this._qsIn) {
+      this._qsIn = true
+      this.scene.get('UIScene')?.showToast?.('🌀 Sables mouvants ! Bouge pour t’en extraire', '#d9b073')
+    }
+    if (time >= (this._qsHurtAt ?? 0)) {
+      this._qsHurtAt = time + 700
+      p.envHurt?.(4)
+      p.setTintFill(0xd9b073)
+      this.time.delayedCall(100, () => p.active && p.clearTint())
+      this.cameras.main.shake(90, 0.004)
     }
   }
 

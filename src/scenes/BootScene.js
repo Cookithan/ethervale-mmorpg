@@ -68,6 +68,12 @@ export default class BootScene extends Phaser.Scene {
     // moulin à eau (Ninja Adventure, maison-moulin ronde, 3 frames de 34x36) -> berge d'une rivière
     this.load.spritesheet('watermill', 'assets/deco/watermill.png', { frameWidth: 34, frameHeight: 36 })
     this.load.image('boat', 'assets/deco/boat.png') // barque (80×32, vue de côté) — monture d'eau achetée au marchand (A3)
+    // déco DÉSERT (Ninja TilesetDesert/Nature, extraites au pixel) : palmier nain + rochers de grès
+    this.load.image('palm_desert', 'assets/deco/palm_desert.png') // 14×18 — petit palmier
+    this.load.image('desert_rock1', 'assets/deco/desert_rock1.png') // 38×29 — rocher de grès moyen
+    this.load.image('desert_rock2', 'assets/deco/desert_rock2.png') // 47×34 — gros rocher de grès
+    // sables mouvants animés (Ninja, 8 frames de 32×32) — piège qui aspire dans le désert
+    this.load.spritesheet('quicksand', 'assets/deco/quicksand.png', { frameWidth: 32, frameHeight: 32 })
     this.load.image('moneybag', 'assets/items/moneybag.png') // sac de mort (14×15) déposé à l'endroit de la mort (A1)
 
     // nature (arbres, rochers...) en spritesheet 16x16 pour placer des tuiles
@@ -336,6 +342,10 @@ export default class BootScene extends Phaser.Scene {
     // moulin à eau : mécanisme qui tourne lentement (3 frames)
     if (!this.anims.exists('watermill')) {
       this.anims.create({ key: 'watermill', frames: this.anims.generateFrameNumbers('watermill', { start: 0, end: 2 }), frameRate: 4, repeat: -1 })
+    }
+    // sables mouvants : tourbillon de sable qui tourne en boucle (8 frames)
+    if (!this.anims.exists('quicksand')) {
+      this.anims.create({ key: 'quicksand', frames: this.anims.generateFrameNumbers('quicksand', { start: 0, end: 7 }), frameRate: 8, repeat: -1 })
     }
   }
 
