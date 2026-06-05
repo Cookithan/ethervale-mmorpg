@@ -19,12 +19,12 @@ export const QUESTS = {
     reward: { xp: 70, gold: 50 }, next: 'q_leather',
   },
   q_leather: {
-    id: 'q_leather', giver: 'Tom', type: 'collect', target: 'mat_leather', targetName: 'Cuir', count: 5,
-    title: 'Artisanat', desc: 'Les bêtes lâchent du Cuir. Rapporte-en 5 à Tom (les matériaux s\'empilent à gauche du sac).',
+    id: 'q_leather', giver: 'Mira', type: 'collect', target: 'mat_leather', targetName: 'Cuir', count: 5,
+    title: 'Artisanat', desc: 'Les bêtes lâchent du Cuir. Rapporte-en 5 à Mira (les matériaux s\'empilent à gauche du sac).',
     reward: { xp: 90, gold: 30, item: 'potion_big' }, next: 'q_explore',
   },
   q_explore: {
-    id: 'q_explore', giver: 'Tom', type: 'talk', target: 'Edda',
+    id: 'q_explore', giver: 'Mira', type: 'talk', target: 'Edda',
     title: 'Les environs', desc: 'Edda se promène dans la prairie et connaît la région. Va lui parler.',
     reward: { xp: 50, gold: 70 }, next: 'q_spiders',
   },
@@ -39,7 +39,7 @@ export const QUESTS = {
     reward: { xp: 110, gold: 60, item: 'potion_big' }, next: 'q_lingots',
   },
   q_lingots: {
-    id: 'q_lingots', giver: 'Tom', type: 'collect', target: 'mat_essence', targetName: 'Lingot de fer', count: 6,
+    id: 'q_lingots', giver: 'Mira', type: 'collect', target: 'mat_essence', targetName: 'Lingot de fer', count: 6,
     title: 'Le fer d\'Iroas', desc: 'Le forgeron manque de métal. Rapporte 6 Lingots de fer (lâchés par les bêtes des bois et du désert).',
     reward: { xp: 130, gold: 40, item: 'chainmail' }, next: 'q_north',
   },

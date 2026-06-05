@@ -272,6 +272,7 @@ const BUILDINGS = {
   house_orange: { col: 8, row: 0, w: 4, h: 3, door: [1, 2] }, // orange chaume, 1 porte
   house_long: { col: 0, row: 0, w: 4, h: 3, door: [1, 2] }, // orange chaume (variante)
   cabin: { col: 25, row: 7, w: 4, h: 7, door: [1, 6] }, // grande cabane A-frame BOIS (trop grande pour la place)
+  tavern: { col: 12, row: 0, w: 4, h: 4, door: [1, 3] }, // grande bâtisse à TOIT ROUGE (taverne) — vérifié sur la grille
   // neige — VÉRIFIÉ
   igloo: { col: 0, row: 11, w: 3, h: 3, door: [1, 2] },
 }
@@ -1661,7 +1662,7 @@ export default class GameScene extends Phaser.Scene {
       const cx = Phaser.Math.Between(6, MAP_W - 6)
       const cy = Phaser.Math.Between(6, MAP_H - 6)
       const b = this.biomeAt(cx, cy)
-      if (b !== 'forest' && b !== 'prairie') continue // plus de lacs gelés en NEIGE (retirés)
+      if (b !== 'forest') continue // étangs en FORÊT uniquement (plus d'eau dans la prairie du village ni en neige)
       if (this.nearSpawn(cx, cy, 9)) continue
       const cells = this.smallBlob(cx, cy, 3, 5) // petite flaque de 3-5 cases
       let ok = cells.length >= 3
@@ -2892,7 +2893,7 @@ export default class GameScene extends Phaser.Scene {
     // (marchand = entrée `merchant:true` -> place la maison + porte, mais PAS de villageois bavard ;
     //  le sprite du marchand s'y tient, posé par spawnMerchant.)
     this.villagers = [
-      { hx: cx + 6, hy: cy - 3, key: 'house_orange', merchant: true }, // DROITE = boutique du marchand
+      { hx: cx + 7, hy: cy - 4, key: 'house_orange', merchant: true }, // DROITE = boutique du marchand (reculée + décalée à droite)
       {
         hx: cx - 8, hy: cy - 3, key: 'house_long', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge',
         lines: [
@@ -2900,22 +2901,44 @@ export default class GameScene extends Phaser.Scene {
           'Je peux les réparer quand elles s\'usent, et les améliorer contre de l\'or.',
         ],
       },
+      // MIRA tient l'AUBERGE (grande bâtisse, à la place de son ancienne maison) + donneuse de quêtes
       {
-        hx: cx - 1, hy: cy - 6, key: 'cottage', tex: 'npc_woman', name: 'Mira',
+        hx: cx - 1, hy: cy - 13, key: 'cabin', tex: 'npc_woman', name: 'Mira', enter: 'inn', // reculée (nord) + décalée à droite (libère le chemin vers la taverne)
         lines: [
-          'Le marchand tient boutique dans la maison de droite. Parle-lui avec la touche E.',
-          'Appuie sur C pour ouvrir ta fiche : équipe armes et armures dans ton sac.',
-          'Les monstres lâchent de l\'or et de l\'équipement, ramasse tout en marchant dessus !',
-          'Reviens vendre ton butin au marchand pour t\'acheter mieux.',
+          'Bienvenue à l\'auberge, voyageur ! Je suis Mira, je tiens ces lieux.',
+          'Appuie sur C pour ta fiche (équipe armes/armures). Le marchand est à droite — parle-lui avec E.',
+          'Les monstres lâchent or et équipement, ramasse tout ! Et reviens me voir, j\'ai du travail pour toi.',
+        ],
+      },
+      // --- BÂTIMENTS DE SERVICE (entrées préparées via `enter` pour les intérieurs à venir) ---
+      {
+        hx: cx + 9, hy: cy - 9, key: 'tavern', tex: 'npc_master', name: 'Brewen le tavernier', enter: 'tavern',
+        lines: [
+          'Bienvenue à la taverne du Dernier Repos, aventurier !',
+          'Pousse la porte quand tu veux : bientôt, j\'aurai chopes et ragoûts qui requinquent (bonus passagers).',
         ],
       },
       {
-        hx: cx + 3, hy: cy + 4, key: 'cottage', tex: 'npc_boy', name: 'Tom',
+        hx: cx + 11, hy: cy + 2, key: 'cottage', tex: 'npc_shaman', name: 'Ylva l\'apothicaire', enter: 'apothecary',
         lines: [
-          'Tu as vu le grand serpent de mer qui tourne au large ? Mon père dit que c\'est un dragon endormi depuis mille ans.',
-          'Quand je serai grand, je traverserai les flots jusqu\'à l\'île maudite. Là où finissent les légendes !',
-          'On raconte qu\'un Tengu garde un trésor dans la neige du nord. Un jour, j\'irai voir...',
+          'Je suis Ylva, apothicaire. Mes potions soignent, restaurent la mana, et bravent le froid comme la chaleur.',
+          'Mon échoppe ouvrira bientôt — en attendant, le marchand en vend quelques-unes.',
         ],
+      },
+      {
+        hx: cx - 13, hy: cy + 3, key: 'house_long', tex: 'npc_inspector', name: 'Cornélius le banquier', enter: 'bank',
+        lines: [
+          'La banque d\'Iroas gardera tes biens en sûreté — même après une mauvaise chute.',
+          'Le coffre ouvrira bientôt. Patience, l\'or appelle l\'or.',
+        ],
+      },
+      {
+        hx: cx + 2, hy: cy + 8, key: 'cottage', tex: 'npc_noble', name: 'Sieur Aldwin',
+        lines: ['Un noble de passage ? Non, j\'habite ici. Ce bourg grandit vite, n\'est-ce pas ?'],
+      },
+      {
+        hx: cx - 8, hy: cy - 9, key: 'cottage', tex: 'npc_princess', name: 'Dame Elara', // maison au NORD-OUEST (à gauche de l'auberge)
+        lines: ['On dit qu\'avec assez d\'aventuriers, ce village deviendra une vraie cité. Tu y participes !'],
       },
     ]
     this.villageFootprints = [] // emprises des maisons du village -> herbe foncée (plaza) garantie dessous
@@ -2936,9 +2959,9 @@ export default class GameScene extends Phaser.Scene {
       v.ny = hy + b.h // une rangée sous la base de la maison réellement posée
       if (v.merchant) this.merchantHome = { nx: v.nx, ny: v.ny } // porte de la maison du marchand
     }
-    this.paintVillageGround() // place + chemins reliant les 3 maisons (look "village")
+    this.paintVillageGround() // place + chemins reliant les maisons (look "village")
     // (anciens "hameaux inhabités" du désert retirés : le désert se remplit d'arbres morts via scatterDesertProps)
-    this.spawnVillageFlags() // bannières animées qui encadrent la place
+    this.spawnMarketStall() // étal de marché (bannières colorées). Drapeau + fleurs retirés (déco définitive à venir).
   }
 
   /** Moulin à eau (maison-moulin ronde animée) posé sur la berge NORD de la rivière sud, près du
@@ -2996,9 +3019,9 @@ export default class GameScene extends Phaser.Scene {
     const cy = this.cy
     // grande esplanade centrale (herbe foncée) : ellipse autour du spawn/marchand (agrandie pour le hub)
     const plaza = new Set()
-    for (let dx = -11; dx <= 11; dx++) {
-      for (let dy = -7; dy <= 7; dy++) {
-        if ((dx * dx) / 121 + (dy * dy) / 49 <= 1) plaza.add(this.key(cx + dx, cy + dy))
+    for (let dx = -15; dx <= 15; dx++) {
+      for (let dy = -12; dy <= 12; dy++) {
+        if ((dx * dx) / 225 + (dy * dy) / 144 <= 1) plaza.add(this.key(cx + dx, cy + dy))
       }
     }
     // rabote les "tétons" d'1 tuile (haut/bas) : retire les cellules isolées horizontalement
@@ -3039,7 +3062,7 @@ export default class GameScene extends Phaser.Scene {
     for (const k of plaza) {
       const [x, y] = k.split(',').map(Number)
       const t = this.grassLayer?.getTileAt(x, y)
-      if (t) t.tint = tileNoise(x, y, 63) < 0.5 ? 0xb0bd86 : 0xa6b47c
+      if (t) t.tint = tileNoise(x, y, 63) < 0.5 ? 0xc8d4a2 : 0xbecb96 // teinte du bourg ÉCLAIRCIE (était 0xb0bd86/0xa6b47c)
     }
   }
 
@@ -3399,12 +3422,25 @@ export default class GameScene extends Phaser.Scene {
       this.add.image(tx * TILE + 8, ty * TILE + 8, 'nature', Phaser.Utils.Array.GetRandom(FLOWERS)).setDepth(ty * TILE + 4)
       this.occupied.add(this.key(tx, ty))
     }
-    // lampadaires (vers les coins, flanquent les zones)
-    for (const [dx, dy] of [[-3, -3], [3, -3], [-3, 3], [3, -1]]) prop(cx + dx, cy + dy, 'lamppost', true)
-    // barriques / caisses près des maisons
-    for (const [dx, dy, k] of [[4, -4, 'barrel'], [-4, -3, 'crate'], [2, 4, 'barrel'], [-3, -4, 'crate'], [4, 3, 'barrel']]) prop(cx + dx, cy + dy, k)
-    // fleurs en touffes
-    for (const [dx, dy] of [[-4, -4], [4, -2], [-2, 4], [3, 4], [-4, 2], [2, -4]]) flower(cx + dx, cy + dy)
+    // fleurs en touffes (égayent la prairie du bourg) — lampadaires/barriques retirés en attendant les vrais assets de déco
+    for (const [dx, dy] of [[-5, -5], [5, -3], [-3, 5], [4, 5], [-6, 1], [3, -5], [7, -2], [-8, -2], [1, 6], [-1, -7]]) flower(cx + dx, cy + dy)
+  }
+
+  /** Petit MARCHÉ : bannières colorées (tileset house, rows 20-21) + cagettes, côté est de la place. */
+  spawnMarketStall() {
+    const cx = this.cx
+    const cy = this.cy
+    const free = (tx, ty) => tx > 1 && ty > 1 && tx < MAP_W - 1 && ty < MAP_H - 1 && !this.occupied.has(this.key(tx, ty)) && !this.onPath(tx, ty, 1) && !this.onWater(tx, ty, 1)
+    const banner = (tx, ty, col) => {
+      if (!free(tx, ty)) return
+      const x = tx * TILE + 8
+      this.add.image(x, ty * TILE + 8, 'house', 20 * HOUSE_COLS + col).setDepth((ty + 1) * TILE + 20)
+      this.add.image(x, (ty + 1) * TILE + 8, 'house', 21 * HOUSE_COLS + col).setDepth((ty + 1) * TILE + 20)
+      this.occupied.add(this.key(tx, ty))
+    }
+    // rangée festive de bannières colorées -> ambiance de marché (déco bois/étals à venir avec les vrais assets)
+    const cols = [22, 24, 26, 28] // rouge / diamant / S / crâne (variété)
+    cols.forEach((c, i) => banner(cx - 3 + i * 2, cy - 5, c))
   }
 
   /** Feu de camp central (élément focal de la place, avec collision). */
