@@ -137,6 +137,9 @@ const MONSTERS_BY_BIOME = {
 // frontières déformées par le bruit -> régions qui s'emboîtent, PAS d'anneaux ni de bandes. Le
 // village est dans une petite clairière au sein d'une zone de forêt.
 const ZONE_WARP = 16 // déformation (tuiles) des frontières de zones (Voronoi) -> bords organiques, pas droits
+// rayon (tuiles) de la CLAIRIÈRE de prairie autour du village (= zone sûre). Agrandi pour un vrai hub
+// « façon WoW » (objectif 50 joueurs). Utilisé par biomeAt, paintGrassBiomes et le mur de zone sûre.
+const VILLAGE_CLEAR_R = 18
 const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île -> casse la symétrie (décalé à l'EST)
 const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
@@ -155,7 +158,7 @@ const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en
 // CYCLE JOUR/NUIT : voile bleu nuit plein écran dont l'opacité suit l'heure. Cycle complet = 20 min.
 const DAY_CYCLE_MS = 1200000 // durée d'un cycle jour->nuit->jour (20 min)
 const NIGHT_MAX_ALPHA = 0.55 // opacité du voile au plus profond de la nuit (nuit "moyenne", lisible)
-const VILLAGE_LIGHT_R = 22 * TILE // rayon (px) du trou dans le voile de nuit : village + prairie restent de jour
+const VILLAGE_LIGHT_R = 24 * TILE // rayon (px) du trou dans le voile de nuit : village + prairie restent de jour (clairière agrandie)
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
@@ -1176,7 +1179,7 @@ export default class GameScene extends Phaser.Scene {
           if (t) {
             const dv = Math.hypot(tx - this.cx, ty - this.cy)
             const ang = Math.atan2(ty - this.cy, tx - this.cx)
-            const clearR = 14 * (1 + 0.25 * Math.sin(ang * 2 + 1)) + this.noise2D(tx, ty) * 2 // = bord de prairie
+            const clearR = VILLAGE_CLEAR_R * (1 + 0.25 * Math.sin(ang * 2 + 1)) + this.noise2D(tx, ty) * 2 // = bord de prairie
             const k = Phaser.Math.Clamp((dv - clearR) / 3 + this.noise2D(tx, ty) * 0.06, 0, 1) // bande courte (~3 tuiles)
             // forêt profonde : 3 verts proches par TACHES MOYENNES (bruit CONTINU quantifié) -> ni damier par
             // tuile, ni énormes nappes : des zones de vert de quelques tuiles.
@@ -1241,7 +1244,7 @@ export default class GameScene extends Phaser.Scene {
     // petit bourg dégagé autour du village (clairière irrégulière ~11 tuiles) -> le village est DANS
     // la forêt, ce n'est PAS un grand ovale concentrique
     const dv = Math.hypot(tx - this.cx, ty - this.cy)
-    const clearR = 14 * (1 + 0.25 * Math.sin(Math.atan2(ty - this.cy, tx - this.cx) * 2 + 1)) + this.noise2D(tx, ty) * 2
+    const clearR = VILLAGE_CLEAR_R * (1 + 0.25 * Math.sin(Math.atan2(ty - this.cy, tx - this.cx) * 2 + 1)) + this.noise2D(tx, ty) * 2
     if (dv < clearR) return 'prairie'
     // zone (graine) la plus proche en distance DÉFORMÉE -> Voronoi à frontières organiques
     const wx = tx + this.noise2D(tx, ty) * ZONE_WARP
@@ -2235,7 +2238,7 @@ export default class GameScene extends Phaser.Scene {
     const dx = mon.x - cxp
     const dy = mon.y - cyp
     const ang = Math.atan2(dy, dx)
-    const wallR = 14 * (1 + 0.25 * Math.sin(ang * 2 + 1)) + 2 // bord externe de la prairie (en tuiles)
+    const wallR = VILLAGE_CLEAR_R * (1 + 0.25 * Math.sin(ang * 2 + 1)) + 2 // bord externe de la prairie (en tuiles)
     if (Math.hypot(dx, dy) / TILE >= wallR) return // déjà dehors -> rien
     const nx = Math.cos(ang) // direction VERS L'EXTÉRIEUR
     const ny = Math.sin(ang)
@@ -2991,11 +2994,11 @@ export default class GameScene extends Phaser.Scene {
   paintVillageGround() {
     const cx = this.cx
     const cy = this.cy
-    // place centrale (herbe foncée) : ellipse autour du spawn/marchand
+    // grande esplanade centrale (herbe foncée) : ellipse autour du spawn/marchand (agrandie pour le hub)
     const plaza = new Set()
-    for (let dx = -8; dx <= 8; dx++) {
-      for (let dy = -5; dy <= 5; dy++) {
-        if ((dx * dx) / 64 + (dy * dy) / 25 <= 1) plaza.add(this.key(cx + dx, cy + dy))
+    for (let dx = -11; dx <= 11; dx++) {
+      for (let dy = -7; dy <= 7; dy++) {
+        if ((dx * dx) / 121 + (dy * dy) / 49 <= 1) plaza.add(this.key(cx + dx, cy + dy))
       }
     }
     // rabote les "tétons" d'1 tuile (haut/bas) : retire les cellules isolées horizontalement
