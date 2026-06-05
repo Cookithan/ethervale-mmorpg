@@ -10,13 +10,13 @@ import { makeSave, writeSave, hasSave, loadSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
 
 const MONSTER_COUNT = 170 // base de population (répartie par surface de biome × mult ci-dessous)
-const MONSTER_GAP = 7 // distance mini entre deux monstres au spawn/respawn (en tuiles)
+const MONSTER_GAP = 10 // distance mini entre deux monstres au spawn/respawn (en tuiles) — espacés, pas de paquets
 const MAX_CHASERS = 2 // PLAFOND d'aggro : nb max de monstres normaux qui poursuivent le joueur en même temps
-// réglage par biome : forêt (jungle) = PLUS dense ; tous bien espacés (pas de paquets).
+// réglage par biome : forêt (jungle) = un peu plus dense ; tous BIEN espacés (distance mini accrue).
 const BIOME_SPAWN = {
-  forest: { mult: 1.5, gap: 7 }, // jungle : densité augmentée, espacée
-  desert: { mult: 1.2, gap: 8 }, // plus aéré
-  snow: { mult: 1.2, gap: 8 },
+  forest: { mult: 1.3, gap: 10 }, // jungle : densité un cran au-dessus, mais espacée
+  desert: { mult: 1.1, gap: 12 }, // plus aéré
+  snow: { mult: 1.1, gap: 12 },
 }
 // Budget de mobs par biome proportionnel à sa surface jouable (aucune zone vide/surchargée),
 // puis placés en ISOLÉS bien espacés (pas de camps -> pas de zones vides, élites jamais en nid).
@@ -4423,6 +4423,7 @@ export default class GameScene extends Phaser.Scene {
     if (!boss?.active || boss.hp <= 0 || !player?.active || player.hp <= 0) return
     const proj = this.enemyProjectiles.get(boss.x, boss.y)
     if (!proj) return
+    proj.dieOnWater = true // ne traverse pas l'eau
     const def = boss.def || {}
     const dmg = Math.round((def.projDamage ?? 14) * (boss.dmgScale ?? 1)) // boss = stats fixes (dmgScale, plus lvlMul)
     const fx = { anim: 'fx-fireball', tex: 'fx_fireball', scale: 1.6 } // boule de feu ROUGE (asset du pack, pas de teinte)
@@ -4433,6 +4434,41 @@ export default class GameScene extends Phaser.Scene {
     const ty = player.y + (player.body?.velocity.y ?? 0) * (lead / 1000)
     proj.fire(boss.x, boss.y - 6, tx, ty, dmg, this.time.now, null, 0xffffff, fx, def.projSpeed ?? 155)
     Audio.sfx(SFX.magic, { vol: 0.5, detune: -300 }) // "blop" magique grave
+  }
+
+  /** Tir d'un MOB normal (def.mobAtk type 'shoot') : projectile ESQUIVABLE (pas de homing, léger lead). */
+  mobFireProjectile(mon, player, cfg) {
+    if (!mon?.active || mon.hp <= 0 || !player?.active || player.hp <= 0) return
+    const proj = this.enemyProjectiles.get(mon.x, mon.y)
+    if (!proj) return
+    proj.dieOnWater = true // ne traverse pas l'eau (anti-tir à travers une rivière)
+    const dmg = Math.max(1, Math.round(mon.damage * (cfg.dmgMul ?? 1)))
+    const fx = cfg.fx ?? { tex: 'fx_energyball', anim: 'fx-energyball', tint: true, scale: 1 }
+    const lead = cfg.lead ?? 80 // léger biais d'avance -> esquive moins triviale mais possible
+    const tx = player.x + (player.body?.velocity.x ?? 0) * (lead / 1000)
+    const ty = player.y + (player.body?.velocity.y ?? 0) * (lead / 1000)
+    proj.fire(mon.x, mon.y - 4, tx, ty, dmg, this.time.now, null, cfg.projTint ?? 0xffffff, fx, cfg.projSpeed ?? 165)
+    Audio.sfx(SFX.magic, { vol: 0.4, detune: cfg.sfxDetune ?? -120 })
+  }
+
+  /** Cercle de danger au sol pendant le télégraphe d'une attaque de ZONE d'un mob (def.mobAtk type 'zone'). */
+  mobZoneTelegraph(x, y, cfg) {
+    const r = cfg.hitRadius ?? 40
+    const col = cfg.color ?? 0xff7a3a
+    const zone = this.add.circle(x, y, r, col, 0.16).setDepth(y - 2)
+    const ring = this.add.circle(x, y, r, col, 0).setStrokeStyle(2, col, 0.85).setDepth(y - 1)
+    this.tweens.add({ targets: zone, fillAlpha: 0.4, duration: (cfg.windup ?? 500) / 2, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    this.time.delayedCall((cfg.windup ?? 500) + 90, () => { this.tweens.killTweensOf(zone); zone.destroy(); ring.destroy() })
+  }
+
+  /** Impact d'une attaque de ZONE d'un mob : onde qui s'étend + dégâts au joueur s'il est dans le rayon. */
+  mobZoneImpact(mon, x, y, cfg) {
+    const r = cfg.hitRadius ?? 40
+    const col = cfg.color ?? 0xff7a3a
+    const wave = this.add.circle(x, y, 8).setStrokeStyle(5, col, 0.95).setDepth(y + 1)
+    this.tweens.add({ targets: { v: 0 }, v: 1, duration: 320, ease: 'Cubic.out', onUpdate: (tw, t) => { wave.setRadius(8 + (r - 8) * t.v); wave.setAlpha(0.9 * (1 - t.v)) }, onComplete: () => wave.destroy() })
+    if (this.dist(this.player.x, this.player.y, x, y) <= r) { this.player.takeDamage(Math.round(mon.damage * (cfg.dmgMul ?? 1.4)), this.time.now); this.flashHurt() }
+    Audio.sfx(SFX.hit, { vol: 0.5, detune: -200 })
   }
 
   /** DÉLUGE d'un boss (Tengu) : une VOLÉE de boules de feu en éventail vers le joueur (sans homing ->
@@ -4450,6 +4486,7 @@ export default class GameScene extends Phaser.Scene {
       const ang = base + (i - (shots - 1) / 2) * gap // orbes régulièrement espacés autour de la visée
       const proj = this.enemyProjectiles.get(boss.x, boss.y)
       if (!proj) continue
+      proj.dieOnWater = true // ne traverse pas l'eau
       proj.fire(boss.x, boss.y - 6, boss.x + Math.cos(ang) * 200, boss.y + Math.sin(ang) * 200, dmg, this.time.now, null, 0xffffff, fx, speed)
     }
     Audio.sfx(SFX.magic, { vol: 0.6, detune: -150 })

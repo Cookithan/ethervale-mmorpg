@@ -12,50 +12,60 @@ export const MONSTER_TYPES = {
   // `loot` (table par ESPÈCE) : gold [min,max] ; mat = MATÉRIAU empilable lâché (id, drop fréquent) ;
   // matChance = proba du matériau ; gear = proba d'un ÉQUIPEMENT (rareté pondérée + scaling de zone).
   mushroom: {
-    key: 'mon_mushroom', hp: 90, speed: 22, damage: 24, xp: 36, aggro: 70, scale: 1.5, name: 'Champignon',
+    key: 'mon_mushroom', hp: 180, speed: 20, damage: 22, xp: 42, aggro: 70, scale: 1.5, name: 'Champignon',
     tier: 'rare', loot: { gold: [4, 9], mat: 'mat_essence', matChance: 0.5, gear: 0.14 },
+    mobAtk: { type: 'zone', range: 92, windup: 720, cooldown: 5200, hitRadius: 50, dmgMul: 1.3, color: 0x9be04a }, // nuage de spores (cadence lente)
   },
   lizard: {
-    key: 'mon_lizard', hp: 30, speed: 72, damage: 5, xp: 8, aggro: 130, scale: 0.9, name: 'Lézard',
+    key: 'mon_lizard', hp: 22, speed: 76, damage: 5, xp: 8, aggro: 130, scale: 0.9, name: 'Lézard',
     tier: 'common', loot: { gold: [1, 3], mat: 'mat_leather', matChance: 0.45, gear: 0.1 },
+    mobAtk: { type: 'shoot', range: 150, windup: 520, cooldown: 3200, projSpeed: 150, dmgMul: 0.85, projTint: 0xbfe04a, fx: { tex: 'fx_energyball', anim: 'fx-energyball', tint: true, scale: 0.85 } }, // crachat (pression sur les classes à distance dès le début)
   },
   racoon: {
     key: 'mon_racoon', hp: 55, speed: 46, damage: 8, xp: 16, aggro: 105, scale: 1.1, name: 'Raton',
     tier: 'common', loot: { gold: [2, 5], mat: 'mat_bone', matChance: 0.45, gear: 0.12 }, // Os dès la zone de départ (base des potions)
+    mobAtk: { type: 'lunge', range: 110, windup: 480, speed: 240, duration: 220, dmgMul: 1.5, cooldown: 3000, hitRadius: 16 }, // charge griffue
   },
 
   // --- désert ---
   snake: {
     key: 'mon_snake', hp: 40, speed: 82, damage: 10, xp: 18, aggro: 135, scale: 1.0, name: 'Serpent',
     tier: 'common', loot: { gold: [2, 6], mat: 'mat_leather', matChance: 0.45, gear: 0.12 },
+    mobAtk: { type: 'lunge', range: 120, windup: 380, speed: 300, duration: 230, dmgMul: 1.6, cooldown: 2600, hitRadius: 16 }, // morsure-éclair
   },
   spider: {
     key: 'mon_spider', hp: 60, speed: 56, damage: 12, xp: 22, aggro: 110, scale: 1.1, name: 'Araignée',
     tier: 'rare', loot: { gold: [3, 7], mat: 'mat_essence', matChance: 0.5, gear: 0.16 },
+    mobAtk: { type: 'shoot', range: 170, windup: 520, cooldown: 2400, projSpeed: 165, dmgMul: 1, projTint: 0x9be04a, fx: { tex: 'fx_energyball', anim: 'fx-energyball', tint: true, scale: 1.0 } }, // crachat venimeux
   },
 
   // --- neige ---
   owl: {
     key: 'mon_owl', hp: 55, speed: 70, damage: 14, xp: 26, aggro: 120, scale: 1.0, name: 'Hibou',
     tier: 'rare', loot: { gold: [3, 8], mat: 'mat_essence', matChance: 0.5, gear: 0.16 },
+    mobAtk: { type: 'lunge', range: 150, windup: 360, speed: 320, duration: 240, dmgMul: 1.6, cooldown: 2800, hitRadius: 16 }, // plongée
   },
   bear: {
     key: 'mon_bear', hp: 130, speed: 30, damage: 22, xp: 42, aggro: 80, scale: 1.5, name: 'Ours',
     tier: 'epic', loot: { gold: [5, 11], mat: 'mat_leather', matChance: 0.55, gear: 0.2 },
+    mobAtk: { type: 'zone', range: 72, windup: 560, cooldown: 3400, hitRadius: 56, dmgMul: 1.5, color: 0xffcaa0 }, // coup de terre
   },
 
   // --- terres maudites ---
   skull: {
     key: 'mon_skull', hp: 80, speed: 50, damage: 18, xp: 34, aggro: 115, scale: 1.1, name: 'Crâne',
     tier: 'rare', loot: { gold: [5, 10], mat: 'mat_bone', matChance: 0.5, gear: 0.18 },
+    mobAtk: { type: 'shoot', range: 180, windup: 560, cooldown: 2400, projSpeed: 165, dmgMul: 1, projTint: 0xc070ff, fx: { tex: 'fx_energyball', anim: 'fx-energyball', tint: true, scale: 1.1 } }, // orbe maudite
   },
   spirit: {
     key: 'mon_spirit', hp: 50, speed: 92, damage: 16, xp: 30, aggro: 140, scale: 1.0, name: 'Esprit',
     tier: 'rare', loot: { gold: [4, 9], mat: 'mat_bone', matChance: 0.5, gear: 0.18 },
+    mobAtk: { type: 'shoot', range: 190, windup: 460, cooldown: 2000, projSpeed: 185, dmgMul: 0.9, projTint: 0x9fe0ff, fx: { tex: 'fx_energyball', anim: 'fx-energyball', tint: true, scale: 0.95 } }, // orbe spectrale rapide
   },
   flam: {
     key: 'mon_flam', hp: 105, speed: 40, damage: 26, xp: 48, aggro: 100, scale: 1.3, name: 'Démon de feu',
     tier: 'epic', loot: { gold: [7, 14], mat: 'mat_crystal', matChance: 0.5, gear: 0.22 },
+    mobAtk: { type: 'shoot', range: 180, windup: 520, cooldown: 2400, projSpeed: 165, dmgMul: 1.1, fx: { tex: 'fx_fireball', anim: 'fx-fireball', scale: 1.3 } }, // boule de feu
   },
 
   // --- BOSS DE RAID (intuables en solo, contenu verrouillé / multijoueur Phase 4) ---
@@ -178,6 +188,7 @@ export const MONSTER_TYPES = {
 
 const TOUCH_COOLDOWN = 700 // délai entre 2 morsures au contact (ms)
 const LEASH_RANGE = 120 // distance parcourue depuis l'endroit où elle t'a repéré avant d'abandonner (px) — poursuite courte
+const HIT_AGGRO_GRACE = 5000 // tant qu'un mob a été FRAPPÉ il y a moins de ça (ms), il n'abandonne PAS (ne rentre pas au spawn)
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
 const PATROL_RADIUS = 80 // rayon autour duquel un BOSS rôde/garde son repaire avant d'être provoqué (px)
 const BOSS_GUARD_LEASH = 220 // tant que le combat n'a PAS commencé, le boss ne poursuit pas au-delà (revient au repaire)
@@ -280,6 +291,12 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.attackAngle = 0 // direction verrouillée de la charge (posée au début du télégraphe)
     this.charging = false // en plein dash (dégâts majorés au contact)
     this.chargeHitDone = false // un seul gros coup par dash
+    // ATTAQUE SPÉCIALE DES MOBS normaux (def.mobAtk : lunge/shoot/zone) — moteur léger, distinct des boss
+    this.mobPhase = 'idle' // idle | telegraph | dash | recover
+    this.mobUntil = 0
+    this.nextMobAtk = 0
+    this.mobAngle = 0
+    this.mobDashHit = false
     if (this.dragon) this.setupDragon()
     else if (this.rig) this.playRig('idle')
     else this.anims.play(`mon-${typeKey}-down`, true)
@@ -342,6 +359,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
    *  `force` = true quand le monstre a été FRAPPÉ (il contre-attaque toujours, hors plafond). */
   engage(force = false) {
     if (this.aggroed) return
+    if (!this.isBoss && this.scene.currentBiome === 'prairie') return // joueur dans la zone sûre -> les mobs le snobent (même frappés)
     // PLAFOND D'AGGRO : seul un petit nombre de monstres NORMAUX peut poursuivre le joueur à la fois
     // (sinon un biome dense te submerge ; en multi, un joueur ne pourrait pas "ramasser" tout le biome).
     if (!force && !this.isBoss && this.scene.aggroSlotFree && !this.scene.aggroSlotFree()) return
@@ -688,6 +706,14 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.seaPatrol) return false // dragon de mer d'ambiance : intouchable tant que la nage n'existe pas
     this.hp -= amount
     this.engage(true) // frappé = engagé TOUJOURS (hors plafond d'aggro) : un monstre frappé contre-attaque
+    // ...SAUF si le joueur est dans la zone sûre (prairie) : on le snobe même frappé (anti-cheese du bord)
+    if (this.isBoss || this.scene.currentBiome !== 'prairie') {
+      this.lastHitAt = this.scene.time.now // frappé : ne lâchera pas tant qu'on le tape (cf. HIT_AGGRO_GRACE)
+      this.returning = false // s'il rentrait au spawn, il fait demi-tour et revient au combat
+      this.aggroed = true
+      this.leashX = this.x // ré-ancre le leash là où il vient d'être frappé (poursuite repart de zéro)
+      this.leashY = this.y
+    }
     this.setTintFill(0xffffff)
     this.scene.time.delayedCall(80, () => {
       if (!this.active) return
@@ -863,11 +889,13 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
     // biome courant du monstre (sert à la zone sûre prairie ET au verrou de biome ci-dessous)
     const curBiome = this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16))
-    // la prairie est une zone sûre : un monstre NORMAL qui y pénètre abandonne et rentre.
-    // Les BOSS sont implacables (aucune fuite possible) -> ils ignorent la zone sûre.
-    if (!this.isBoss && curBiome === 'prairie') {
+    // ZONE SÛRE (prairie/village) : un mob NORMAL SNOBE le joueur si LUI-MÊME y est OU si LE JOUEUR y est.
+    // -> pas d'aggro, pas de poursuite contre le mur invisible, pas de tir dans la prairie. Les BOSS l'ignorent.
+    const playerInPrairie = this.scene.currentBiome === 'prairie'
+    if (!this.isBoss && (curBiome === 'prairie' || playerInPrairie)) {
       this.aggroed = false
-      this.returning = true
+      if (homeDist > HOME_RADIUS) this.returning = true
+      if (this.mobPhase !== 'idle') { this.mobPhase = 'idle'; this.setVelocity(0, 0); this.clearTint(); if (this.baseTint != null) this.setTint(this.baseTint) } // annule un pattern en cours
     }
 
     // machine à états (patrouille / poursuite / retour) avec leash.
@@ -878,10 +906,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     } else if (this.aggroed) {
       // Monstre normal : abandonne après LEASH_RANGE, OU dès qu'il QUITTE son biome d'origine.
       if (!this.isBoss) {
+        const recentlyHit = this.lastHitAt && time - this.lastHitAt < HIT_AGGRO_GRACE // tant qu'on le tape : n'abandonne pas
         const leashDist = Math.hypot(this.leashX - this.x, this.leashY - this.y)
-        if (leashDist > this.leashRange || curBiome !== this.homeBiome) {
+        if (!recentlyHit && (leashDist > this.leashRange || curBiome !== this.homeBiome)) {
           this.aggroed = false
-          this.returning = true // a lâché le joueur : rentre au spawn
+          this.returning = true // a lâché le joueur (et plus frappé) : rentre au spawn
         }
       } else if (!this.combatEngaged && homeDist > BOSS_GUARD_LEASH) {
         // BOSS pas encore en COMBAT : il garde son repaire (te poursuit un peu puis revient) -> tu peux
@@ -892,6 +921,15 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     } else if (dist < this.aggroRange) {
       // s'engage parce que le joueur est venu TROP PRÈS (l'engagement par coup reçu = takeDamage)
       this.engage()
+    }
+
+    // ATTAQUE SPÉCIALE DES MOBS (lunge/shoot/zone) : si engagé et un pattern occupe le mob -> on saute la nav.
+    if (!this.isBoss && this.def.mobAtk && this.aggroed && this.updateMobAttack(time, player, dx, dy, dist)) {
+      if (this.alert?.visible) this.alert.setPosition(this.x, this.y - this.barOffsetY - 6)
+      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+      this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)
+      this.updateHpBar(time)
+      return
     }
 
     if (this.aggroed) {
@@ -1015,9 +1053,70 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  /** ATTAQUE SPÉCIALE d'un mob normal (def.mobAtk). Renvoie true tant qu'une phase l'occupe (l'appelant saute
+   *  alors la nav/morsure). Types : `lunge` (bond télégraphié), `shoot` (tir esquivable), `zone` (AoE au sol). */
+  updateMobAttack(time, player, dx, dy, dist) {
+    const cfg = this.def.mobAtk
+    if (!cfg) return false
+    // mobs de bas niveau (zones de départ) = compétences PLUS LENTES : télégraphe + cadence allongés
+    const slow = this.level <= 1 ? 1.7 : this.level <= 2 ? 1.4 : 1
+    if (this.mobPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      this._mobBlink(time, cfg) // clignote en avertissement
+      if (time >= this.mobUntil) {
+        this.clearTint(); if (this.baseTint != null) this.setTint(this.baseTint)
+        if (cfg.type === 'lunge') {
+          this.mobPhase = 'dash'; this.mobUntil = time + (cfg.duration ?? 230); this.mobDashHit = false
+          this.setVelocity(Math.cos(this.mobAngle) * cfg.speed, Math.sin(this.mobAngle) * cfg.speed)
+        } else if (cfg.type === 'shoot') {
+          this.scene.mobFireProjectile?.(this, player, cfg)
+          this.mobPhase = 'recover'; this.mobUntil = time + (cfg.recover ?? 250)
+        } else { // zone
+          this.scene.mobZoneImpact?.(this, this.zoneX, this.zoneY, cfg)
+          this.mobPhase = 'recover'; this.mobUntil = time + (cfg.recover ?? 300)
+        }
+      }
+      return true
+    }
+    if (this.mobPhase === 'dash') {
+      if (!this.mobDashHit) { // un seul coup par bond (test de distance, esquivable hors de l'axe)
+        const reach = cfg.hitRadius ?? (this.body.halfWidth + 10)
+        if (dist <= reach && player.takeDamage(Math.round(this.damage * (cfg.dmgMul ?? 1.5)), time)) this.mobDashHit = true
+      }
+      if (time >= this.mobUntil) { this.mobPhase = 'recover'; this.mobUntil = time + (cfg.recover ?? 260); this.setVelocity(0, 0) }
+      return true
+    }
+    if (this.mobPhase === 'recover') {
+      this.setVelocity(0, 0)
+      if (time >= this.mobUntil) { this.mobPhase = 'idle'; this.nextMobAtk = time + (cfg.cooldown ?? 2500) * slow }
+      return true
+    }
+    // idle : déclenche si à portée, cooldown écoulé, pas étourdi/effrayé
+    const blocked = (this.stunUntil && time < this.stunUntil) || (this.fearUntil && time < this.fearUntil)
+    if (!blocked && time >= this.nextMobAtk && dist <= cfg.range) {
+      this.mobPhase = 'telegraph'; this.mobUntil = time + (cfg.windup ?? 450) * slow; this.mobAngle = Math.atan2(dy, dx)
+      this.setVelocity(0, 0)
+      this.facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down')
+      if (!this.rig) this.anims.play(`mon-${this.typeKey}-${this.facing}`, true)
+      if (cfg.type === 'zone') {
+        this.zoneX = cfg.target === 'player' ? player.x : this.x
+        this.zoneY = cfg.target === 'player' ? player.y : this.y
+        this.scene.mobZoneTelegraph?.(this.zoneX, this.zoneY, cfg)
+      }
+      return true
+    }
+    return false
+  }
+
+  /** Clignotement orange d'avertissement pendant le télégraphe d'attaque d'un mob (tint blanc = neutre). */
+  _mobBlink(time, cfg) {
+    this.setTint(Math.floor(time / 110) % 2 === 0 ? (cfg.tellColor ?? 0xffd24a) : 0xffffff)
+  }
+
   /** Tente de mordre le joueur au contact. Renvoie true si un coup a porté. Pendant une charge (dash),
    *  les dégâts sont majorés (×dmgMul). */
   tryBite(player, now) {
+    if (!this.isBoss && this.mobPhase !== 'idle') return false // en plein pattern spécial : pas de morsure en plus
     if ((this.stunUntil && now < this.stunUntil) || (this.fearUntil && now < this.fearUntil)) return false // étourdi/effrayé : ne mord pas
     if (this.isBoss && !this.combatEngaged) return false // boss endormi : ne mord pas tant qu'on ne l'a pas réveillé
     if (this.def.charge) return false // boss à CHARGE : ne blesse QUE par son dash (test de distance) -> mêlée sûre entre 2 charges

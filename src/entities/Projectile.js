@@ -65,6 +65,8 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
 
   update(time) {
     if (!this.active) return
+    // projectile ENNEMI : meurt au-dessus de l'eau (ne franchit pas rivières/océan -> pas de tir à travers l'eau)
+    if (this.dieOnWater && this.scene.isOnWater?.(this.x, this.y)) { this.kill(); return }
     // cible proche encore vivante : on courbe la boule vers elle (suivi progressif,
     // pas un verrouillage parfait -> une cible rapide/de côté peut être ratée)
     if (this.target) {
