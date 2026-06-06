@@ -2667,7 +2667,13 @@ export default class GameScene extends Phaser.Scene {
           const uy = by / (bd || 1)
           bb.position.set(a.cx + ux * bmax - bb.halfWidth, a.cy + uy * bmax - bb.halfHeight)
           const vr = bb.velocity.x * ux + bb.velocity.y * uy
-          if (vr > 0) { bb.velocity.x -= vr * ux; bb.velocity.y -= vr * uy }
+          if (vr > 0) {
+            // Boss en CHARGE qui percute le mur -> ARRÊT NET. Sinon on ne retire QUE la composante radiale et
+            // il GLISSE tangentiellement le long du mur : il a alors l'air de ne PAS suivre la direction de son
+            // dash (bug signalé). Le dash va donc droit jusqu'au mur puis s'arrête, conforme au télégraphe.
+            if (a.boss.charging) bb.velocity.set(0, 0)
+            else { bb.velocity.x -= vr * ux; bb.velocity.y -= vr * uy } // hors charge : glisse le long du mur (nav normale)
+          }
         }
       }
       return
