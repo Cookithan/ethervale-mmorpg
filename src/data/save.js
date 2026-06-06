@@ -60,6 +60,7 @@ export function makeSave(player, character) {
     deathsSinceRecovery: player.deathsSinceRecovery,
     setPity: player.setPity, // compteur anti-malchance des pièces de panoplie (par id)
     reviveCharge: player.reviveCharge, // bénédiction de résurrection (Soigneur, set) en attente
+    exploredFog: player.exploredFog, // brouillard de guerre : cellules de carte déjà explorées
     x: Math.round(player.x),
     y: Math.round(player.y),
   }

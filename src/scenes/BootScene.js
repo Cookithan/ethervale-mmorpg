@@ -245,6 +245,8 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('fx_magic_circle', 'assets/fx/magic_circle.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (cercle d'incantation au sol, teintable)
     this.load.spritesheet('fx_rock_spike', 'assets/fx/rock_spike.png', { frameWidth: 54, frameHeight: 48 }) // 10 frames (pic de roche — Onde de choc Tank)
     this.load.spritesheet('fx_spark', 'assets/fx/spark.png', { frameWidth: 30, frameHeight: 35 }) // 9 frames (étincelles — Cri intimidant Guerrier, teintable)
+    this.load.image('fog_clouds', 'assets/fx/fog.png') // 320×180 nuages blancs -> brouillard de guerre (monde + carte/minimap)
+    this.load.image('raylight', 'assets/fx/raylight.png') // 216×102 rayons de soleil (god rays, ambiance de JOUR)
 
     // icônes de la BARRE DE COMPÉTENCES (RPG Ability Icons, CC0) — 1 par sort + attaque (24×24)
     for (const key of ['skill_atk_melee', 'skill_atk_ranged', 'skill_charge', 'skill_whirlwind', 'skill_warcry',

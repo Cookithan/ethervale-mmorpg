@@ -537,6 +537,14 @@ export default class GameScene extends Phaser.Scene {
         },
       })
       this.spawnSeaDragon() // dragon qui rôde au large -> visible lors du dézoom de l'accueil
+      this.setupFog() // ACCUEIL : nuages sur la TERRE de l'île (jungle, côtes) ; la MER reste visible + éclaircie sur le village
+      // ÉCLAIRCIE DOUCE (dégradé radial) LIMITÉE au village -> sur la terre on ne voit QUE lui (la jungle reste nuageuse)
+      if (this.textures.exists('nightHole')) {
+        const clearD = 52 // diamètre ~ taille du village (fogtex = 1 px/tuile) -> ne déborde pas sur la forêt
+        const cImg = this.make.image({ x: 0, y: 0, key: 'nightHole', add: false }).setOrigin(0, 0).setDisplaySize(clearD, clearD)
+        this.fogRT.erase(cImg, this.cx - clearD / 2, this.cy - clearD / 2)
+      }
+      this.revealCoast() // la MER est dégagée (effacement DUR à la cellule -> aucune bavure sur la terre, bords couverts)
     } else {
       cam.useBounds = true // (l'instance peut avoir été utilisée en preview où on l'a mis à false)
       // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
@@ -545,6 +553,7 @@ export default class GameScene extends Phaser.Scene {
       cam.setZoom(3)
       cam.setRoundPixels(true)
       this.setupMinimap() // 2e caméra dézoomée (haut-droite) qui suit le joueur
+      this.setupFog() // brouillard de guerre : carte/minimap se dévoilent en explorant
       // CHUTE DE NEIGE (particules) : émetteur unique en avant-plan, activé seulement dans le biome neige
       // (updateSnowfall repositionne la zone d'émission sur le bord haut de la vue + start/stop selon le biome).
       this.snowEmitter = this.add.particles(0, 0, 'snow', {
@@ -640,6 +649,7 @@ export default class GameScene extends Phaser.Scene {
   /** Sauvegarde la partie (personnage + progression + position) dans le navigateur. */
   saveGame() {
     if (this.gameOver || !this.player) return
+    if (this.exploredCells) this.player.exploredFog = [...this.exploredCells] // brouillard : cellules explorées (carte révélée)
     writeSave(makeSave(this.player, this.character))
   }
 
@@ -696,6 +706,209 @@ export default class GameScene extends Phaser.Scene {
     g.generateTexture('mmtex', MAP_W, MAP_H)
     g.destroy()
     this.landBounds = { minX, minY, maxX, maxY } // pour cadrer la carte du monde (M) sur l'île
+  }
+
+  // ---------- brouillard de guerre (carte M + minimap) ----------
+
+  /** Prépare le brouillard : une RenderTexture (1 px/tuile, calée sur mmtex) entièrement SOMBRE au départ ;
+   *  explorer y EFFACE des disques -> les zones vues réapparaissent sur la minimap ET la carte M. La grille
+   *  grossière `exploredCells` est la vérité LOGIQUE (persistée + masquage des marqueurs non vus). */
+  setupFog() {
+    this.fogCell = 4 // tuiles par cellule logique d'exploration (grille pour la save + les marqueurs)
+    this.fogRevealCells = 4 // rayon de révélation autour du joueur, en cellules (~16 tuiles + pinceau) : PLUS LARGE
+    //                          que l'écran -> le brouillard reste HORS CHAMP quand on se balade (visible surtout sur la carte)
+    this.exploredCells = new Set()
+    this._lastFogKey = null
+    // PINCEAU d'effacement = disque blanc TRÈS adouci (centre opaque -> long fondu vers le bord) -> contours doux
+    this._fogBrushR = 5
+    if (!this.textures.exists('fogbrush')) {
+      const br = this._fogBrushR
+      const bg = this.make.graphics({ add: false })
+      for (let i = 0; i < 9; i++) { const t = i / 8; bg.fillStyle(0xffffff, 0.08 + 0.92 * t); bg.fillCircle(br, br, br * (1 - t * 0.9)) }
+      bg.generateTexture('fogbrush', br * 2, br * 2)
+      bg.destroy()
+    }
+    this._fogBrushImg = this.make.image({ x: 0, y: 0, key: 'fogbrush', add: false }).setOrigin(0, 0) // pinceau réutilisable -> effacement PROGRESSIF (alpha réglable)
+    this._fogFade = [] // cellules en cours de FONDU à la découverte (opacité 100 -> 0 sur ~2 s, cf. updateFogFade)
+    if (!this.textures.exists('fogsquare')) { // carré PLEIN (taille d'une cellule) -> effacement à la cellule, sans bavure
+      const sg = this.make.graphics({ add: false })
+      sg.fillStyle(0xffffff, 1).fillRect(0, 0, this.fogCell, this.fogCell)
+      sg.generateTexture('fogsquare', this.fogCell, this.fogCell)
+      sg.destroy()
+    }
+    if (!this.textures.exists('fogtile')) { // 1×1 -> effacement à la TUILE (révéler finement les rivières)
+      const tg = this.make.graphics({ add: false })
+      tg.fillStyle(0xffffff, 1).fillRect(0, 0, 1, 1)
+      tg.generateTexture('fogtile', 1, 1)
+      tg.destroy()
+    }
+    // RenderTexture NUAGEUSE couvrant toute la map, exposée en texture 'fogtex' (minimap + carte M + masque du monde)
+    if (this.textures.exists('fogtex')) this.textures.remove('fogtex')
+    this.fogRT = this.make.renderTexture({ width: MAP_W, height: MAP_H }, false)
+    this.fogRT.fill(0x3f4a5e, 1) // base OPAQUE bleu-gris -> alpha plein partout (= masque d'exploration, pas un noir total)
+    if (this.textures.exists('fog_clouds')) { // motif NUAGEUX par-dessus -> aspect « nuages » sur la carte M + la minimap
+      for (let yy = 0; yy < MAP_H; yy += 180) for (let xx = 0; xx < MAP_W; xx += 320) this.fogRT.draw('fog_clouds', xx, yy, 0.5, 0xcdd9ec)
+    }
+    this.fogRT.saveTexture('fogtex')
+    // CALQUE DE NUAGES dans le MONDE (brouillard de guerre visuel) : couvre tout, puis l'exploration le « déchire »
+    // autour du joueur. Masqué par 'fogtex' (opaque = inexploré -> nuages visibles ; effacé = vu -> ciel clair). Dérive douce.
+    if (this.textures.exists('fog_clouds')) {
+      this.fogWorldMask = this.add.image(0, 0, 'fogtex').setOrigin(0, 0).setScale(TILE).setVisible(false)
+      // VOILE OPAQUE sous les nuages : cache VRAIMENT le terrain inexploré (sinon on voyait les biomes ENTRE les
+      // bouffées). UNE seule couche de nuages diffus par-dessus pour le relief.
+      this.fogVeil = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0xb0bccd, 1).setOrigin(0, 0)
+      this.worldClouds = this.add.tileSprite(0, 0, MAP_W * TILE, MAP_H * TILE, 'fog_clouds')
+        .setOrigin(0, 0).setTileScale(3.6).setTint(0xeef3fb).setAlpha(0.5) // une SEULE couche de nuages, discrète
+      // voile + nuages dans UN SEUL container masqué UNE fois -> 1 passe GPU
+      this.fogGroup = this.add.container(0, 0, [this.fogVeil, this.worldClouds]).setDepth(8000)
+      this.fogGroup.setMask(this.fogWorldMask.createBitmapMask())
+      this.fogGroup.setAlpha(0.7) // brouillard à 70 % partout (jeu ET menu) -> on voit un peu le terrain à travers
+    }
+    // RAYLIGHT (god rays) : calque FIXE dans le monde (ne suit PAS la caméra -> on passe DESSOUS au lieu qu'il
+    // « colle » au perso). Subtil + blend additif, affiché UNIQUEMENT près de la MER et le JOUR (cf. updateDayNight).
+    if (this.textures.exists('raylight')) {
+      this.raylight = this.add.tileSprite(0, 0, MAP_W * TILE, MAP_H * TILE, 'raylight')
+        .setOrigin(0, 0).setDepth(8900).setBlendMode(Phaser.BlendModes.ADD).setTileScale(2.4).setTint(0xfff1c4).setAlpha(0)
+      this._rayAlpha = 0 // alpha lissé -> fondu doux en entrant/sortant du bord de mer
+    }
+    // EN JEU UNIQUEMENT (le MENU/preview gère sa propre éclaircie autour du village -> tout le reste reste nuageux) :
+    if (!this.preview) {
+      // recharge l'exploration sauvegardée (efface les disques correspondants, instantané)
+      const saved = this.saveData?.exploredFog
+      if (Array.isArray(saved)) {
+        for (const key of saved) {
+          this.exploredCells.add(key)
+          const [cx, cy] = key.split(',').map(Number)
+          this._eraseFogCell(cx, cy)
+        }
+      }
+      this.revealArea(this.cx, this.cy, 22, true) // village connu d'emblée (instant, pas de fondu au lancement)
+      this.revealFog(this.player.x, this.player.y) // + autour du spawn (en fondu)
+    }
+  }
+
+  /** Efface le brouillard au centre d'une cellule logique (cx,cy) -> la map apparaît dessous (texture 1 px/tuile). */
+  _eraseFogCell(cx, cy) {
+    const r = this._fogBrushR
+    const px = (cx + 0.5) * this.fogCell
+    const py = (cy + 0.5) * this.fogCell
+    this.fogRT?.erase('fogbrush', px - r, py - r)
+  }
+
+  /** Marque explorées les cellules autour de (px,py) et efface le brouillard correspondant. Ne fait du travail
+   *  qu'au CHANGEMENT de cellule (appel chaque frame = quasi gratuit le reste du temps). */
+  revealFog(px, py) {
+    if (!this.fogRT) return
+    const ccx = Math.floor(px / TILE / this.fogCell)
+    const ccy = Math.floor(py / TILE / this.fogCell)
+    const key0 = ccx + ',' + ccy
+    if (key0 === this._lastFogKey) return // toujours dans la même cellule -> rien à recalculer
+    this._lastFogKey = key0
+    this.revealArea(Math.floor(px / TILE), Math.floor(py / TILE), this.fogRevealCells * this.fogCell)
+  }
+
+  /** Révèle toutes les cellules dans un rayon de `radTiles` autour de (tx,ty). Par défaut le brouillard s'efface
+   *  en FONDU (opacité 100->0 sur ~2 s, cf. updateFogFade) ; `instant=true` l'efface d'un coup (setup/menu). */
+  revealArea(tx, ty, radTiles, instant = false) {
+    if (!this.fogRT) return
+    const cc = this.fogCell
+    const R = Math.max(1, Math.round(radTiles / cc))
+    const ccx = Math.floor(tx / cc)
+    const ccy = Math.floor(ty / cc)
+    const gw = Math.ceil(MAP_W / cc)
+    const gh = Math.ceil(MAP_H / cc)
+    for (let dy = -R; dy <= R; dy++) {
+      for (let dx = -R; dx <= R; dx++) {
+        if (dx * dx + dy * dy > R * R + R) continue // disque (coins arrondis)
+        const cx = ccx + dx
+        const cy = ccy + dy
+        if (cx < 0 || cy < 0 || cx >= gw || cy >= gh) continue
+        const key = cx + ',' + cy
+        if (this.exploredCells.has(key)) continue
+        this.exploredCells.add(key) // exploré tout de suite (logique/marqueurs) ; le VISUEL fond sur 2 s
+        if (instant) this._eraseFogCell(cx, cy)
+        else this._fogFade.push({ cx, cy, t: 0 })
+      }
+    }
+  }
+
+  /** FONDU de découverte : efface un PEU le brouillard à chaque frame sur les cellules fraîchement révélées,
+   *  jusqu'à disparition totale au bout de ~2 s (opacité 100 -> 0 en douceur, au lieu d'un effacement net). */
+  updateFogFade(delta) {
+    const list = this._fogFade
+    if (!list || !list.length) return
+    const r = this._fogBrushR
+    const aStep = Phaser.Math.Clamp(0.03 * delta / 16.67, 0, 1) // ~3 %/frame @60fps -> ~2 s pour s'effacer (ERASE = multiplicatif)
+    const remain = []
+    for (const c of list) {
+      c.t += delta
+      const done = c.t >= 2000
+      this._fogBrushImg.setAlpha(done ? 1 : aStep) // dernier passage = effacement PLEIN (pas de résidu)
+      this.fogRT.erase(this._fogBrushImg, (c.cx + 0.5) * this.fogCell - r, (c.cy + 0.5) * this.fogCell - r)
+      if (!done) remain.push(c)
+    }
+    this._fogFade = remain
+  }
+
+  /** true si la tuile (tx,ty) a déjà été explorée (utilisé par l'UI pour masquer les marqueurs non vus). */
+  isExplored(tx, ty) {
+    if (!this.exploredCells) return true // pas de brouillard (mode aperçu) -> tout visible
+    return this.exploredCells.has(Math.floor(tx / this.fogCell) + ',' + Math.floor(ty / this.fogCell))
+  }
+
+  /** true si une tuile d'OCÉAN est à moins de `rad` tuiles de la position monde (x,y) -> « bord de mer »
+   *  (échantillonné par pas de 3 pour le coût ; utilisé par le raylight pour ne s'allumer qu'au littoral). */
+  nearSea(x, y, rad = 7) {
+    const tx = Math.floor(x / TILE)
+    const ty = Math.floor(y / TILE)
+    for (let dy = -rad; dy <= rad; dy += 3) {
+      for (let dx = -rad; dx <= rad; dx += 3) {
+        if (this.isOcean(tx + dx, ty + dy)) return true
+      }
+    }
+    return false
+  }
+
+  /** ACCUEIL : la TERRE des îles reste 100 % sous les nuages, toute la MER est dégagée (nette). Le 100 % suit la
+   *  terre RÉELLE (pas l'eau pure) -> les chenaux entre îles restent visibles = îles SÉPARÉES. (au setup du menu) */
+  revealCoast() {
+    if (!this.fogRT) return
+    const cc = this.fogCell
+    const gw = Math.ceil(MAP_W / cc)
+    const gh = Math.ceil(MAP_H / cc)
+    const e = cc - 1
+    const m = cc >> 1
+    for (let cy = 0; cy < gh; cy++) {
+      for (let cx = 0; cx < gw; cx++) {
+        const x0 = cx * cc
+        const y0 = cy * cc
+        // nb de points d'EAU parmi 4 coins + centre de la cellule
+        const n = (this.isOcean(x0, y0) ? 1 : 0) + (this.isOcean(x0 + e, y0) ? 1 : 0) + (this.isOcean(x0, y0 + e) ? 1 : 0) + (this.isOcean(x0 + e, y0 + e) ? 1 : 0) + (this.isOcean(x0 + m, y0 + m) ? 1 : 0)
+        if (n === 5) {
+          this.fogRT.erase('fogsquare', x0, y0) // PLEINE MER -> efface toute la cellule (rapide)
+        } else if (n > 0) {
+          // CELLULE CÔTIÈRE (mer + terre) : effacement TUILE par tuile, uniquement l'eau -> le brouillard s'arrête
+          // EXACTEMENT au trait de côte (aucun débordage sur l'eau). La terre, elle, reste 100 % sous le brouillard.
+          for (let ty = y0; ty < y0 + cc; ty++) for (let tx = x0; tx < x0 + cc; tx++) {
+            if (this.isOcean(tx, ty)) this.fogRT.erase('fogtile', tx, ty)
+          }
+        }
+        // n === 0 -> pleine terre : on n'y touche pas (100 % brouillard)
+      }
+    }
+    // RIVIÈRES UNIQUEMENT (pas les lacs) : on suit la centerline de chaque rivière et on n'efface QUE les tuiles
+    // d'EAU autour (gate `waterCells` -> pas de berge, pas de lac) -> fines lignes claires qui divisent les biomes.
+    if (this.riverPaths && this.waterCells) {
+      for (const path of this.riverPaths) {
+        for (const p of path) {
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+            const tx = p.x + dx
+            const ty = p.y + dy
+            if (!this.isOcean(tx, ty) && this.waterCells.has(tx + ',' + ty)) this.fogRT.erase('fogtile', tx, ty)
+          }
+        }
+      }
+    }
   }
 
   // ---------- mode aperçu (fond vivant de l'écran d'accueil) ----------
@@ -794,6 +1007,7 @@ export default class GameScene extends Phaser.Scene {
       if (npc.label) npc.label.setPosition(npc.sprite.x, npc.sprite.y - 14)
     }
     this.seaDragon?.update(time) // le dragon rôde au large aussi à l'accueil (visible au dézoom)
+    if (this.worldClouds) { this.worldClouds.tilePositionX = time * 0.006; this.worldClouds.tilePositionY = time * 0.0032 } // nuages qui dérivent sur le menu
   }
 
   /** IA de balade légère : marche vers une cible LIBRE, pause, recommence (sans traverser le décor). */
@@ -2581,6 +2795,7 @@ export default class GameScene extends Phaser.Scene {
   /** Crée le Dragon de mer d'AMBIANCE : il LONGE la côte sans fin (chemin précalculé dans l'océan ;
    *  nage = ignore la collision ; aucune interaction tant que la nage n'existe pas). */
   spawnSeaDragon() {
+    return // DRAGON DE MER MASQUÉ temporairement (à réactiver plus tard) -> retirer ce return pour le réafficher
     const path = this.buildSeaPath()
     // espacement des segments voulu (~28 px) converti en indices de chemin (selon l'écart moyen des points)
     let len = 0
@@ -5052,6 +5267,8 @@ export default class GameScene extends Phaser.Scene {
     this.updateBoat() // barque sous le héros quand il navigue (A3)
     this.updateQuicksand(time) // sables mouvants du désert : aspiration + dégâts (après player.update)
     this.updateTarget(time) // réticule de la cible verrouillée + libération si elle meurt
+    this.revealFog(p.x, p.y) // brouillard de guerre : dévoile la carte/minimap autour du joueur
+    this.updateFogFade(delta) // fondu de découverte : l'opacité des zones fraîchement vues passe de 100 à 0 sur ~2 s
     // récupération du sac de mort (A1) : il faut d'abord s'en éloigner (armement), puis remarcher dessus
     if (p.deathBag && this.deathBagSprite) {
       const d = Phaser.Math.Distance.Between(p.x, p.y, this.deathBagSprite.x, this.deathBagSprite.y)
@@ -5376,6 +5593,14 @@ export default class GameScene extends Phaser.Scene {
     this.nightOverlay.setFillStyle(lerpHex(0x3a2e54, 0x070d28, n), 1)
     this.nightOverlay.setAlpha(NIGHT_MAX_ALPHA * n)
     // (le village/prairie reste de jour : trou permanent dans le voile via le masque radial inversé)
+    // AMBIANCE : nuages du monde qui DÉRIVENT doucement + GOD RAYS forts le jour (n=0), nuls la nuit (n=1)
+    if (this.worldClouds) { this.worldClouds.tilePositionX = time * 0.006; this.worldClouds.tilePositionY = time * 0.0032 }
+    if (this.raylight) { // god rays SUBTILS, UNIQUEMENT au bord de mer et le JOUR (n=0 plein jour -> 1 minuit) ; fondu doux
+      const p = this.player
+      const target = (p && this.nearSea(p.x, p.y, 7)) ? 0.12 * (1 - n) : 0
+      this._rayAlpha += (target - this._rayAlpha) * 0.05 // lissage -> pas de « pop » en entrant/sortant de la zone
+      this.raylight.setAlpha(this._rayAlpha)
+    }
   }
 
   /** true si (x,y) est à portée d'un foyer ALLUMÉ (zone-refuge de température). */

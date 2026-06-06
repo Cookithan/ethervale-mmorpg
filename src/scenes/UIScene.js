@@ -342,6 +342,8 @@ export default class UIScene extends Phaser.Scene {
     mmMaskG.fillStyle(0xffffff).fillRect(mmX, mmY, mmSize, mmSize)
     const mmMask = mmMaskG.createGeometryMask()
     this.minimapImg = this.textures.exists('mmtex') ? reg(this.add.image(mmX, mmY, 'mmtex').setOrigin(0, 0).setMask(mmMask)) : null
+    // BROUILLARD DE GUERRE : voile sombre 'fogtex' (par-dessus la map, SOUS les mobs) qui se dévoile en explorant
+    this.minimapFog = this.textures.exists('fogtex') ? reg(this.add.image(mmX, mmY, 'fogtex').setOrigin(0, 0).setMask(mmMask)) : null
     this.minimapMobs = reg(this.add.graphics().setMask(mmMask)) // points des mobs (redessinés chaque frame)
     reg(this.add.rectangle(mmX, mmY, mmSize, mmSize, 0x000000, 0).setOrigin(0, 0).setStrokeStyle(2, GOLD)) // cadre
     this.minimapDot = reg(this.add.circle(mmX + mmSize / 2, mmY + mmSize / 2, 3.5, 0x53e0ff).setStrokeStyle(1.5, 0x06243a))
@@ -1623,6 +1625,10 @@ export default class UIScene extends Phaser.Scene {
         pg.fillRect(ox + tx * cell, oy + ty * cell, cell + 0.6, cell + 0.6)
       }
     }
+    // BROUILLARD DE GUERRE : voile sombre 'fogtex' sur les zones non encore explorées (calé tuile/tuile sur
+    // le terrain via ox/oy/cell, recadré sur l'île). Les marqueurs (boss, PNJ, mobs) sont masqués plus bas
+    // tant que leur zone n'est pas explorée -> on découvre la carte en marchant.
+    if (this.textures.exists('fogtex')) reg(this.add.image(ox, oy, 'fogtex').setOrigin(0, 0).setScale(cell).setCrop(minX, minY, boxW, boxH).setDepth(301.8))
     reg(this.add.rectangle(leftX + mapPxW / 2, topY + mapPxH / 2, mapPxW, mapPxH).setStrokeStyle(2, GOLD).setDepth(302))
 
     // marqueur VILLAGE
@@ -1646,6 +1652,7 @@ export default class UIScene extends Phaser.Scene {
     // marqueurs des REPAIRES DE BOSS (plusieurs par zone) : un ☠ par repaire, nom court du boss
     for (const [biome, lairs] of Object.entries(g.bossLairs ?? {})) {
       lairs.forEach((lair, i) => {
+        if (!g.isExplored(lair.tx, lair.ty)) return // brouillard : repaire caché tant que la zone n'est pas explorée
         const bx = ox + lair.tx * cell
         const by = oy + lair.ty * cell
         const name = (g.bossDefs?.[biome]?.[i]?.name ?? 'Boss').split(',')[0] // "Gankai, le ..." -> "Gankai"
@@ -1654,8 +1661,9 @@ export default class UIScene extends Phaser.Scene {
       })
     }
 
-    // PNJ dispersés (petits points clairs)
+    // PNJ dispersés (petits points clairs) — masqués tant que leur zone n'est pas explorée
     for (const npc of g.wildNpcs ?? []) {
+      if (!g.isExplored(npc.tx, npc.ty)) continue // brouillard
       reg(this.add.circle(ox + npc.tx * cell, oy + npc.ty * cell, 2.5, 0xffe9a8).setDepth(303).setStrokeStyle(1, 0x6a5212))
     }
 
@@ -1664,6 +1672,7 @@ export default class UIScene extends Phaser.Scene {
       const mg = reg(this.add.graphics().setDepth(303.5))
       g.monsters.getChildren().forEach((m) => {
         if (!m.active) return
+        if (!g.isExplored(m.x / g.tile, m.y / g.tile)) return // brouillard : pas de mob révélé hors zone explorée
         const mx = ox + (m.x / g.tile) * cell
         const my = oy + (m.y / g.tile) * cell
         if (m.isBoss) {
@@ -2116,6 +2125,7 @@ export default class UIScene extends Phaser.Scene {
     const cy = this.mmGeom.y + this.mmGeom.size / 2
     this.minimapImg.setScale(scale)
     this.minimapImg.setPosition(cx - (p.x / tile) * scale, cy - (p.y / tile) * scale) // centre sur le joueur
+    if (this.minimapFog) this.minimapFog.setScale(scale).setPosition(this.minimapImg.x, this.minimapImg.y) // voile calé sur la map
     this.minimapDot.setPosition(cx, cy) // joueur toujours au centre
     // points des MOBS (rouge ; boss = orange plus gros), redessinés chaque frame
     const mobs = this.minimapMobs
