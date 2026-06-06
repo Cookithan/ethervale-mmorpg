@@ -416,7 +416,8 @@ export default class GameScene extends Phaser.Scene {
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
-    this.spawnForest()
+    // (plus de spawnForest : il ne posait que des arbres verts Ninja en PRAIRIE -> la prairie est une zone SÛRE, sans arbres ;
+    //  la forêt est peuplée par scatterForestTrees ci-dessous)
     this.spawnBiomeTrees()
     this.scatterForestTrees() // chênes Mystic Woods dans la forêt
     this.scatterForestUndergrowth() // sous-bois Ninja TOUFFU : fougères + buissons + fleurs (traversable)
@@ -471,7 +472,7 @@ export default class GameScene extends Phaser.Scene {
       this.hitMonster(mon, dmg, px, py, 0) // pas de recul (seul le Tank repousse) ; dégâts seuls
       // l'arme s'use quand un tir DU JOUEUR (pas d'un clone du Mage) porte -> Mage/Soigneur ET armes
       // lancées usent leur arme comme la mêlée (avant : seules les classes de mêlée l'usaient = bug).
-      if (!fromClone) { const broke = this.player.wearSlot('weapon'); if (broke) this.notifyBreak(broke) }
+      if (!fromClone) this.wearWeapon() // use l'arme (tir) + toast casse + avertissement durabilité faible
       // un clone qui TOUCHE un mob l'oblige à changer de cible (poursuit le 1er clone qui l'a touché)
       if (fromClone && fromClone.active && (!mon.lureTarget || !mon.lureTarget.active)) mon.lureTarget = fromClone
     })
@@ -3362,22 +3363,14 @@ export default class GameScene extends Phaser.Scene {
         mark(x - 1, y); mark(x, y); mark(x + 1, y)
       }
     }
-    // CHEMIN EN ROND : un ANNEAU de planches autour de la place centrale + raccord de chaque porte vers l'anneau.
-    const doors = this.villagers.map((v) => ({ x: v.nx, y: v.ny }))
+    // CHEMIN EN ROND : un ANNEAU de planches autour de la place centrale (+ soleil au centre). Les anciens RACCORDS
+    // RADIAUX porte->anneau ont été RETIRÉS : leurs zigzags 8-connectés se croisaient (effet « spaghetti »).
     const RING_R = 6 // rayon de l'anneau (tuiles)
     for (let i = 0; i < 72; i++) { // parcourt le cercle ; orientation de la planche = tangente (haut/bas = horizontale, côtés = verticale)
       const a = (i / 72) * Math.PI * 2
       const x = Math.round(cx + RING_R * Math.cos(a))
       const y = Math.round(cy + RING_R * Math.sin(a))
       rung(x, y, Math.abs(Math.sin(a)) >= Math.abs(Math.cos(a)))
-    }
-    for (const d of doors) { // raccord RADIAL court : de la porte vers le centre jusqu'à toucher l'anneau (pas de doublon parallèle)
-      let x = d.x; let y = d.y; let n = 0
-      while (Math.hypot(x - cx, y - cy) > RING_R + 0.5 && n < 8) {
-        if (Math.abs(x - cx) >= Math.abs(y - cy)) { x += Math.sign(cx - x); rung(x, y, true) } // se rapproche par l'axe le plus éloigné
-        else { y += Math.sign(cy - y); rung(x, y, false) }
-        n++
-      }
     }
     // MÉDAILLON central = l'étoile/soleil à 8 branches (4 tuiles centrales 5/6/9/10 de Paths.png), agrandie.
     const cxp = cx * TILE + 8
@@ -3721,12 +3714,24 @@ export default class GameScene extends Phaser.Scene {
     this.scene.get('UIScene')?.showToast?.(`${item.name} cassé ! (réparer chez Aldric)`, '#e06666')
   }
 
-  /** Rappel (throttlé) quand on attaque À MAINS NUES (arme cassée) : peu de dégâts -> va réparer. */
+  /** Use l'arme d'1 point. Toast à la CASSE (notifyBreak) + AVERTISSEMENT quand la durabilité passe sous 10
+   *  (1 seule fois, réarmé après réparation) -> le temps d'aller réparer chez Aldric avant la casse. */
+  wearWeapon() {
+    const w = this.player.equipped.weapon
+    const before = w?.durability ?? 0
+    const broke = this.player.wearSlot('weapon')
+    if (broke) { this.notifyBreak(broke); return }
+    if (w && before > 10 && w.durability <= 10) { // vient de franchir le seuil 10 -> alerte unique (orange)
+      this.scene.get('UIScene')?.showToast?.(`⚠ ${w.name} presque usée (${w.durability}) — répare chez Aldric`, '#ffae42')
+    }
+  }
+
+  /** Rappel (throttlé) quand on attaque SANS ARME (cassée/aucune) : on retombe sur un coup de MÊLÉE faible
+   *  (même pour un caster) -> va réparer/équiper une arme chez Aldric. */
   warnBrokenWeapon() {
-    const now = this.time.now
-    if (now < (this._brokenWarnAt ?? 0)) return
-    this._brokenWarnAt = now + 4000
-    this.scene.get('UIScene')?.showToast?.('Mains nues ! Répare ton arme chez Aldric le forgeron', '#e0a866')
+    if (this._brokenWarnShown) return // UNE SEULE fois par "épisode sans arme" (réarmé dès qu'on rééquipe une arme)
+    this._brokenWarnShown = true
+    this.scene.get('UIScene')?.showToast?.('Sans arme : coup de mêlée faible — équipe/répare chez Aldric', '#e0a866')
   }
 
   /** Décorations du village : lampadaires, barriques, caisses, fleurs (spots libres). */
@@ -3917,10 +3922,10 @@ export default class GameScene extends Phaser.Scene {
     proj.fire(p.x, p.y, tx, ty, p.attackPower, this.time.now, target, 0xffffff, weapon.proj)
   }
 
-  doAttack() {
+  doAttack(force = false) {
     if (this.uiBusy()) return
     const p = this.player
-    if (!p.abilities.melee) return // classe sans corps à corps (Mage/Soigneur)
+    if (!p.abilities.melee && !force) return // classe sans corps à corps (Mage/Soigneur) — SAUF coup désespéré sans arme (force=true)
     if (!p.startAttack(this.time.now)) return
 
     const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing]
@@ -3939,7 +3944,7 @@ export default class GameScene extends Phaser.Scene {
     if (weapon?.fx && this.anims.exists(weapon.fx)) this.showSlashFx(p.x, p.y, p.facing, weapon.fx)
     // MAINS NUES (arme cassée) : coup de poing -> son sourd (whoosh) + rappel de réparation ; sinon lame.
     if (p.unarmed) { Audio.sfx(SFX.whoosh, { vol: 0.45 }); this.warnBrokenWeapon() }
-    else Audio.sfx(SFX.slash, { vol: 0.5 }) // sifflement de la lame à chaque coup
+    else { Audio.sfx(SFX.slash, { vol: 0.5 }); this._brokenWarnShown = false } // lame en main -> réarme l'avertissement
 
     let hitAny = false
     this.monsters.getChildren().forEach((mon) => {
@@ -3955,8 +3960,7 @@ export default class GameScene extends Phaser.Scene {
     // l'arme s'use quand le coup porte ; casse à 0 -> notif
     if (hitAny) {
       Audio.sfx(SFX.hit, { vol: 0.45 }) // impact net quand le coup porte (1 fois par swing)
-      const broke = p.wearSlot('weapon')
-      if (broke) this.notifyBreak(broke)
+      this.wearWeapon() // use l'arme (mêlée) + toast casse + avertissement durabilité faible
     }
   }
 
@@ -4076,7 +4080,8 @@ export default class GameScene extends Phaser.Scene {
   shootForward() {
     if (this.uiBusy()) return
     const p = this.player
-    if (p.unarmed) this.warnBrokenWeapon() // arme cassée -> tir affaibli + rappel de réparation
+    if (p.unarmed) return this.doAttack(true) // SANS ARME : le caster « passe en mêlée » (coup faible) au lieu de tirer
+    this._brokenWarnShown = false // arme en main -> on réarme l'avertissement "sans arme"
     const target = this.currentTarget(HOMING_RANGE) // cible verrouillée prioritaire, sinon le plus proche visible
     if (target) {
       this.fireProjectile(target.x, target.y, target)
@@ -4200,8 +4205,8 @@ export default class GameScene extends Phaser.Scene {
   spellShield() {
     const p = this.player
     const now = this.time.now
-    const heal = p.heal(Math.round(p.maxHp * 0.18 * (p.spellPowerMul ?? 1))) // petit soin immédiat
-    const shield = Math.max(1, Math.round(p.maxHp * 0.3 * (p.spellPowerMul ?? 1))) // points d'absorption
+    const heal = p.heal(Math.round(p.maxHp * 0.12 * (p.spellPowerMul ?? 1))) // petit soin immédiat (0.18->0.12 : nerf Soigneuse)
+    const shield = Math.max(1, Math.round(p.maxHp * 0.22 * (p.spellPowerMul ?? 1))) // points d'absorption (0.3->0.22 : nerf)
     const dur = Math.round(9000 * (p.spellDurationMul ?? 1))
     p.shieldHp = shield
     p.shieldHpUntil = now + dur
@@ -4667,9 +4672,9 @@ export default class GameScene extends Phaser.Scene {
   spellFirestorm() { return this.mageCast(1100, 'Tempête de feu…', 0xff5a2a, () => this.elementalStorm({ color: 0xff5a2a, tex: 'fx_explosion', anim: 'fx-explosion', scale: 1.2, tint: false, detune: -200, onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.5)), 3000) })) }
   spellVoidstorm() { return this.mageCast(1100, "Tempête d'ombre…", 0x9b4dff, () => this.elementalStorm({ color: 0x9b4dff, tex: 'fx_spirit', anim: 'fx-spirit', scale: 1.5, tint: true, detune: -400, onHit: (m) => m.applyWeaken?.(0.5, 4000) })) }
   // --- SORT 2 (mono-cible niv 10) par élément ---
-  spellPyroblast() { return this.mageCast(950, 'Pyroblast…', 0xff5a2a, () => this.elementalBolt({ color: 0xff5a2a, dmgMul: 5, tex: 'fx_explosion', anim: 'fx-explosion', onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.6)), 3000) })) }
-  spellFrostlance() { return this.mageCast(950, 'Lance de givre…', 0x8fd8ff, () => this.elementalBolt({ color: 0x8fd8ff, dmgMul: 4.5, tex: 'fx_ice_burst', anim: 'fx-ice-burst', boomScale: 1.6, onHit: (m) => m.applySlow?.(2000, 0.4) })) }
-  spellShadowbolt() { return this.mageCast(950, "Trait d'ombre…", 0x9b4dff, () => this.elementalBolt({ color: 0x9b4dff, dmgMul: 4.5, tex: 'fx_spirit', anim: 'fx-spirit', tint: true, boomScale: 1.8, onHit: (m) => m.applyWeaken?.(0.5, 5000) })) }
+  spellPyroblast() { return this.mageCast(950, 'Pyroblast…', 0xff5a2a, () => this.elementalBolt({ color: 0xff5a2a, dmgMul: 3.5, tex: 'fx_explosion', anim: 'fx-explosion', onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.6)), 3000) })) }
+  spellFrostlance() { return this.mageCast(950, 'Lance de givre…', 0x8fd8ff, () => this.elementalBolt({ color: 0x8fd8ff, dmgMul: 3.2, tex: 'fx_ice_burst', anim: 'fx-ice-burst', boomScale: 1.6, onHit: (m) => m.applySlow?.(2000, 0.4) })) }
+  spellShadowbolt() { return this.mageCast(950, "Trait d'ombre…", 0x9b4dff, () => this.elementalBolt({ color: 0x9b4dff, dmgMul: 3.2, tex: 'fx_spirit', anim: 'fx-spirit', tint: true, boomScale: 1.8, onHit: (m) => m.applyWeaken?.(0.5, 5000) })) }
 
   /** ONDE DE CHOC (Tank, compétence de set) : slam au sol -> anneau de pics de ROCHE, dégâts + ÉTOURDIT
    *  les ennemis autour ET les FORCE à te cibler (provocation). */

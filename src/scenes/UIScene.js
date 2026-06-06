@@ -1987,27 +1987,29 @@ export default class UIScene extends Phaser.Scene {
       this.tweens.killTweensOf(this.toast)
       this.toast.destroy()
     }
-    const topY = (this.bagRect ? this.bagRect.y : this.scale.height - 80) - 12
-    const t = this.add
-      .text(this.scale.width / 2, topY, text, {
-        fontFamily: 'monospace',
-        fontSize: '14px',
-        color: color || '#ffffff',
-        stroke: '#000',
-        strokeThickness: 4,
-      })
-      .setOrigin(0.5, 1)
-      .setDepth(130)
-    this.toast = t
+    const topY = (this.bagRect ? this.bagRect.y : this.scale.height - 80) - 30
+    const cont = this.add.container(this.scale.width / 2, topY).setDepth(130)
+    const txt = this.add.text(0, 0, text, {
+      fontFamily: 'Georgia, serif', fontSize: '20px', fontStyle: 'bold',
+      color: color || '#ffffff', stroke: '#000', strokeThickness: 5, align: 'center',
+    }).setOrigin(0.5, 1)
+    // FOND pilule semi-opaque + bordure colorée -> message bien lisible (avant : petit texte nu peu visible)
+    const bd = Phaser.Display.Color.HexStringToColor(color || '#ffffff').color
+    const bg = this.add.rectangle(0, -txt.height / 2, txt.width + 28, txt.height + 12, 0x0a1018, 0.84)
+      .setOrigin(0.5, 0.5).setStrokeStyle(2, bd, 0.95)
+    cont.add([bg, txt])
+    this.toast = cont
+    cont.setScale(0.85)
+    this.tweens.add({ targets: cont, scale: 1, duration: 160, ease: 'Back.out' }) // petit pop d'apparition
     this.tweens.add({
-      targets: t,
-      y: topY - 22,
+      targets: cont,
+      y: topY - 28,
       alpha: 0,
-      delay: 900,
+      delay: 3000, // reste lisible ~3 s avant de s'estomper (le temps de lire)
       duration: 600,
       onComplete: () => {
-        t.destroy()
-        if (this.toast === t) this.toast = null
+        cont.destroy()
+        if (this.toast === cont) this.toast = null
       },
     })
   }

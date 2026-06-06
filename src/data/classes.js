@@ -17,7 +17,7 @@
 export const CLASSES = {
   warrior: {
     key: 'warrior', name: 'Guerrier', desc: 'Corps à corps robuste',
-    hp: 110, attack: 14, defense: 1, speedMul: 1.0,
+    hp: 110, attack: 16, defense: 1, speedMul: 1.0, // ATQ 14->16 (buff mêlée : la mêlée galérait face aux casters)
     mana: 60,
     // GAINS PAR NIVEAU (identité de rôle, style trinité) : DPS mêlée équilibré.
     hpPerLevel: 20, defPerLevel: 0, manaPerLevel: 0,
@@ -38,7 +38,7 @@ export const CLASSES = {
     // TRÈS fragile mais gros dégâts : peu de PV (60), beaucoup de mana ; sorts INCANTÉS (annulables si touché).
     hpPerLevel: 11, defPerLevel: 0, manaPerLevel: 5,
     shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec) -> défense fiable de près
-    rangedDmgMul: 1.1, // ...mais qui tape MOINS fort par boule
+    rangedDmgMul: 0.95, // ...mais qui tape MOINS fort par boule (1.1->0.95 : nerf du Mage trop fort sans stuff)
     spell: { id: 'blizzard', name: 'Blizzard', cost: 45, cd: 8000, desc: 'Incantation : zone de givre qui blesse ET ralentit les ennemis' }, // AoE givre + slow
     spell2: { id: 'pyroblast', name: 'Pyroblast', cost: 55, cd: 11000, level: 10, desc: 'Incantation : trait de feu, ÉNORMES dégâts sur une seule cible (niv 10)' }, // mono-cible burst
     abilities: { melee: false, ranged: true, heal: false },
@@ -53,11 +53,11 @@ export const CLASSES = {
   },
   tank: {
     key: 'tank', name: 'Tank', desc: 'Très lent, énormément de PV',
-    hp: 200, attack: 9, defense: 5, speedMul: 0.6,
+    hp: 200, attack: 11, defense: 5, speedMul: 0.72, // ATQ 9->11 (buff) ; vitesse 0.6->0.72 (un peu plus mobile pour esquiver les dash)
     mana: 70,
     // Mur : énormément de PV ET défense qui monte (encaisse de mieux en mieux), dégâts faibles.
     hpPerLevel: 30, defPerLevel: 1, manaPerLevel: 0,
-    attackCdMul: 2.0, // attaque de base nettement plus LENTE (coup lourd de tank)
+    attackCdMul: 1.6, // attaque de base plus LENTE que les autres mais moins pénalisante (2.0->1.6 : ~544 ms/coup)
     meleeKnock: 200, // son coup REPOUSSE l'ennemi
     spell: { id: 'shieldcharge', name: 'Charge de bouclier', cost: 40, cd: 13000, desc: 'Fonce (vitesse) ; gros dégâts d\'impact selon la distance parcourue' }, // sort PRINCIPAL (niv 1)
     spell2: { id: 'provoke', name: 'Provocation', cost: 50, cd: 14000, level: 10, desc: 'Provoque les ennemis proches ET active le Bouclier (-80% dégâts) pendant 5 s (déverrouillé niv 10)' },
@@ -75,7 +75,7 @@ export const CLASSES = {
     mana: 110,
     // Soutien VIABLE EN SOLO : PV moyens, mana abondante, mais tir de base qui tape (attaque 15 + bonus).
     hpPerLevel: 14, defPerLevel: 0, manaPerLevel: 4,
-    rangedDmgMul: 1.15, // son projectile sacré fait un peu plus mal (autonomie solo)
+    rangedDmgMul: 1.0, // son projectile sacré (1.15->1.0 : nerf, la Soigneuse cumulait trop tir + soin + bouclier)
     spell: { id: 'wordshield', name: 'Mot de pouvoir : Bouclier', cost: 30, cd: 7000, desc: 'Bouclier qui ABSORBE les dégâts + petit soin immédiat' }, // bouclier + soin
     spell2: { id: 'sanctuary', name: 'Sanctuaire', cost: 50, cd: 16000, level: 10, desc: 'Zone de lumière au sol : soigne sur la durée (déverrouillé niv 10)' },
     abilities: { melee: false, ranged: true, heal: true },
