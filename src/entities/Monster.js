@@ -939,7 +939,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
 
     // ATTAQUE SPÉCIALE DES MOBS (lunge/shoot/zone) : si engagé et un pattern occupe le mob -> on saute la nav.
-    if (!this.isBoss && this.def.mobAtk && this.aggroed && this.updateMobAttack(time, player, dx, dy, dist)) {
+    // PENDANT UNE ARÈNE de boss scellée : AUCUN mob ordinaire n'attaque le joueur (ni tir, ni zone, ni bond) ->
+    // le combat reste un 1v1 avec le boss (ils sont déjà repoussés hors du cercle par keepMonsterOutOfArena ;
+    // sans ce verrou, les mobs à distance crachaient leurs projectiles PAR-DESSUS le mur, dans l'arène).
+    if (this.scene.activeArena && this.mobPhase && this.mobPhase !== 'idle') { this.mobPhase = 'idle'; this.nextMobAtk = time + 600 } // coupe une attaque en cours
+    if (!this.isBoss && this.def.mobAtk && this.aggroed && !this.scene.activeArena && this.updateMobAttack(time, player, dx, dy, dist)) {
       if (this.alert?.visible) this.alert.setPosition(this.x, this.y - this.barOffsetY - 6)
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
       this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)

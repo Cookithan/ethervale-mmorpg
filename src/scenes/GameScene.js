@@ -2264,16 +2264,22 @@ export default class GameScene extends Phaser.Scene {
    *  (Le joueur et le boss, eux, sont CONFINÉS dedans par updateArena ; les mobs sont confinés DEHORS.) */
   keepMonsterOutOfArena(mon) {
     const a = this.activeArena
-    if (!a || !mon.body || !mon.active || mon.isBoss) return
-    const dx = mon.x - a.cx
-    const dy = mon.y - a.cy
+    const b = mon.body
+    if (!a || !b || !mon.active || mon.isBoss) return
+    // le CORPS ENTIER du mob doit rester DEHORS : on garde son centre à >= rayon + demi-corps + marge.
+    const minD = a.r + Math.max(b.halfWidth, b.halfHeight) + 6
+    const dx = b.center.x - a.cx
+    const dy = b.center.y - a.cy
     const d = Math.hypot(dx, dy)
-    if (d >= a.r) return // déjà dehors -> rien
-    const nx = dx / (d || 1) // direction VERS L'EXTÉRIEUR
-    const ny = dy / (d || 1)
-    const vIn = mon.body.velocity.x * nx + mon.body.velocity.y * ny // vitesse radiale (négatif = entrant)
-    mon.body.velocity.x += (-vIn + 44) * nx // radial forcé à +44 (sortie ferme), tangentiel conservé
-    mon.body.velocity.y += (-vIn + 44) * ny
+    if (d >= minD) return // déjà assez dehors -> rien
+    const ux = d > 0.001 ? dx / d : 1 // direction VERS L'EXTÉRIEUR (mob pile au centre -> axe X par défaut)
+    const uy = d > 0.001 ? dy / d : 0
+    // CLAMP DUR de position (corps = source de vérité avant le step physique, comme le confinement du joueur) :
+    // mur INFRANCHISSABLE même si le mob pousse en continu vers le joueur -> il ne grignote plus l'arène.
+    b.position.set(a.cx + ux * minD - b.halfWidth, a.cy + uy * minD - b.halfHeight)
+    // ...et on tue la vitesse RADIALE ENTRANTE (le mob glisse le long du mur au lieu de s'y enfoncer).
+    const vr = b.velocity.x * ux + b.velocity.y * uy // < 0 = entrant
+    if (vr < 0) { b.velocity.x -= vr * ux; b.velocity.y -= vr * uy }
   }
 
   /** true si un monstre vivant est à moins de `gap` tuiles de (tx,ty). */
