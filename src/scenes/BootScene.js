@@ -93,6 +93,18 @@ export default class BootScene extends Phaser.Scene {
       frameHeight: 16,
     })
 
+    // INTÉRIEURS (Mystic Woods) : sol en bois (1 tuile répétable), murs de pierre (nine-slice 8x8), porte, tapis
+    this.load.image('mw_floor', 'assets/tiles/mw_floor.png')
+    this.load.spritesheet('mw_walls', 'assets/tiles/mw_walls.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.image('mw_door', 'assets/tiles/mw_door.png')
+    this.load.spritesheet('mw_carpet', 'assets/tiles/mw_carpet.png', { frameWidth: 16, frameHeight: 16 })
+    // INTÉRIEURS riches (Penzilla Top-Down Retro Interior) : sols/murs + mobilier + portes/fenêtres + petits objets (16x16)
+    this.load.spritesheet('penz_floors', 'assets/tiles/penz_floors.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.spritesheet('penz_furn', 'assets/tiles/penz_furn.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.spritesheet('penz_doors', 'assets/tiles/penz_doors.png', { frameWidth: 16, frameHeight: 16 })
+    this.load.spritesheet('penz_items', 'assets/tiles/penz_items.png', { frameWidth: 16, frameHeight: 16 })
+    // UI « Theme Wood » (Ninja, CC0) : panneaux + boutons nine-slice (vraies textures)
+    for (const k of ['ui_panel', 'ui_bg', 'btn_normal', 'btn_hover', 'btn_pressed', 'ui_cell', 'ui_tab', 'btn_yes', 'btn_no']) this.load.image(k, `assets/ui/${k}.png`)
     // bâtiments (maisons, igloos, portails...) : spritesheet 16x16, 33 colonnes
     this.load.spritesheet('house', 'assets/tiles/house.png', { frameWidth: 16, frameHeight: 16 })
     // chemin en planches du village (Sprout Paths, 4x4) : planche horizontale (frame 4) / verticale (frame 14)
