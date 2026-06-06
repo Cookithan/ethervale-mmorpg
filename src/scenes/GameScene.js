@@ -157,8 +157,8 @@ const TEMP_CHIP_INTERVAL = 1000 // ms entre deux ticks de dégâts
 const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en zone Glacial/Brûlant
 // CYCLE JOUR/NUIT : voile bleu nuit plein écran dont l'opacité suit l'heure. Cycle complet = 20 min.
 const DAY_CYCLE_MS = 1200000 // durée d'un cycle jour->nuit->jour (20 min)
-const NIGHT_MAX_ALPHA = 0.55 // opacité du voile au plus profond de la nuit (nuit "moyenne", lisible)
-const VILLAGE_LIGHT_R = 30 * TILE // rayon (px) du trou dans le voile de nuit : village + prairie restent de jour (clairière agrandie)
+const NIGHT_MAX_ALPHA = 0.8 // opacité du voile au plus profond de la nuit (nuit BIEN sombre, encore jouable)
+const VILLAGE_LIGHT_R = 13 * TILE // rayon (px) du trou de lumière : STRICTEMENT le VILLAGE (place + bâtiments) ; tout autour (prairie incluse) reste dans la nuit
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
@@ -402,9 +402,9 @@ export default class GameScene extends Phaser.Scene {
       const ctex = this.textures.createCanvas('nightHole', S, S)
       const cx = ctex.getContext()
       const grd = cx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2)
-      grd.addColorStop(0, 'rgba(255,255,255,1)') // cœur = trou plein (aucune nuit)
-      grd.addColorStop(0.62, 'rgba(255,255,255,1)') // plein jour jusqu'au bord de la prairie
-      grd.addColorStop(1, 'rgba(255,255,255,0)') // fondu vers la nuit au-delà
+      grd.addColorStop(0, 'rgba(255,255,255,1)') // cœur du VILLAGE = plein jour (aucune nuit)
+      grd.addColorStop(0.8, 'rgba(255,255,255,1)') // village pleinement éclairé jusqu'à ~ses bords
+      grd.addColorStop(1, 'rgba(255,255,255,0)') // fondu TRÈS court au bord du village -> tout le reste (prairie incluse) = nuit
       cx.fillStyle = grd
       cx.fillRect(0, 0, S, S)
       ctex.refresh()
