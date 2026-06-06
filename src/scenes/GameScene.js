@@ -469,6 +469,9 @@ export default class GameScene extends Phaser.Scene {
       proj.kill()
       Audio.sfx(SFX.hit, { vol: 0.4 }) // impact du projectile
       this.hitMonster(mon, dmg, px, py, 0) // pas de recul (seul le Tank repousse) ; dégâts seuls
+      // l'arme s'use quand un tir DU JOUEUR (pas d'un clone du Mage) porte -> Mage/Soigneur ET armes
+      // lancées usent leur arme comme la mêlée (avant : seules les classes de mêlée l'usaient = bug).
+      if (!fromClone) { const broke = this.player.wearSlot('weapon'); if (broke) this.notifyBreak(broke) }
       // un clone qui TOUCHE un mob l'oblige à changer de cible (poursuit le 1er clone qui l'a touché)
       if (fromClone && fromClone.active && (!mon.lureTarget || !mon.lureTarget.active)) mon.lureTarget = fromClone
     })
@@ -2256,6 +2259,23 @@ export default class GameScene extends Phaser.Scene {
     mon.body.velocity.y += (-vIn + 26) * ny
   }
 
+  /** Mur invisible (MOBS ordinaires uniquement) au bord de l'ARÈNE de boss active : un mob qui erre
+   *  jusque dans le cercle scellé est repoussé vers l'extérieur -> on n'affronte QUE le boss, pas une meute.
+   *  (Le joueur et le boss, eux, sont CONFINÉS dedans par updateArena ; les mobs sont confinés DEHORS.) */
+  keepMonsterOutOfArena(mon) {
+    const a = this.activeArena
+    if (!a || !mon.body || !mon.active || mon.isBoss) return
+    const dx = mon.x - a.cx
+    const dy = mon.y - a.cy
+    const d = Math.hypot(dx, dy)
+    if (d >= a.r) return // déjà dehors -> rien
+    const nx = dx / (d || 1) // direction VERS L'EXTÉRIEUR
+    const ny = dy / (d || 1)
+    const vIn = mon.body.velocity.x * nx + mon.body.velocity.y * ny // vitesse radiale (négatif = entrant)
+    mon.body.velocity.x += (-vIn + 44) * nx // radial forcé à +44 (sortie ferme), tangentiel conservé
+    mon.body.velocity.y += (-vIn + 44) * ny
+  }
+
   /** true si un monstre vivant est à moins de `gap` tuiles de (tx,ty). */
   monsterTooClose(tx, ty, gap) {
     for (const m of this.monsters.getChildren())
@@ -2316,6 +2336,7 @@ export default class GameScene extends Phaser.Scene {
       if (this.occupied.has(this.key(tx, ty))) continue
       if (this.onWater(tx, ty, 1)) continue
       if (this.nearBossLair(tx, ty)) continue // pas de mob ordinaire dans l'arène du boss
+      if (this.activeArena && this.dist(tx * TILE + 8, ty * TILE + 8, this.activeArena.cx, this.activeArena.cy) <= this.activeArena.r) continue // ni dans l'arène scellée en cours (rayon élargi)
       const biome = this.biomeAt(tx, ty)
       if (biome === 'prairie') continue // prairie = zone sûre, aucun monstre
       if (!initial && biome === 'cursed' && !near) continue // pas de respawn aléatoire dans la zone verrouillée
@@ -2609,6 +2630,7 @@ export default class GameScene extends Phaser.Scene {
    *  Appelée chaque frame APRÈS player.update (la vélocité du joueur est déjà posée). */
   updateArena() {
     const p = this.player
+    if (this.gameOver) return // mort en cours : ni verrouillage ni confinement (sinon re-piège au respawn)
     if (this.activeArena) {
       const a = this.activeArena
       if (!a.boss.active || a.boss.hp <= 0) { this.releaseArena(); return } // boss mort -> ouverture
@@ -5030,6 +5052,7 @@ export default class GameScene extends Phaser.Scene {
     this.monsters.getChildren().forEach((mon) => {
       mon.update(time, p)
       this.keepMonsterOutOfPrairie(mon) // mur invisible (MOBS only) au bord de la prairie
+      this.keepMonsterOutOfArena(mon) // mur invisible (MOBS only) au bord de l'arène de boss active
       mon.setDepth(mon.y)
     })
     this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
@@ -5419,6 +5442,18 @@ export default class GameScene extends Phaser.Scene {
   /** Réapparition au village après le voile de mort (PV pleins). Appelé par UIScene. */
   respawnAtVillage() {
     const p = this.player
+    // SÉCURITÉ anti-piège : on relibère l'arène et on désengage tout boss resté actif AVANT de
+    // replacer le joueur (au cas où un état d'arène aurait survécu pendant le voile de mort).
+    this.releaseArena()
+    this.activeBoss = null
+    this.bossTrack = null
+    for (const b of this.bosses || []) {
+      if (!b.active || !b.combatEngaged) continue
+      b.combatEngaged = false
+      b.charging = false
+      b.hp = b.maxHp
+      if (b.leashX != null) b.setPosition(b.leashX, b.leashY)
+    }
     p.setPosition(this.cx * TILE, this.cy * TILE)
     p.hp = p.maxHp
     p.clearTint()

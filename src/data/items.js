@@ -170,7 +170,7 @@ export const ITEMS = {
   elite_snake: { id: 'elite_snake', name: 'Croc venimeux', slot: 'focus', icon: 'rel_emerald', eliteOnly: true, rarity: 'epic', price: 620, spellPower: 0.3, stats: { attack: 4 } },
   elite_spider: { id: 'elite_spider', name: "Carapace d'Arachne", slot: 'armor', icon: 'eq_mail', iconTint: 0xc0a0ff, eliteOnly: true, rarity: 'epic', price: 640, stats: { hp: 50, defense: 9 }, dur: 140 },
   elite_owl: { id: 'elite_owl', name: 'Œil du Hibou', slot: 'focus', icon: 'rel_frost', eliteOnly: true, rarity: 'epic', price: 620, spellDuration: 0.35, stats: { manaRegen: 3 } },
-  elite_bear: { id: 'elite_bear', name: "Fourrure d'Ursak", slot: 'armor', icon: 'eq_armor', iconTint: 0xe6f0ff, eliteOnly: true, rarity: 'epic', price: 680, stats: { hp: 64, defense: 10, coldResist: 40 }, dur: 160 },
+  elite_bear: { id: 'elite_bear', name: "Fourrure d'Ursak", slot: 'armor', icon: 'eq_armor', iconTint: 0xe6f0ff, eliteOnly: true, rarity: 'epic', price: 680, stats: { hp: 64, defense: 10, coldResist: 60 }, dur: 160 }, // SEULE armure épique à résister au froid (60 -> annule le ralenti de neige de jour : cible -100+60<55). Les autres épiques n'en ont pas, EXPRÈS : la résistance vient d'un item dédié (comme desertgarb pour le chaud).
   elite_skull: { id: 'elite_skull', name: 'Crâne hanté', slot: 'focus', icon: 'rel_thunder', eliteOnly: true, rarity: 'epic', price: 660, spellPower: 0.34, stats: { manaRegen: 3 } },
   elite_spirit: { id: 'elite_spirit', name: 'Murmure spectral', slot: 'ring', icon: 'eq_ring_sapphire', eliteOnly: true, rarity: 'epic', price: 660, stats: { mana: 72, manaRegen: 4 } },
   elite_flam: { id: 'elite_flam', name: 'Cœur de Braise', slot: 'focus', icon: 'rel_flame', eliteOnly: true, rarity: 'epic', price: 700, spellPower: 0.42 },

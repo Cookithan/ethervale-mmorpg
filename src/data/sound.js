@@ -214,10 +214,24 @@ class AudioManager {
     this._killMusic(this.curMusic)
     const snd = this.game.sound.add(key, { loop: false, volume: this.settings.music })
     this.curMusic = snd
-    const done = () => { this.victoryActive = false; this._killMusic(snd); if (this.curMusic === snd) this.curMusic = null }
+    let finished = false
+    let cutTimer = null
+    const done = () => {
+      if (finished) return
+      finished = true
+      if (cutTimer) { cutTimer.remove(false); cutTimer = null }
+      this.victoryActive = false
+      this._killMusic(snd)
+      if (this.curMusic === snd) this.curMusic = null
+    }
     snd.once('complete', done)
     snd.once('stop', done)
     snd.play()
+    // Coupe le jingle à ~5 s (fondu de sortie) puis laisse la musique de zone reprendre -> pas de
+    // morceau de victoire qui s'éternise. (Si l'audio dure < 5 s, `complete` a déjà appelé `done`.)
+    if (scene && scene.time) {
+      cutTimer = scene.time.delayedCall(5000, () => this._fadeSound(scene, snd, 0, 700, done))
+    }
   }
 
   /** Fondu de volume SÛR d'un Sound via objet proxy (jamais tweener le Sound directement). */

@@ -208,8 +208,11 @@ const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables e
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
 // SCALING DES MOBS par niveau de ZONE (1→6 selon la distance) : PV ×2/niv (murs de zone nets),
 // dégâts ×1.6/niv (plus doux -> dur mais pas one-shot). Les BOSS NE sont PAS scalés (stats fixes ci-dessous).
-const MOB_HP_MUL = 2 // PV (et XP/or) × ce facteur par niveau de zone
+const MOB_HP_MUL = 2 // PV × ce facteur par niveau de zone
 const MOB_DMG_MUL = 1.6 // dégâts × ce facteur par niveau (plus doux que les PV)
+const MOB_XP_MUL = 1.4 // XP × ce facteur par niveau (COURBE PLATE : un mob de bas niveau près du village
+//                        ne rapporte presque rien de plus qu'un niv1 -> pas de farm facile au spawn ;
+//                        cf. PV qui font ×2/niv, l'XP volontairement bien plus douce)
 // BOSS = stats PRÉDÉFINIES (indépendantes de la courbe des mobs) : PV/dégâts/XP = type × ces multiplicateurs.
 // (valeurs gonflées pour garder la puissance d'avant, quand le boss était "niveau 7" scalé.)
 const BOSS_HP_MUL = 91 // PV d'un boss = type × 91 (gros sac à PV, fixe)
@@ -269,7 +272,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.hp = this.maxHp
     this.damage = Math.round(def.damage * dmgLvlMul * dmgMul * eliteDmgMul)
     this.dmgScale = dmgLvlMul * dmgMul * eliteDmgMul // facteur de dégâts total (utilisé pour les projectiles de boss)
-    this.xpReward = Math.round(def.xp * lvlMul * xpMul)
+    const xpLvlMul = boss ? 1 : Math.pow(MOB_XP_MUL, scaleLevel - 1) // XP : courbe PLATE (pas ×2/niv comme les PV)
+    this.xpReward = Math.round(def.xp * xpLvlMul * xpMul)
     this.displayName = opts.name ?? def.name // nom affiché (boss/élite nommés, sinon type)
     this.aggroRange = boss ? def.aggro + 70 : def.aggro // le boss repère de plus loin
     this.leashRange = boss ? 700 : LEASH_RANGE // ...et lâche beaucoup moins vite
