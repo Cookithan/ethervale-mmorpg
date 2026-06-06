@@ -1,6 +1,7 @@
 import Phaser from 'phaser'
 import BootScene from './scenes/BootScene.js'
 import MenuScene from './scenes/MenuScene.js'
+import SelectScene from './scenes/SelectScene.js'
 import IntroScene from './scenes/IntroScene.js'
 import CharacterScene from './scenes/CharacterScene.js'
 import GameScene from './scenes/GameScene.js'
@@ -21,7 +22,7 @@ const config = {
       debug: false, // passera à true en Étape 5 pour visualiser les collisions
     },
   },
-  scene: [BootScene, MenuScene, IntroScene, CharacterScene, GameScene, UIScene],
+  scene: [BootScene, MenuScene, SelectScene, IntroScene, CharacterScene, GameScene, UIScene],
 }
 
 // eslint-disable-next-line no-new

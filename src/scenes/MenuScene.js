@@ -43,15 +43,11 @@ export default class MenuScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(11)
 
-    // --- boutons ---
-    // Nouvelle partie : on NE coupe PAS le village -> il reste en fond de la création (continuité)
-    const buttons = [{ label: 'Nouvelle partie', cb: () => this.onNewGame() }]
-    if (hasSave()) {
-      const s = loadSave()
-      const who = s?.character?.name ? `Continuer — ${s.character.name} (Niv.${s.level ?? 1})` : 'Continuer'
-      buttons.push({ label: who, cb: () => this.startGame({ save: loadSave() }) })
-    }
-    buttons.push({ label: 'Quitter', cb: () => this.quit() })
+    // --- boutons --- (« Jouer » -> écran de SÉLECTION DE PERSONNAGE ; on NE coupe PAS le village en fond)
+    const buttons = [
+      { label: 'Jouer', cb: () => this.scene.start('SelectScene') },
+      { label: 'Quitter', cb: () => this.quit() },
+    ]
 
     const startY = ch * 0.66
     const step = 66

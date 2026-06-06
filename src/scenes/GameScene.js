@@ -6,7 +6,7 @@ import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY, itemColor, itemTint, ELITE_DROP } from '../data/items.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 import { DEFAULT_CHARACTER, KNIGHT_CHARACTER } from '../data/classes.js'
-import { makeSave, writeSave, hasSave, loadSave } from '../data/save.js'
+import { makeSave, saveCharacter, getCharacterSave, lastPlayedSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
 
 const MONSTER_COUNT = 170 // base de population (répartie par surface de biome × mult ci-dessous)
@@ -297,12 +297,13 @@ export default class GameScene extends Phaser.Scene {
 
   create(initData) {
     // personnage choisi (création) ou repris (sauvegarde)
-    this.saveData = initData?.save ?? null
+    this.charId = initData?.charId ?? null // slot multi-perso du personnage joué (null en aperçu)
+    this.saveData = initData?.save ?? getCharacterSave(this.charId) ?? null
     this.preview = !!initData?.preview // mode aperçu = fond vivant de l'écran d'accueil (pas de HUD/combat)
     let character = this.saveData?.character ?? initData?.character ?? null
     // ACCUEIL (aperçu sans perso explicite) : montrer le DERNIER perso joué (sauvegarde),
     // sinon le CHEVALIER tant qu'aucune partie n'a été lancée.
-    if (!character && this.preview) character = (hasSave() ? loadSave()?.character : null) ?? KNIGHT_CHARACTER
+    if (!character && this.preview) character = lastPlayedSave()?.character ?? KNIGHT_CHARACTER
     this.character = character ?? DEFAULT_CHARACTER
 
     // monde DÉTERMINISTE : pendant toute la génération (terrain, chemins, forêt,
@@ -649,9 +650,9 @@ export default class GameScene extends Phaser.Scene {
 
   /** Sauvegarde la partie (personnage + progression + position) dans le navigateur. */
   saveGame() {
-    if (this.gameOver || !this.player) return
+    if (this.gameOver || !this.player || !this.charId) return // pas de slot (aperçu) -> on ne sauvegarde pas
     if (this.exploredCells) this.player.exploredFog = [...this.exploredCells] // brouillard : cellules explorées (carte révélée)
-    writeSave(makeSave(this.player, this.character))
+    saveCharacter(this.charId, makeSave(this.player, this.character)) // sauvegarde dans LE slot du perso courant
   }
 
   // ---------- minimap (brief §7) ----------

@@ -1,9 +1,18 @@
 import Phaser from 'phaser'
 import { CLASSES, CLASS_LIST } from '../data/classes.js'
+import { genCharId } from '../data/save.js'
+import { drawHall } from './hallBackdrop.js'
 import { Audio } from '../data/sound.js'
 
 const GOLD = 0xc8a24a
 const DIM = 0x49617f
+// méta d'aide au choix : [rôle, couleur, Survie/3, Dégâts/3, Mobilité/3] (jauges FACTUELLES tirées des stats)
+const META = {
+  warrior: ['DPS mêlée', 0xff8a7a, 2, 2, 3],
+  tank: ['Tank · survie', 0x7ab0ff, 3, 1, 1],
+  mage: ['DPS distance', 0xc89aff, 1, 3, 2],
+  healer: ['Soigneur', 0x86e0a0, 3, 2, 2],
+}
 
 /**
  * Création du personnage en 2 étapes :
@@ -22,7 +31,7 @@ export default class CharacterScene extends Phaser.Scene {
     // village vivant en fond (continuité avec l'accueil chaleureux) au lieu d'un écran noir
     if (!this.scene.isActive('GameScene')) this.scene.launch('GameScene', { preview: true })
     this.scene.bringToTop()
-    this.add.rectangle(0, 0, this.cw, this.ch, 0x07090e, 0.72).setOrigin(0, 0) // voile SOMBRE (continuité avec l'intro + lisibilité)
+    drawHall(this) // MÊME décor que l'écran de sélection (salle en pierre), dessiné derrière l'UI
 
     this.classKey = null
     this.heroIndex = 0
@@ -73,7 +82,7 @@ export default class CharacterScene extends Phaser.Scene {
 
     const n = CLASS_LIST.length
     const cardW = Math.min(252, Math.floor((cw - 28) / n) - 8)
-    const cardH = 338
+    const cardH = 404
     const gapX = Math.min(cardW + 16, Math.floor((cw - 14) / n))
     const cy = ch / 2 + 6
     const inner = cardW - 18
@@ -86,25 +95,33 @@ export default class CharacterScene extends Phaser.Scene {
       const items = [box]
       // portrait (faceset de l'apparence représentative) encadré
       const faceKey = 'face_' + c.heroes[0].key
-      const fy = top + 46
+      const fy = top + 44
       if (this.textures.exists(faceKey)) {
         items.push(this.add.rectangle(x, fy, 62, 62, 0x10151f, 1).setStrokeStyle(2, GOLD))
         items.push(this.add.image(x, fy, faceKey).setScale(56 / 38))
       }
-      // nom + rôle
-      items.push(this.add.text(x, fy + 48, c.name, { fontFamily: 'monospace', fontSize: '20px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5))
-      items.push(this.add.text(x, fy + 70, c.desc, { fontFamily: 'monospace', fontSize: '12px', color: '#cfe8ff', align: 'center', wordWrap: { width: inner } }).setOrigin(0.5, 0))
+      // nom
+      items.push(this.add.text(x, fy + 44, c.name, { fontFamily: 'monospace', fontSize: '20px', fontStyle: 'bold', color: '#ffe066' }).setOrigin(0.5, 0))
+      // RÔLE (couleur de classe)
+      const meta = META[c.key] || ['', 0xffe066, 2, 2, 2]
+      items.push(this.add.text(x, fy + 68, meta[0], { fontFamily: 'monospace', fontSize: '14px', fontStyle: 'bold', color: '#' + meta[1].toString(16).padStart(6, '0') }).setOrigin(0.5, 0))
+      // 3 JAUGES factuelles : Survie / Dégâts / Mobilité (★ pleines, ☆ vides) -> aide au choix
+      const gauge = (label, n) => `${label}  ${'★'.repeat(n)}${'☆'.repeat(3 - n)}`
+      items.push(this.add.text(x, fy + 90, gauge('Survie  ', meta[2]), { fontFamily: 'monospace', fontSize: '12px', color: '#7ee0a0' }).setOrigin(0.5, 0))
+      items.push(this.add.text(x, fy + 106, gauge('Dégâts  ', meta[3]), { fontFamily: 'monospace', fontSize: '12px', color: '#ff9a7a' }).setOrigin(0.5, 0))
+      items.push(this.add.text(x, fy + 122, gauge('Mobilité', meta[4]), { fontFamily: 'monospace', fontSize: '12px', color: '#9fd0ff' }).setOrigin(0.5, 0))
       // séparateur
-      items.push(this.add.rectangle(x, fy + 98, inner, 1, WARM, 0.5))
+      items.push(this.add.rectangle(x, fy + 146, inner, 1, WARM, 0.5))
       // stats
-      items.push(this.add.text(x, fy + 108, `PV ${c.hp}    Mana ${c.mana ?? 0}`, { fontFamily: 'monospace', fontSize: '13px', color: '#ffd1d1' }).setOrigin(0.5, 0))
-      items.push(this.add.text(x, fy + 128, `ATQ ${c.attack}    DEF ${c.defense}`, { fontFamily: 'monospace', fontSize: '13px', color: '#cfe0ff' }).setOrigin(0.5, 0))
+      items.push(this.add.text(x, fy + 154, `PV ${c.hp}    Mana ${c.mana ?? 0}`, { fontFamily: 'monospace', fontSize: '13px', color: '#ffd1d1' }).setOrigin(0.5, 0))
+      items.push(this.add.text(x, fy + 172, `ATQ ${c.attack}    DEF ${c.defense}`, { fontFamily: 'monospace', fontSize: '13px', color: '#cfe0ff' }).setOrigin(0.5, 0))
       // attaque de base
-      const atk = c.abilities.melee ? 'Mêlée (Espace)' : 'Distance (F)'
-      items.push(this.add.text(x, fy + 152, `⚔ ${atk}`, { fontFamily: 'monospace', fontSize: '12px', color: '#9affc0' }).setOrigin(0.5, 0))
-      // sort (nom + effet)
-      items.push(this.add.text(x, fy + 172, `✦ ${c.spell.name}`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#9fd0ff' }).setOrigin(0.5, 0))
-      items.push(this.add.text(x, fy + 192, c.spell.desc ?? '', { fontFamily: 'monospace', fontSize: '11px', color: '#d7e6f5', align: 'center', wordWrap: { width: inner } }).setOrigin(0.5, 0))
+      items.push(this.add.text(x, fy + 194, `⚔ ${c.abilities.melee ? 'Mêlée (Espace)' : 'Distance (F)'}`, { fontFamily: 'monospace', fontSize: '12px', color: '#9affc0' }).setOrigin(0.5, 0))
+      // sort 1 (nom + effet)
+      items.push(this.add.text(x, fy + 214, `✦ ${c.spell.name}`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#9fd0ff' }).setOrigin(0.5, 0))
+      items.push(this.add.text(x, fy + 232, c.spell.desc ?? '', { fontFamily: 'monospace', fontSize: '10px', color: '#d7e6f5', align: 'center', wordWrap: { width: inner } }).setOrigin(0.5, 0))
+      // sort 2 (déverrouillé niv.10) -> montre la progression
+      if (c.spell2) items.push(this.add.text(x, fy + 270, `✦ Niv.10 : ${c.spell2.name}`, { fontFamily: 'monospace', fontSize: '11px', color: '#b9a0e0' }).setOrigin(0.5, 0))
       box.on('pointerover', () => this.focusClass(i)) // survol = focus (joue le son de défilement)
       box.on('pointerdown', () => this.pickClass(i))
       this.classCells.push(box)
@@ -304,7 +321,7 @@ export default class CharacterScene extends Phaser.Scene {
       classKey: this.classKey,
     }
     this.scene.stop('GameScene') // arrête l'aperçu du village avant de lancer la vraie partie
-    this.scene.start('GameScene', { character })
+    this.scene.start('GameScene', { character, charId: genCharId() }) // NOUVEAU perso -> id de slot dédié (multi-perso)
   }
 
   button(container, x, y, w, label, cb) {
