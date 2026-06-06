@@ -73,7 +73,7 @@ export const ITEMS = {
   // de sprite qui swingue à l'attaque (showWeaponSwing). =====
   // Guerrier (épées / lames, tranche 'fx-slash') :
   dagger: { id: 'dagger', name: 'Dague', slot: 'weapon', classes: ['warrior'], icon: 'aw_dagger', rarity: 'common', price: 45, stats: { attack: 4 }, dur: 40, fx: 'fx-slash' },
-  sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'aw_sword', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 50, fx: 'fx-slash' },
+  sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'aw_sword', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 50, unbreakable: true, fx: 'fx-slash' },
   sabre: { id: 'sabre', name: 'Sabre courbe', slot: 'weapon', classes: ['warrior'], icon: 'aw_sabre', rarity: 'rare', price: 200, stats: { attack: 11 }, dur: 65, fx: 'fx-slash' },
   katana: { id: 'katana', name: 'Katana', slot: 'weapon', classes: ['warrior'], icon: 'aw_katana', rarity: 'rare', price: 220, stats: { attack: 12 }, dur: 70, fx: 'fx-slash' },
   kris: { id: 'kris', name: "Kris de l'ombre", slot: 'weapon', classes: ['warrior'], icon: 'aw_kris', rarity: 'epic', price: 520, stats: { attack: 18 }, dur: 100, fx: 'fx-slash' },
@@ -82,17 +82,17 @@ export const ITEMS = {
   throwknife: { id: 'throwknife', name: 'Couteaux de lancer', slot: 'weapon', classes: ['warrior'], icon: 'fx_kunai', ranged: true, proj: { tex: 'fx_kunai' }, rarity: 'common', price: 90, stats: { attack: 4 }, dur: 45 },
   shuriken: { id: 'shuriken', name: 'Shuriken', slot: 'weapon', classes: ['warrior'], icon: 'fx_shuriken', ranged: true, proj: { tex: 'fx_shuriken', anim: 'fx-shuriken' }, rarity: 'rare', price: 200, stats: { attack: 8 }, dur: 60 },
   // Tank (masses / lames lourdes -> slash circulaire 'fx-circslash') :
-  club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'at_club', rarity: 'common', price: 90, stats: { attack: 5 }, dur: 60, fx: 'fx-circslash' },
+  club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'at_club', rarity: 'common', price: 90, stats: { attack: 5 }, dur: 60, unbreakable: true, fx: 'fx-circslash' },
   warhammer: { id: 'warhammer', name: 'Marteau de guerre', slot: 'weapon', classes: ['tank'], icon: 'at_warhammer', rarity: 'rare', price: 240, stats: { attack: 10 }, dur: 90, fx: 'fx-circslash' },
   axe: { id: 'axe', name: 'Hache de guerre', slot: 'weapon', classes: ['tank'], icon: 'at_axe', rarity: 'rare', price: 250, stats: { attack: 11 }, dur: 85, fx: 'fx-circslash' },
   greatblade: { id: 'greatblade', name: 'Lame colossale', slot: 'weapon', classes: ['tank'], icon: 'at_greatblade', rarity: 'epic', price: 580, stats: { attack: 17 }, dur: 120, fx: 'fx-circslash' },
   warlance: { id: 'warlance', name: 'Pertuisane', slot: 'weapon', classes: ['tank'], icon: 'at_warlance', rarity: 'epic', price: 560, stats: { attack: 16 }, dur: 115, fx: 'fx-circslash' },
   // Mage (baguettes / bâtons / grimoire) — pas de swing (le mage incante/tire) :
-  wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'am_wand', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 40 },
+  wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'am_wand', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 40, unbreakable: true },
   grimoire: { id: 'grimoire', name: 'Grimoire interdit', slot: 'weapon', classes: ['mage'], icon: 'am_grimoire', heldScale: 0.7, rarity: 'rare', price: 240, stats: { attack: 12 }, dur: 60 },
   archstaff: { id: 'archstaff', name: "Bâton de l'archimage", slot: 'weapon', classes: ['mage'], icon: 'am_archstaff', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 80 },
   // Soigneur (sceptres bénis) — pas de swing :
-  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'ah_healstick', rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40 },
+  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'ah_healstick', rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40, unbreakable: true },
   healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'ah_healwand', rarity: 'rare', price: 220, stats: { attack: 8 }, dur: 60 },
   relic: { id: 'relic', name: 'Relique sacrée', slot: 'weapon', classes: ['healer'], icon: 'ah_relic', rarity: 'epic', price: 540, stats: { attack: 12 }, dur: 80 },
 
@@ -347,7 +347,9 @@ export function describeItem(item) {
     if (item.spellDuration) parts.push(`+${Math.round(item.spellDuration * 100)}% durée du sort`)
     txt = (txt ? txt + '\n' : '') + parts.join('\n')
   }
-  if (hasDurability(item)) {
+  if (item.unbreakable || Object.values(STARTER_WEAPON).includes(item.id)) {
+    txt += '\nIncassable ∞'
+  } else if (hasDurability(item)) {
     const broken = (item.durability ?? item.dur) <= 0
     txt += `\nDurabilité ${item.durability ?? item.dur}/${item.dur}${broken ? ' (CASSÉ)' : ''}`
   }

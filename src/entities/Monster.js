@@ -420,10 +420,10 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.slowFactor = factor
   }
 
-  /** ÉTOURDISSEMENT (Onde de choc du Tank) : immobile et ne mord pas pendant `durationMs`. (Pas sur les boss de raid.) */
+  /** ÉTOURDISSEMENT (Onde de choc du Tank, Cri de guerre du Guerrier) : gel DUR (immobile + passif + "z Z z",
+   *  cf. update). Marche AUSSI sur les boss — la durée est fixée par l'appelant (mob long, boss court). */
   stun(durationMs) {
-    if (this.isBoss) return // les vrais boss ne sont pas étourdissables
-    this.stunUntil = (this.scene?.time?.now ?? 0) + durationMs
+    this.stunnedUntil = (this.scene?.time?.now ?? 0) + durationMs
   }
 
   /** PEUR (Cri intimidant du Guerrier) : fuit le joueur et ne mord pas pendant `durationMs`. (Pas sur les boss.) */
@@ -801,9 +801,12 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       this.updateHpBar(time)
       return
     }
-    // ÉTOURDISSEMENT (Charge de bouclier du Tank) : immobile et passif tant que `stunnedUntil` n'est pas écoulé.
+    // ÉTOURDISSEMENT (Onde de choc / Cri de guerre / Charge de bouclier) : immobile + passif + "z Z z" tant que
+    // `stunnedUntil` court. Marche aussi sur les BOSS (gèle leurs actions le temps du stun).
     if (time < this.stunnedUntil) {
       this.setVelocity(0, 0)
+      if (this.rig && !(this.rigState === 'hit' && time < this.rigLockUntil)) this.playRig('idle')
+      this.showSleep(time, true) // "z Z z" pendant l'étourdissement
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
       this.aura?.setPosition(this.x, this.y + (this.auraY ?? 4))
       this.updateHpBar(time)

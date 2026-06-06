@@ -21,8 +21,8 @@ export const CLASSES = {
     mana: 60,
     // GAINS PAR NIVEAU (identité de rôle, style trinité) : DPS mêlée équilibré.
     hpPerLevel: 20, defPerLevel: 0, manaPerLevel: 0,
-    spell: { id: 'charge', name: 'Charge', cost: 25, cd: 6000, desc: 'Bond/esquive ; blesse les ennemis traversés' }, // bond + dégâts
-    spell2: { id: 'whirlwind', name: 'Tourbillon', cost: 45, cd: 12000, level: 10, desc: 'Tournoie : dégâts à TOUS les ennemis autour (déverrouillé niv 10)' },
+    spell: { id: 'charge', name: 'Charge', cost: 15, cd: 6000, desc: 'Bond/esquive ; blesse les ennemis traversés' }, // bond + dégâts
+    spell2: { id: 'whirlwind', name: 'Tourbillon', cost: 30, cd: 12000, level: 10, desc: 'Tournoie : dégâts à TOUS les ennemis autour (déverrouillé niv 10)' },
     abilities: { melee: true, ranged: false, heal: false },
     kit: 'Épée (Espace) · Charge (1)',
     heroes: [
@@ -39,8 +39,8 @@ export const CLASSES = {
     hpPerLevel: 11, defPerLevel: 0, manaPerLevel: 5,
     shootCdMul: 1.5, // tir de base plus RAPIDE (~1.7/sec) -> défense fiable de près
     rangedDmgMul: 0.95, // ...mais qui tape MOINS fort par boule (1.1->0.95 : nerf du Mage trop fort sans stuff)
-    spell: { id: 'blizzard', name: 'Blizzard', cost: 45, cd: 8000, desc: 'Incantation : zone de givre qui blesse ET ralentit les ennemis' }, // AoE givre + slow
-    spell2: { id: 'pyroblast', name: 'Pyroblast', cost: 55, cd: 11000, level: 10, desc: 'Incantation : trait de feu, ÉNORMES dégâts sur une seule cible (niv 10)' }, // mono-cible burst
+    spell: { id: 'blizzard', name: 'Blizzard', cost: 30, cd: 8000, desc: 'Incantation : zone de givre qui blesse ET ralentit les ennemis' }, // AoE givre + slow
+    spell2: { id: 'pyroblast', name: 'Pyroblast', cost: 50, cd: 11000, level: 10, desc: 'Incantation : trait de feu, ÉNORMES dégâts sur une seule cible (niv 10)' }, // mono-cible burst
     abilities: { melee: false, ranged: true, heal: false },
     kit: 'Boule (F) · Blizzard incanté (1)',
     // magie PROPRE à chaque apparence (couleur du projectile + du Météore)
@@ -59,8 +59,8 @@ export const CLASSES = {
     hpPerLevel: 30, defPerLevel: 1, manaPerLevel: 0,
     attackCdMul: 1.6, // attaque de base plus LENTE que les autres mais moins pénalisante (2.0->1.6 : ~544 ms/coup)
     meleeKnock: 200, // son coup REPOUSSE l'ennemi
-    spell: { id: 'shieldcharge', name: 'Charge de bouclier', cost: 40, cd: 13000, desc: 'Fonce (vitesse) ; gros dégâts d\'impact selon la distance parcourue' }, // sort PRINCIPAL (niv 1)
-    spell2: { id: 'provoke', name: 'Provocation', cost: 50, cd: 14000, level: 10, desc: 'Provoque les ennemis proches ET active le Bouclier (-80% dégâts) pendant 5 s (déverrouillé niv 10)' },
+    spell: { id: 'shieldcharge', name: 'Charge de bouclier', cost: 20, cd: 13000, desc: 'Fonce (vitesse) ; gros dégâts d\'impact selon la distance parcourue' }, // sort PRINCIPAL (niv 1)
+    spell2: { id: 'provoke', name: 'Provocation', cost: 35, cd: 14000, level: 10, desc: 'Provoque les ennemis proches ET active le Bouclier (-80% dégâts) pendant 5 s (déverrouillé niv 10)' },
     abilities: { melee: true, ranged: false, heal: false },
     kit: 'Coup lent qui repousse (Espace) · Charge (1) · Provocation+Bouclier (2, niv 10) · lent',
     heroes: [
@@ -76,8 +76,8 @@ export const CLASSES = {
     // Soutien VIABLE EN SOLO : PV moyens, mana abondante, mais tir de base qui tape (attaque 15 + bonus).
     hpPerLevel: 14, defPerLevel: 0, manaPerLevel: 4,
     rangedDmgMul: 1.0, // son projectile sacré (1.15->1.0 : nerf, la Soigneuse cumulait trop tir + soin + bouclier)
-    spell: { id: 'wordshield', name: 'Mot de pouvoir : Bouclier', cost: 30, cd: 7000, desc: 'Bouclier qui ABSORBE les dégâts + petit soin immédiat' }, // bouclier + soin
-    spell2: { id: 'sanctuary', name: 'Sanctuaire', cost: 50, cd: 16000, level: 10, desc: 'Zone de lumière au sol : soigne sur la durée (déverrouillé niv 10)' },
+    spell: { id: 'wordshield', name: 'Mot de pouvoir : Bouclier', cost: 25, cd: 7000, desc: 'Bouclier qui ABSORBE les dégâts + petit soin immédiat' }, // bouclier + soin
+    spell2: { id: 'sanctuary', name: 'Sanctuaire', cost: 40, cd: 16000, level: 10, desc: 'Zone de lumière au sol : soigne sur la durée (déverrouillé niv 10)' },
     abilities: { melee: false, ranged: true, heal: true },
     kit: 'Projectile (F) · Bouclier (1)',
     heroes: [
@@ -89,20 +89,24 @@ export const CLASSES = {
 }
 export const CLASS_LIST = Object.values(CLASSES)
 
+// Coût en mana du SORT 3 (compétence de panoplie, touche 3) par classe : c'est l'ULTIME -> le PLUS CHER
+// (au-dessus du sort 2) et le plus lent (cooldown 35 s dans castSpell3).
+export const SPELL3_COST = { warrior: 45, tank: 55, mage: 70, healer: 65 }
+
 // KITS ÉLÉMENTAIRES DU MAGE : l'élément vient de l'APPARENCE (feu/glace/ombre). Chaque élément a un sort 1
 // (zone) et un sort 2 (mono-cible niv 10) avec un EFFET propre — feu=brûlure, glace=ralenti, ombre=affaiblit.
 export const MAGE_KITS = {
   fire: {
-    spell: { id: 'firestorm', name: 'Tempête de feu', cost: 45, cd: 8000, desc: 'Incantation : zone de FEU — dégâts + BRÛLURE (dégâts sur la durée)' },
-    spell2: { id: 'pyroblast', name: 'Pyroblast', cost: 55, cd: 11000, level: 10, desc: 'Incantation : trait de feu, ÉNORMES dégâts mono-cible + brûlure (niv 10)' },
+    spell: { id: 'firestorm', name: 'Tempête de feu', cost: 30, cd: 8000, desc: 'Incantation : zone de FEU — dégâts + BRÛLURE (dégâts sur la durée)' },
+    spell2: { id: 'pyroblast', name: 'Pyroblast', cost: 50, cd: 11000, level: 10, desc: 'Incantation : trait de feu, ÉNORMES dégâts mono-cible + brûlure (niv 10)' },
   },
   ice: {
-    spell: { id: 'blizzard', name: 'Blizzard', cost: 45, cd: 8000, desc: 'Incantation : zone de givre — dégâts + RALENTIT les ennemis' },
-    spell2: { id: 'frostlance', name: 'Lance de givre', cost: 55, cd: 11000, level: 10, desc: 'Incantation : trait de glace, gros dégâts mono-cible + ralentit (niv 10)' },
+    spell: { id: 'blizzard', name: 'Blizzard', cost: 30, cd: 8000, desc: 'Incantation : zone de givre — dégâts + RALENTIT les ennemis' },
+    spell2: { id: 'frostlance', name: 'Lance de givre', cost: 50, cd: 11000, level: 10, desc: 'Incantation : trait de glace, gros dégâts mono-cible + ralentit (niv 10)' },
   },
   shadow: {
-    spell: { id: 'voidstorm', name: "Tempête d'ombre", cost: 45, cd: 8000, desc: "Incantation : zone d'ombre — dégâts + AFFAIBLIT (les ennemis tapent moins fort)" },
-    spell2: { id: 'shadowbolt', name: "Trait d'ombre", cost: 55, cd: 11000, level: 10, desc: "Incantation : trait d'ombre, gros dégâts mono-cible + affaiblit (niv 10)" },
+    spell: { id: 'voidstorm', name: "Tempête d'ombre", cost: 30, cd: 8000, desc: "Incantation : zone d'ombre — dégâts + AFFAIBLIT (les ennemis tapent moins fort)" },
+    spell2: { id: 'shadowbolt', name: "Trait d'ombre", cost: 50, cd: 11000, level: 10, desc: "Incantation : trait d'ombre, gros dégâts mono-cible + affaiblit (niv 10)" },
   },
 }
 

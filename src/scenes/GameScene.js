@@ -5,7 +5,7 @@ import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY, itemColor, itemTint, ELITE_DROP } from '../data/items.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
-import { DEFAULT_CHARACTER, KNIGHT_CHARACTER } from '../data/classes.js'
+import { DEFAULT_CHARACTER, KNIGHT_CHARACTER, SPELL3_COST } from '../data/classes.js'
 import { makeSave, saveCharacter, getCharacterSave, lastPlayedSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
 
@@ -160,6 +160,7 @@ const DAY_CYCLE_MS = 1200000 // durée d'un cycle jour->nuit->jour (20 min)
 const NIGHT_MAX_ALPHA = 0.8 // opacité du voile au plus profond de la nuit (nuit BIEN sombre, encore jouable)
 const VILLAGE_LIGHT_R = 13 * TILE // rayon (px) du trou de lumière : STRICTEMENT le VILLAGE (place + bâtiments) ; tout autour (prairie incluse) reste dans la nuit
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
+const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -305,6 +306,7 @@ export default class GameScene extends Phaser.Scene {
     // sinon le CHEVALIER tant qu'aucune partie n'a été lancée.
     if (!character && this.preview) character = lastPlayedSave()?.character ?? KNIGHT_CHARACTER
     this.character = character ?? DEFAULT_CHARACTER
+    this.testUnlockSkills = TEST_UNLOCK_SKILLS // expose le flag de test à l'UI (retire le cadenas des sorts 2/3)
 
     // monde DÉTERMINISTE : pendant toute la génération (terrain, chemins, forêt,
     // rochers, déco, monstres), Math.random est remplacé par un PRNG à graine fixe
@@ -4128,7 +4130,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     const sp = p.spell2
     if (!sp || p.hp <= 0) return
-    if (p.level < (sp.level ?? 10)) return this.floatingText(p.x, p.y - 18, `Niv ${sp.level ?? 10}`, '#ffd27a')
+    if (!TEST_UNLOCK_SKILLS && p.level < (sp.level ?? 10)) return this.floatingText(p.x, p.y - 18, `Niv ${sp.level ?? 10}`, '#ffd27a')
     const now = this.time.now
     if (now < p.nextSpell2At) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
     if (p.mana < sp.cost) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
@@ -4153,11 +4155,15 @@ export default class GameScene extends Phaser.Scene {
     if (this.sailBlocked()) return
     const p = this.player
     if (p.hp <= 0) return
-    const set = p.activeSet
+    let set = p.activeSet
+    if (!set && TEST_UNLOCK_SKILLS) {
+      const skill = { warrior: 'warcry', tank: 'shockwave', mage: 'mirror', healer: 'resurrect' }[this.character?.classKey]
+      if (skill) set = { skill } // TEST : panoplie simulée -> sort de panoplie utilisable sans les 4 pièces
+    }
     if (!set) return this.floatingText(p.x, p.y - 18, 'Panoplie incomplète (4/4)', '#ffd27a')
     const now = this.time.now
     if (now < (p.nextSpell3At ?? 0)) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
-    const COST = 30
+    const COST = SPELL3_COST[this.character?.classKey] ?? 45 // l'ULTIME : le plus cher (au-dessus du sort 2)
     if (p.mana < COST) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
     const effects = {
       mirror: () => this.spellMirrorImage(), // Mage : Image miroir (clones)
@@ -4326,7 +4332,11 @@ export default class GameScene extends Phaser.Scene {
     p.attackUntil = now + DUR
     p.setVelocity(0, 0)
     p.anims.play(`${p.heroKey}-attack-` + p.facing, true)
-    Audio.sfx(SFX.whoosh, { vol: 0.6 })
+    // BRUIT DE VENT : whooshs échelonnés + détunés -> bourrasque qui tournoie pendant toute la durée
+    Audio.sfx(SFX.whoosh, { vol: 0.6, detune: -250 })
+    this.time.delayedCall(150, () => Audio.sfx(SFX.whoosh, { vol: 0.5, detune: 250 }))
+    this.time.delayedCall(340, () => Audio.sfx(SFX.whoosh, { vol: 0.55, detune: -100 }))
+    this.time.delayedCall(540, () => Audio.sfx(SFX.whoosh, { vol: 0.45, detune: 450 }))
     // le GUERRIER TOURNE physiquement sur lui-même pendant le tourbillon
     this.tweens.add({ targets: p, rotation: Math.PI * 4, duration: DUR, ease: 'Sine.inOut', onComplete: () => p.setRotation(0) })
     const fx = this.add.sprite(p.x, p.y, 'fx_circslash').setDepth(p.y + 60).setScale(2.8)
@@ -4699,43 +4709,94 @@ export default class GameScene extends Phaser.Scene {
     this.monsters.getChildren().forEach((m) => {
       if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
         this.hitMonster(m, dmg, p.x, p.y, 140) // dégâts + recul
-        m.stun?.(2200) // étourdi
+        m.stun?.(m.isBoss ? 4000 : 3000) // étourdi (boss inclus : 4 s sur boss) + "zzz"
         m.lureTarget = null; m.aggroed = true; m.returning = false // PROVOQUÉ : te cible
       }
     })
     return true
   }
 
-  /** CRI INTIMIDANT (Guerrier, compétence de set) : onde rouge + étincelles -> les ennemis proches sont
-   *  EFFRAYÉS et FUIENT quelques secondes. */
+  /** CRI DE GUERRE (Guerrier, compétence de set) : onde rouge + flash + 4 ondes sonores -> ÉTOURDIT les ennemis
+   *  proches (mob 7 s, boss 2 s). Marche AUSSI sur les boss (gel + "zzz"). */
   spellWarcry() {
     const p = this.player
-    const R = 110
-    Audio.sfx('sfx_roar', { vol: 0.6 })
-    this.cameras.main.shake(160, 0.006)
-    const burst = this.add.sprite(p.x, p.y - 2, 'fx_spark').setDepth(p.y + 6).setScale(3.2).setTint(0xff5a4a)
+    const R = 120
+    Audio.sfx('sfx_roar', { vol: 0.78 })
+    this.cameras.main.shake(260, 0.011)
+    this.cameras.main.flash(150, 255, 120, 80) // flash rouge bref (impact du cri)
+    const burst = this.add.sprite(p.x, p.y - 2, 'fx_spark').setDepth(p.y + 6).setScale(4).setTint(0xff5a4a)
     if (this.anims.exists('fx-spark')) { burst.play('fx-spark'); burst.once('animationcomplete', () => burst.destroy()) } else burst.destroy()
     // halo rouge plein qui pulse
-    const halo = this.add.circle(p.x, p.y, R, 0xff4a3a, 0.26).setDepth(p.y - 2).setScale(0.2)
-    this.tweens.add({ targets: halo, scale: 1, alpha: 0, duration: 460, ease: 'Quad.easeOut', onComplete: () => halo.destroy() })
-    // ONDES DE CRI : 3 anneaux concentriques qui jaillissent en décalé (effet "cri sonore")
-    for (let k = 0; k < 3; k++) {
-      const ring = this.add.circle(p.x, p.y, R, 0xff4a3a, 0).setStrokeStyle(4, 0xff7a5a, 0.9).setDepth(p.y - 1).setScale(0.12)
-      this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 540, delay: k * 130, ease: 'Quad.easeOut', onComplete: () => ring.destroy() })
+    const halo = this.add.circle(p.x, p.y, R, 0xff4a3a, 0.3).setDepth(p.y - 2).setScale(0.2)
+    this.tweens.add({ targets: halo, scale: 1, alpha: 0, duration: 500, ease: 'Quad.easeOut', onComplete: () => halo.destroy() })
+    // ONDES DE CRI : 4 anneaux concentriques qui jaillissent en décalé (effet "cri sonore")
+    for (let k = 0; k < 4; k++) {
+      const ring = this.add.circle(p.x, p.y, R, 0xff4a3a, 0).setStrokeStyle(5, 0xff7a5a, 0.95).setDepth(p.y - 1).setScale(0.12)
+      this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 560, delay: k * 120, ease: 'Quad.easeOut', onComplete: () => ring.destroy() })
     }
     this.monsters.getChildren().forEach((m) => {
       if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
-        m.fear?.(3500) // fuit le héros
-        if (m.showAlert) m.showAlert(this.time.now) // « ! » de panique
+        m.stun?.(m.isBoss ? 2000 : 7000) // ÉTOURDI : boss inclus (mob 7 s, boss 2 s) -> "zzz"
       }
     })
     return true
   }
 
-  /** RÉSURRECTION (Soigneur, compétence de set) : en solo, accorde une AUTO-RÉSURRECTION (1 fois) -> à la
-   *  prochaine mort, le héros se relève à 50 % PV au lieu de tomber (cf. handleDeath). */
+  /** MULTIJOUEUR (à venir) : renvoie l'ALLIÉ MORT le plus proche dans le rayon de réanimation, ou null.
+   *  Tant que le multijoueur n'existe pas, il n'y a pas d'autres joueurs (`this.allies` absent) -> renvoie
+   *  toujours null, et le sort retombe sur l'auto-résurrection solo. À l'arrivée du multi : alimenter
+   *  `this.allies` (les coéquipiers, avec `.dead`/`.x`/`.y`) et la cible se branche toute seule. */
+  findDeadAlly(range = 130) {
+    const allies = this.allies
+    if (!allies?.length) return null
+    const p = this.player
+    let best = null
+    let bd = range
+    for (const a of allies) {
+      if (!a?.dead || !a.active) continue
+      const d = Phaser.Math.Distance.Between(p.x, p.y, a.x, a.y)
+      if (d <= bd) { bd = d; best = a }
+    }
+    return best
+  }
+
+  /** Applique une RÉSURRECTION à `target` (le héros en solo, ou un allié mort en multi) : 50 % PV, mana pleine,
+   *  3 s d'INVULNÉRABILITÉ + animation (aura + cercle + bulle protectrice qui SUIT la cible). */
+  applyResurrect(target) {
+    target.hp = Math.round(target.maxHp * 0.5)
+    if (target.maxMana != null) target.mana = target.maxMana
+    target.invulnUntil = this.time.now + 3000
+    target.setVelocity?.(0, 0)
+    const aura = this.add.sprite(target.x, target.y - 2, 'fx_aura').setDepth(target.y + 6).setScale(2.6).setTint(0xfff0a0)
+    if (this.anims.exists('fx-aura')) { aura.play('fx-aura'); aura.once('animationcomplete', () => aura.destroy()) } else aura.destroy()
+    const circle = this.add.sprite(target.x, target.y, 'fx_magic_circle').setDepth(target.y - 1).setScale(2.6).setTint(0xfff0a0)
+    if (this.anims.exists('fx-magic-circle')) circle.play('fx-magic-circle')
+    this.tweens.add({ targets: circle, alpha: 0, duration: 600, delay: 2400, onComplete: () => circle.destroy() }) // l'anim dure ~3 s
+    // BULLE PROTECTRICE dorée qui SUIT la cible pendant les 3 s d'invulnérabilité (montre qu'elle est protégée)
+    const shield = this.add.circle(target.x, target.y - 4, 26, 0xffe9a0, 0.16).setStrokeStyle(2, 0xffe9a0, 0.8).setDepth(target.y + 5)
+    const shieldEnd = this.time.now + 3000
+    const shieldEv = this.time.addEvent({ delay: 16, loop: true, callback: () => {
+      if (this.time.now >= shieldEnd || !target.active) { shieldEv.remove(); shield.destroy(); return }
+      shield.setPosition(target.x, target.y - 4).setDepth(target.y + 5).setScale(0.85 + 0.15 * Math.sin(this.time.now / 120)).setAlpha(0.12 + 0.1 * (0.5 + 0.5 * Math.sin(this.time.now / 160)))
+    } })
+    Audio.sfx(SFX.heal, { vol: 0.9 })
+    this.cameras.main.flash(300, 255, 240, 180)
+    this.floatingText(target.x, target.y - 22, 'RÉSURRECTION !', '#ffe9a0')
+  }
+
+  /** RÉSURRECTION (Soigneur, compétence de set) : en MULTI, réanime un ALLIÉ MORT proche (cf. findDeadAlly).
+   *  En SOLO (aucun allié), accorde une AUTO-RÉSURRECTION -> à la prochaine mort, le héros se relève (handleDeath). */
   spellResurrect() {
     const p = this.player
+    // MULTIJOUEUR : réanime l'ALLIÉ MORT le plus proche (vraie cible du sort : on relève un coéquipier tombé).
+    const ally = this.findDeadAlly()
+    if (ally) {
+      ally.dead = false
+      this.applyResurrect(ally)
+      this.floatingText(p.x, p.y - 18, 'Allié réanimé !', '#ffe9a0')
+      return true
+    }
+    // SOLO (aucun allié à proximité) : auto-résurrection -> à la prochaine mort, le héros se relève (cf. handleDeath).
     if (p.reviveCharge) { this.floatingText(p.x, p.y - 18, 'Déjà béni', '#ffd27a'); return false }
     p.reviveCharge = true
     const circle = this.add.sprite(p.x, p.y, 'fx_magic_circle').setDepth(p.y - 1).setScale(2.2).setTint(0xfff0a0).setAlpha(0.95)
@@ -5625,18 +5686,7 @@ export default class GameScene extends Phaser.Scene {
     // RÉSURRECTION (compétence de set Soigneur, solo) : auto-revive UNE fois -> on ANNULE la mort.
     if (pl.reviveCharge) {
       pl.reviveCharge = false
-      pl.hp = Math.round(pl.maxHp * 0.5)
-      pl.mana = pl.maxMana
-      pl.invulnUntil = this.time.now + 2500
-      pl.setVelocity(0, 0)
-      const aura = this.add.sprite(pl.x, pl.y - 2, 'fx_aura').setDepth(pl.y + 6).setScale(2.6).setTint(0xfff0a0)
-      if (this.anims.exists('fx-aura')) { aura.play('fx-aura'); aura.once('animationcomplete', () => aura.destroy()) } else aura.destroy()
-      const circle = this.add.sprite(pl.x, pl.y, 'fx_magic_circle').setDepth(pl.y - 1).setScale(2.6).setTint(0xfff0a0)
-      if (this.anims.exists('fx-magic-circle')) circle.play('fx-magic-circle')
-      this.tweens.add({ targets: circle, alpha: 0, duration: 700, delay: 700, onComplete: () => circle.destroy() })
-      Audio.sfx(SFX.heal, { vol: 0.9 })
-      this.cameras.main.flash(300, 255, 240, 180)
-      this.floatingText(pl.x, pl.y - 22, 'RÉSURRECTION !', '#ffe9a0')
+      this.applyResurrect(pl) // 50 % PV + mana + 3 s invuln + animation (helper mutualisé avec la réanimation d'allié en multi)
       return
     }
     this.gameOver = true
@@ -5699,6 +5749,10 @@ export default class GameScene extends Phaser.Scene {
     }
     p.setPosition(this.cx * TILE, this.cy * TILE)
     p.hp = p.maxHp
+    p.mana = p.maxMana // mana pleine au respawn
+    p.nextSpellAt = 0
+    p.nextSpell2At = 0
+    p.nextSpell3At = 0 // COMPÉTENCES RESET à la mort : tous les cooldowns purgés -> kit prêt au respawn
     p.clearTint()
     p.setVelocity(0, 0)
     p.moveTarget = null

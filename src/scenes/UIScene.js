@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { ITEMS, MATERIALS, RECIPES, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
-import { SKILL_ICONS } from '../data/classes.js'
+import { SKILL_ICONS, SPELL3_COST } from '../data/classes.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
 // couleur du pseudo selon la classe (Guerrier rouge · Tank bleu · Mage violet · Soigneur vert)
@@ -305,14 +305,19 @@ export default class UIScene extends Phaser.Scene {
     this.skillsRect = new Phaser.Geom.Rectangle(cx(3) - size / 2 - 2, byc - size / 2 - 2, (size + bgap) * 3 + size + 4, size + 4)
     const tnow = () => this.game_.time.now
     this.skillUpdaters = []
+    // TOOLTIP de compétence (NOM + UTILITÉ) affiché au survol d'une case de la barre
+    this.skillTip = reg(this.add.text(0, 0, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe9c0', align: 'center', backgroundColor: 'rgba(11,15,23,0.94)', padding: { x: 8, y: 6 }, stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 1).setDepth(160).setVisible(false))
+    // multiplicateur d'attaque -> dégâts ~ affichés au survol (sorts purement utilitaires = pas de ligne dégâts)
+    const SP_DMG = { charge: 2.2, whirlwind: 1.7, shieldcharge: 2.5, pyroblast: 3.5, frostlance: 3.2, shadowbolt: 3.2, shockwave: 2.2 }
+    const sp3Name = setDef?.skillName ?? 'Panoplie'
     // ATK (attaque de base) — gauche
-    this.buildSkillCase(reg, cx(3), byc, size, { iconKey: ab.melee ? 'skill_atk_melee' : 'skill_atk_ranged', shortcut: ab.melee ? 'Esp' : 'F', onClick: () => this.game_.basicAttack?.() })
+    this.buildSkillCase(reg, cx(3), byc, size, { iconKey: ab.melee ? 'skill_atk_melee' : 'skill_atk_ranged', shortcut: ab.melee ? 'Esp' : 'F', onClick: () => this.game_.basicAttack?.(), title: 'Attaque', dmgMul: 1 })
     // Sort 1
-    this.buildSkillCase(reg, cx(2), byc, size, { iconKey: SKILL_ICONS[sp1?.id], shortcut: '1', onClick: () => this.game_.castSpell?.(), cd: () => ({ rem: Math.max(0, p.nextSpellAt - tnow()), total: sp1?.cd ?? 1 }), cost: () => sp1?.cost })
+    this.buildSkillCase(reg, cx(2), byc, size, { iconKey: SKILL_ICONS[sp1?.id], shortcut: '1', onClick: () => this.game_.castSpell?.(), cd: () => ({ rem: Math.max(0, p.nextSpellAt - tnow()), total: sp1?.cd ?? 1 }), cost: () => sp1?.cost, title: sp1?.name, dmgMul: SP_DMG[sp1?.id] })
     // Sort 2 (déverrouillé niv `spell2.level`)
-    this.buildSkillCase(reg, cx(1), byc, size, { iconKey: SKILL_ICONS[sp2?.id], shortcut: '2', onClick: () => this.game_.castSpell2?.(), cd: () => ({ rem: Math.max(0, p.nextSpell2At - tnow()), total: sp2?.cd ?? 1 }), cost: () => sp2?.cost, locked: () => (p.level < (sp2?.level ?? 10) ? `Niv\n${sp2?.level ?? 10}` : null) })
+    this.buildSkillCase(reg, cx(1), byc, size, { iconKey: SKILL_ICONS[sp2?.id], shortcut: '2', onClick: () => this.game_.castSpell2?.(), cd: () => ({ rem: Math.max(0, p.nextSpell2At - tnow()), total: sp2?.cd ?? 1 }), cost: () => sp2?.cost, locked: () => (!this.game_.testUnlockSkills && p.level < (sp2?.level ?? 10) ? `Niv\n${sp2?.level ?? 10}` : null), title: sp2?.name, dmgMul: SP_DMG[sp2?.id] })
     // Sort 3 = compétence de PANOPLIE (bordure émeraude, verrouillé tant que la panoplie n'est pas complète)
-    this.buildSkillCase(reg, cx(0), byc, size, { iconKey: SKILL_ICONS[setDef?.skill], shortcut: '3', setBorder: true, onClick: () => this.game_.castSpell3?.(), cd: () => ({ rem: Math.max(0, (p.nextSpell3At ?? 0) - tnow()), total: 35000 }), cost: () => 30, locked: () => (p.activeSet ? null : 'Set\n4/4') })
+    this.buildSkillCase(reg, cx(0), byc, size, { iconKey: SKILL_ICONS[setDef?.skill], shortcut: '3', setBorder: true, onClick: () => this.game_.castSpell3?.(), cd: () => ({ rem: Math.max(0, (p.nextSpell3At ?? 0) - tnow()), total: 35000 }), cost: () => SPELL3_COST[this.game_.character?.classKey] ?? 45, locked: () => (this.game_.testUnlockSkills || p.activeSet ? null : 'Set\n4/4'), title: sp3Name, dmgMul: SP_DMG[setDef?.skill] })
 
     // --- BOUTON PERSO (HUD, accès facile souris+tactile) : portrait + « C » en bas-gauche ---
     const pbSz = 48
@@ -1857,6 +1862,22 @@ export default class UIScene extends Phaser.Scene {
     const lockText = reg(this.add.text(cxx, cyy, '🔒', { fontFamily: 'monospace', fontSize: '11px', color: '#ffd27a', align: 'center', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setVisible(false))
     const hit = reg(this.add.rectangle(cxx, cyy, size, size, 0x000000, 0.001).setInteractive({ useHandCursor: true }))
     hit.on('pointerdown', (po, lx, ly, ev) => { ev?.stopPropagation?.(); def.onClick?.() })
+    // NOM toujours visible au-dessus de la case (lecture rapide SANS survol) : passe à la ligne si long (pas de coupe)
+    if (def.title) reg(this.add.text(cxx, cyy - size / 2 - 3, def.title, { fontFamily: 'monospace', fontSize: '9px', color: '#e8dcc0', align: 'center', wordWrap: { width: size + 6 }, lineSpacing: 0, stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 1))
+    // SURVOL -> plus d'infos : dégâts infligés + recharge + coût mana (le fond du tooltip recouvre le nom)
+    if (def.title && this.skillTip) {
+      hit.on('pointerover', () => {
+        const pl = this.game_.player
+        const parts = []
+        if (def.dmgMul) parts.push(`⚔ ~${Math.round(pl.attackPower * def.dmgMul)} dégâts`)
+        const total = def.cd?.().total
+        if (total && total > 100) parts.push(`⏱ ${Math.round(total / 1000)}s`)
+        const c = def.cost?.()
+        if (c) parts.push(`◇ ${c} mana`)
+        this.skillTip.setText(`${def.title}\n${parts.join('   ') || '—'}`).setPosition(Phaser.Math.Clamp(cxx, 90, this.scale.width - 90), cyy - size / 2 - 3).setVisible(true)
+      })
+      hit.on('pointerout', () => this.skillTip.setVisible(false))
+    }
     let lastRatio = 0
     this.skillUpdaters.push(() => {
       const p = this.game_.player

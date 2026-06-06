@@ -380,7 +380,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
    */
   wearSlot(slot) {
     const it = this.equipped[slot]
-    if (!it || it.durability == null) return null
+    if (!it || it.durability == null || it.unbreakable || Object.values(STARTER_WEAPON).includes(it.id)) return null // incassable (flag OU arme de base)
     it.durability -= 1
     if (it.durability <= 0) {
       it.durability = 0
