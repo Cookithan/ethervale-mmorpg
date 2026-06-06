@@ -571,8 +571,8 @@ export default class GameScene extends Phaser.Scene {
       // (updateSnowfall repositionne la zone d'émission sur le bord haut de la vue + start/stop selon le biome).
       this.snowEmitter = this.add.particles(0, 0, 'snow', {
         frame: [0, 1, 2, 3, 5, 6],
-        lifespan: 4200,
-        speedY: { min: 40, max: 80 },
+        lifespan: 1900, // chute RAPIDE -> durée de vie plus courte (les flocons traversent vite)
+        speedY: { min: 220, max: 360 }, // neige RAPIDE (avant : 40-80, lente)
         speedX: { min: -22, max: 22 },
         scale: { min: 0.7, max: 1.25 },
         alpha: { start: 0.9, end: 0.4 },
@@ -5633,10 +5633,11 @@ export default class GameScene extends Phaser.Scene {
   updateWeather(time, biome, p) {
     // 1) CYCLE DE PLUIE (clair <-> pluie) sur biomes tempérés, avec PHASES averse (rapide/dense) / bruine (lente)
     if (this.rainEmitter) {
-      if (this._weatherUntil == null) this._weatherUntil = time + 30000 // ~30 s de beau temps au départ
+      if (this._weatherUntil == null) this._weatherUntil = time + 120000 // 2 min de beau temps au départ
       if (time >= this._weatherUntil) {
         this.raining = !this.raining
-        this._weatherUntil = time + (this.raining ? Phaser.Math.Between(25000, 45000) : Phaser.Math.Between(50000, 95000))
+        // averse 30-45 s ; temps clair entre deux pluies 200-280 s
+        this._weatherUntil = time + (this.raining ? Phaser.Math.Between(30000, 45000) : Phaser.Math.Between(200000, 280000))
         this._rainPhaseAt = 0 // relance le tirage d'intensité (pas d'annonce texte)
       }
       const showRain = !!this.raining && biome !== 'snow' && biome !== 'desert' && !p.sailing // pluie partout sauf désert + neige
