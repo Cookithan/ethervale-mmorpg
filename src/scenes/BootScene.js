@@ -79,6 +79,12 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('quicksand', 'assets/deco/quicksand.png', { frameWidth: 32, frameHeight: 32 })
     // flocons de neige (Ninja, 7 frames de 8×8) — particules de chute de neige dans le biome neige
     this.load.spritesheet('snow', 'assets/deco/snow.png', { frameWidth: 8, frameHeight: 8 })
+    // PARTICULES MÉTÉO (Ninja CC0) : pluie / éclaboussure / neige / feuille / herbe (traînée au pas)
+    this.load.spritesheet('wx_rain', 'assets/fx/p_rain.png', { frameWidth: 8, frameHeight: 8 })
+    this.load.spritesheet('wx_rainfloor', 'assets/fx/p_rainfloor.png', { frameWidth: 8, frameHeight: 8 })
+    this.load.spritesheet('wx_snow', 'assets/fx/p_snow.png', { frameWidth: 8, frameHeight: 8 })
+    this.load.spritesheet('wx_leaf', 'assets/fx/p_leaf.png', { frameWidth: 8, frameHeight: 7 })
+    this.load.spritesheet('wx_grass', 'assets/fx/p_grass.png', { frameWidth: 12, frameHeight: 13 })
     this.load.image('moneybag', 'assets/items/moneybag.png') // sac de mort (14×15) déposé à l'endroit de la mort (A1)
 
     // nature (arbres, rochers...) en spritesheet 16x16 pour placer des tuiles
@@ -307,6 +313,11 @@ export default class BootScene extends Phaser.Scene {
     if (!this.anims.exists('fx-slash')) {
       this.anims.create({ key: 'fx-slash', frames: this.anims.generateFrameNumbers('fx_slash', { start: 0, end: 3 }), frameRate: 26, repeat: 0 })
     }
+    // MÉTÉO : éclaboussure de pluie (1 fois), feuille qui tournoie (boucle), touffe d'herbe au pas (1 fois), flocon (boucle)
+    if (!this.anims.exists('wx-rainfloor')) this.anims.create({ key: 'wx-rainfloor', frames: this.anims.generateFrameNumbers('wx_rainfloor', { start: 0, end: 2 }), frameRate: 14, repeat: 0 })
+    if (!this.anims.exists('wx-leaf')) this.anims.create({ key: 'wx-leaf', frames: this.anims.generateFrameNumbers('wx_leaf', { start: 0, end: 8 }), frameRate: 8, repeat: -1 })
+    if (!this.anims.exists('wx-grass')) this.anims.create({ key: 'wx-grass', frames: this.anims.generateFrameNumbers('wx_grass', { start: 0, end: 5 }), frameRate: 16, repeat: 0 })
+    if (!this.anims.exists('wx-snow')) this.anims.create({ key: 'wx-snow', frames: this.anims.generateFrameNumbers('wx_snow', { start: 0, end: 6 }), frameRate: 8, repeat: -1 })
     if (!this.anims.exists('fx-energyball')) {
       this.anims.create({ key: 'fx-energyball', frames: this.anims.generateFrameNumbers('fx_energyball', { start: 0, end: 3 }), frameRate: 14, repeat: -1 })
     }

@@ -158,7 +158,7 @@ const TEMP_CHIP_DPS = 15 // dégâts par tick (= par seconde, intervalle 1 s) en
 // CYCLE JOUR/NUIT : voile bleu nuit plein écran dont l'opacité suit l'heure. Cycle complet = 20 min.
 const DAY_CYCLE_MS = 1200000 // durée d'un cycle jour->nuit->jour (20 min)
 const NIGHT_MAX_ALPHA = 0.8 // opacité du voile au plus profond de la nuit (nuit BIEN sombre, encore jouable)
-const VILLAGE_LIGHT_R = 13 * TILE // rayon (px) du trou de lumière : STRICTEMENT le VILLAGE (place + bâtiments) ; tout autour (prairie incluse) reste dans la nuit
+const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMENT le cœur du VILLAGE ; tout autour (prairie incluse) reste dans la nuit
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
@@ -541,14 +541,23 @@ export default class GameScene extends Phaser.Scene {
         },
       })
       this.spawnSeaDragon() // dragon qui rôde au large -> visible lors du dézoom de l'accueil
-      this.setupFog() // ACCUEIL : nuages sur la TERRE de l'île (jungle, côtes) ; la MER reste visible + éclaircie sur le village
-      // ÉCLAIRCIE DOUCE (dégradé radial) LIMITÉE au village -> sur la terre on ne voit QUE lui (la jungle reste nuageuse)
+      this.setupFog() // ACCUEIL : la TERRE reste nuageuse (prairie + forêt) ; SEUL le VILLAGE est dégagé
+      // ÉCLAIRCIE douce LIMITÉE au village (serrée -> ne déborde ni sur la prairie autour ni sur la forêt)
       if (this.textures.exists('nightHole')) {
-        const clearD = 52 // diamètre ~ taille du village (fogtex = 1 px/tuile) -> ne déborde pas sur la forêt
+        const clearD = 26 // diamètre (fogtex 1 px/tuile) ~ taille du village uniquement
         const cImg = this.make.image({ x: 0, y: 0, key: 'nightHole', add: false }).setOrigin(0, 0).setDisplaySize(clearD, clearD)
         this.fogRT.erase(cImg, this.cx - clearD / 2, this.cy - clearD / 2)
       }
       this.revealCoast() // la MER est dégagée (effacement DUR à la cellule -> aucune bavure sur la terre, bords couverts)
+      // PROGRESSION : l'accueil reflète l'EXPLORATION du DERNIER perso joué -> le brouillard est retiré PARTOUT où il a
+      // déjà vu (prairie incluse puisqu'elle est découverte, + forêt/zones explorées). Inexploré = reste brumeux.
+      const prog = lastPlayedSave()?.exploredFog
+      if (Array.isArray(prog)) {
+        for (const key of prog) {
+          const [ecx, ecy] = key.split(',').map(Number)
+          this._eraseFogCell(ecx, ecy)
+        }
+      }
     } else {
       cam.useBounds = true // (l'instance peut avoir été utilisée en preview où on l'a mis à false)
       // suivi instantané (pas de lerp) : avec l'arrondi pixel, le lissage créait
@@ -573,6 +582,20 @@ export default class GameScene extends Phaser.Scene {
         emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, 900, 6) },
       }).setDepth(8500)
       this.snowEmitter.stop()
+      // PLUIE (particules) : même principe que la neige (émetteur monde, zone repositionnée en haut de la vue),
+      // mais démarrée/arrêtée par le CYCLE météo (updateWeather), uniquement sur les biomes tempérés.
+      this.rainEmitter = this.add.particles(0, 0, 'wx_rain', {
+        frame: [0, 1, 2],
+        lifespan: 650,
+        speedY: { min: 620, max: 800 },
+        speedX: { min: -130, max: -80 }, // vent oblique
+        scaleX: 1, scaleY: { min: 1, max: 1.8 },
+        alpha: { start: 0.85, end: 0.5 },
+        frequency: 20,
+        quantity: 3,
+        emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, 600, 6) },
+      }).setDepth(8600)
+      this.rainEmitter.stop()
     }
 
     // --- entrées combat (désactivées en mode aperçu) ---
@@ -788,6 +811,19 @@ export default class GameScene extends Phaser.Scene {
       }
       this.revealArea(this.cx, this.cy, 22, true) // village connu d'emblée (instant, pas de fondu au lancement)
       this.revealFog(this.player.x, this.player.y) // + autour du spawn (en fondu)
+      // PRAIRIE révélée d'office : le brouillard S'ARRÊTE au bord de la prairie (toute la zone de départ est connue)
+      const cc = this.fogCell
+      const gw = Math.ceil(MAP_W / cc)
+      const gh = Math.ceil(MAP_H / cc)
+      for (let cy = 0; cy < gh; cy++) {
+        for (let cx = 0; cx < gw; cx++) {
+          const key = cx + ',' + cy
+          if (this.exploredCells.has(key)) continue
+          if (this.biomeAt(cx * cc + 2, cy * cc + 2) !== 'prairie') continue
+          this.exploredCells.add(key)
+          this._eraseFogCell(cx, cy)
+        }
+      }
     }
   }
 
@@ -2461,6 +2497,24 @@ export default class GameScene extends Phaser.Scene {
   /** MUR INVISIBLE réservé aux MOBS au bord de la prairie : un monstre qui entre dans la prairie
    *  (zone sûre du village) voit sa vitesse radiale forcée vers l'EXTÉRIEUR (composante tangentielle
    *  gardée -> il longe le bord en suivant le joueur, sans jamais entrer). Le joueur n'est PAS affecté. */
+  /** Mur invisible (MOBS ordinaires) sur les PONTS/GUÉS : un mob ne doit pas marcher sur un pont (ni traverser
+   *  les rivières par les ponts). On le STOPPE à l'entrée du pont, et on le repousse s'il est déjà dessus. */
+  keepMonsterOffBridge(mon) {
+    if (!mon.body || !mon.active || mon.isBoss) return
+    if (!this.bridgeCells && !this.fordCells) return
+    const onCell = (x, y) => {
+      const k = Math.floor(x / TILE) + ',' + Math.floor(y / TILE)
+      return this.bridgeCells?.has(k) || this.fordCells?.has(k)
+    }
+    const v = mon.body.velocity
+    const sp = Math.hypot(v.x, v.y)
+    if (onCell(mon.x, mon.y)) { // déjà sur un pont -> fait demi-tour (repoussé vers la terre)
+      if (sp > 1) { mon.body.velocity.x = -(v.x / sp) * 55; mon.body.velocity.y = -(v.y / sp) * 55 }
+      return
+    }
+    if (sp >= 5 && onCell(mon.x + (v.x / sp) * 11, mon.y + (v.y / sp) * 11)) mon.body.velocity.set(0, 0) // stoppé au bord du pont
+  }
+
   keepMonsterOutOfPrairie(mon) {
     if (!mon.body || !mon.active) return
     const cxp = this.cx * TILE
@@ -5349,6 +5403,7 @@ export default class GameScene extends Phaser.Scene {
       mon.update(time, p)
       this.keepMonsterOutOfPrairie(mon) // mur invisible (MOBS only) au bord de la prairie
       this.keepMonsterOutOfArena(mon) // mur invisible (MOBS only) au bord de l'arène de boss active
+      this.keepMonsterOffBridge(mon) // les mobs ne marchent pas sur les ponts/gués (pas de traversée de rivière)
       mon.setDepth(mon.y)
     })
     this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
@@ -5381,6 +5436,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateDayNight(time) // cycle jour/nuit (20 min) : voile de nuit + dayDarkness
     this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
     this.updateSnowfall(biome) // chute de neige (particules) dans le biome neige
+    this.updateWeather(time, biome, p) // CYCLE pluie (biomes tempérés) + feuilles en forêt + traînée d'herbe au pas
     this.updateCampfires(time) // foyers posés : animation + extinction (zone-refuge de température)
 
     // musique : un boss engagé impose un thème de combat (tiré au hasard au début du combat,
@@ -5569,7 +5625,61 @@ export default class GameScene extends Phaser.Scene {
     e.setPosition(v.centerX - 450, v.y - 14) // zone large (900) centrée sur la vue
     const snowing = biome === 'snow'
     if (snowing && !e.emitting) e.start()
-    else if (!snowing && e.emitting) e.stop()
+    else if (!snowing && e.emitting) { e.stop(); e.killAll() } // purge les flocons en vol -> plus de neige hors biome (ni à la mort)
+  }
+
+  /** Météo dynamique : CYCLE clair<->pluie (sur biomes tempérés) + éclaboussures, FEUILLES qui tombent en
+   *  forêt, et TRAÎNÉE d'herbe quand le héros marche dans l'herbe/forêt. (La neige = biome neige, à part.) */
+  updateWeather(time, biome, p) {
+    // 1) CYCLE DE PLUIE (clair <-> pluie) sur biomes tempérés, avec PHASES averse (rapide/dense) / bruine (lente)
+    if (this.rainEmitter) {
+      if (this._weatherUntil == null) this._weatherUntil = time + 30000 // ~30 s de beau temps au départ
+      if (time >= this._weatherUntil) {
+        this.raining = !this.raining
+        this._weatherUntil = time + (this.raining ? Phaser.Math.Between(25000, 45000) : Phaser.Math.Between(50000, 95000))
+        this._rainPhaseAt = 0 // relance le tirage d'intensité (pas d'annonce texte)
+      }
+      const showRain = !!this.raining && biome !== 'snow' && biome !== 'desert' && !p.sailing // pluie partout sauf désert + neige
+      const e = this.rainEmitter
+      const v = this.cameras.main.worldView
+      e.setPosition(v.centerX - 300, v.y - 22) // zone large (600) en haut de la vue
+      if (showRain) {
+        if (!e.emitting) e.start()
+        if (time >= (this._rainPhaseAt ?? 0)) { // alterne averse / bruine toutes les ~3-6 s
+          this._rainPhaseAt = time + Phaser.Math.Between(3000, 6000)
+          this._rainHeavy = !this._rainHeavy
+          e.setFrequency(this._rainHeavy ? 12 : 55, this._rainHeavy ? 4 : 2)
+        }
+        if (time >= (this._splashAt ?? 0)) { this._splashAt = time + (this._rainHeavy ? 90 : 260); this.spawnRainSplash(); if (this._rainHeavy) this.spawnRainSplash() }
+      } else if (e.emitting) { e.stop() }
+    }
+    // 2) FEUILLES qui tombent DES ARBRES en forêt (plus espacées)
+    if (biome === 'forest' && time >= (this._leafAt ?? 0)) { this._leafAt = time + Phaser.Math.Between(1400, 2800); this.spawnLeaf() }
+  }
+
+  /** Éclaboussure de pluie au sol, à une position aléatoire de la vue. */
+  spawnRainSplash() {
+    const v = this.cameras.main.worldView
+    const x = v.x + Math.random() * v.width
+    const y = v.y + v.height * 0.35 + Math.random() * v.height * 0.62
+    const s = this.add.sprite(x, y, 'wx_rainfloor').setDepth(y).setAlpha(0.6).setScale(1.1)
+    if (this.anims.exists('wx-rainfloor')) { s.play('wx-rainfloor'); s.once('animationcomplete', () => s.destroy()) } else s.destroy()
+  }
+
+  /** Feuille qui tombe D'UN ARBRE de la vue (depuis la canopée vers le sol), en tournoyant + fondu en fin. */
+  spawnLeaf() {
+    const v = this.cameras.main.worldView
+    const trees = (this.destructibles || []).filter((d) => d.x >= v.x - 24 && d.x <= v.right + 24 && d.y >= v.y - 24 && d.y <= v.bottom + 80)
+    if (!trees.length) return // pas d'arbre en vue -> pas de feuille
+    const t = Phaser.Utils.Array.GetRandom(trees)
+    const x = t.x + Phaser.Math.Between(-12, 12)
+    const y = t.y - Phaser.Math.Between(44, 70) // part de la canopée
+    const leaf = this.add.sprite(x, y, 'wx_leaf').setDepth(y).setScale(1.3).setAlpha(0.95)
+    if (this.anims.exists('wx-leaf')) leaf.play('wx-leaf')
+    const sway = 10 + Math.random() * 18
+    this.tweens.add({ targets: leaf, y: t.y + Phaser.Math.Between(2, 10), duration: 2600 + Math.random() * 1600, ease: 'Sine.in', onComplete: () => leaf.destroy() })
+    this.tweens.add({ targets: leaf, x: x + (Math.random() < 0.5 ? -sway : sway), duration: 900 + Math.random() * 500, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    this.tweens.add({ targets: leaf, alpha: 0, delay: 1700, duration: 1100 }) // se fond au sol
   }
 
   /** Renvoie -1 si de la NEIGE est proche, +1 si du DÉSERT est proche, 0 sinon (échantillonne 8 directions
@@ -5690,6 +5800,10 @@ export default class GameScene extends Phaser.Scene {
       return
     }
     this.gameOver = true
+    this.clearTarget() // libère la cible verrouillée (sinon le réticule reste après le respawn)
+    this.snowEmitter?.stop(); this.snowEmitter?.killAll() // pas de neige pendant le voile de mort
+    this.rainEmitter?.stop(); this.rainEmitter?.killAll()
+    this.raining = false
     this.endTankCharge() // coupe un éventuel buff de Charge du Tank
     this.activeBoss = null // cache la barre de boss
     this.bossTrack = null

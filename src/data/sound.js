@@ -11,7 +11,11 @@ const DEFAULTS = { muted: false, music: 0.45, sfx: 0.7 }
 
 // Musiques à BOUCLE PAR CROSSFADE (au lieu d'un loop sec) : on reboucle au bout de `loopSec` en lançant
 // une nouvelle instance depuis le début et en faisant un fondu croisé de `xfade` s -> retour fluide.
-const XFADE_LOOPS = { mus_forest_night: { loopSec: 35, xfade: 2.5 } }
+const XFADE_LOOPS = {
+  mus_forest_night: { loopSec: 35, xfade: 2.5 },
+  mus_boss_raid: { loopSec: 30, xfade: 2.5 }, // boss PUISSANTS (raid) : reboucle fluide à 30 s
+  mus_menu: { loopSec: 56, xfade: 2.5 }, // accueil/menu : reboucle fluide à 56 s
+}
 
 // Pools de bruitages : on tire au hasard dans la liste + un léger detune -> moins répétitif.
 export const SFX = {
@@ -248,6 +252,10 @@ class AudioManager {
 
   /** Démarre une boucle à crossfade pour `key` (config { loopSec, xfade }). Auto-entretenue par timers. */
   _startXfadeLoop(key, scene, cfg) {
+    // timers du crossfade sur une scène PERSISTANTE (GameScene tourne en fond pendant le menu ET le jeu) ->
+    // la boucle survit aux transitions d'overlay (Menu -> Sélection -> Création) ; sinon le timer mourrait.
+    const ps = this.game?.scene?.getScene?.('GameScene')
+    if (ps && this.game.scene.isActive('GameScene')) scene = ps
     this._xf = { key, scene, cfg, timer: null, sounds: [] }
     this._xfadeCycle()
   }
