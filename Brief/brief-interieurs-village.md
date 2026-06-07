@@ -1,6 +1,33 @@
-# ⚠️ HANDOFF — reprise des intérieurs (2026-06-07) — LIRE EN PREMIER
+# ⚠️ HANDOFF — intérieurs du village (2026-06-07, MIS À JOUR) — LIRE EN PREMIER
 
-> Un nouveau Claude reprend ce chantier. L'utilisateur n'est PAS satisfait du rendu actuel (taverne/apothicaire) : « rien ne va ». Plusieurs itérations de placement de tuiles **à l'aveugle** = encore amateur (chevauchements, pièces mal rendues, teintes off).
+> **État** : ✅ **TAVERNE refaite et validée** (« on garde, à peaufiner plus tard »). ⏳ Apothicaire = encore l'ancien jet (à refaire). Auberge + Banque = pas faites/pas branchées. **Poussé sur `main`.**
+
+## ✅ LA MÉTHODE QUI MARCHE (réutiliser pour apothicaire/auberge/banque)
+Le rendu « amateur » venait du **placement à l'aveugle** (Claude ne voyait pas le jeu). Résolu par un **compositeur hors-jeu** :
+- **`scripts/room_preview.cjs`** rend une salle en PNG (sol + murs + meubles Penzilla, **mêmes coords que `buildInterior`**) → on **Read** le PNG et on VOIT le placement sans lancer le jeu.
+  - Usage : `COLS=17 ROWS=13 node scripts/room_preview.cjs <design> <out.png> 5 92` (design = fonction `designs.xxx` dans le script, ex. `tavern_v9`).
+  - Boucle : itérer la maquette → quand c'est bon, **porter** les coords dans `GameScene.buildInterior` (helpers `pp/si/pd/solid`).
+  - ⚠️ **Bug vécu** : dans le compositeur, les coords pixel DOIVENT être entières (`Math.round` dans `blit`) — une coord de tuile fractionnaire (gy 1.9 → 30.4 px) faussait l'index plat et **téléportait le sprite** d'une colonne. (Dans le JEU/Phaser, les fractions sont OK.)
+  - Outil voisin : `scripts/penz_crop.cjs <png> <sy> <sh> <scale> <out>` = zoom + grille de tuiles cyan pour lire les rects (catalogue exact = `Brief/penzilla-catalog.md`).
+- Penzilla est un set **cosy/maison** (pas de vrai bar médiéval) → le « bar » = **étagère/armoire à bouteilles + comptoir (banc-bar) + tabourets**. Le « comptoir cuisine » (col6 row11) rend comme un **canapé** : à éviter.
+
+## ✅ TAVERNE FAITE (`buildInterior('tavern')`)
+- Salle **17×13** (taille par-intérieur : `cols = id==='tavern' ? 17 : 15`), **sol bois foncé** (penz_floors frame 92, tint 0xb5895a), **ombre de profondeur** des murs (graphics gradient).
+- **BAR PLEINE LARGEUR au fond** = mur de bouteilles (3 étagères `pp(6,4,3,3)`) + **comptoir-ligne** (banc-bar `penz_furn` col8-11 row14, tuilé mur-à-mur) **INFRANCHISSABLE** (collision pleine largeur) + **barman Brewen** dans la bande arrière + **6 tabourets**.
+- **2 tables ovales** (`pp(5,2,2,2)`) avec **chaises tournées vers la table** : `pp()` accepte un 8e arg `flip` → `setFlipX` (chaise de gauche en miroir).
+- Lanternes (`pp(6,7,1,3)`) + lueurs `int_glow` (ADD), **AUCUN feu**, centre dégagé.
+- À peaufiner plus tard (l'utilisateur : « on peut faire mieux »). Idée éventuelle : 3e table.
+
+## ✅ UI
+- Invite **« Entrer dans X ? » Oui/Non** (`showEnterPrompt`, Theme Wood `src/ui/wood.js`) **recentrée à l'écran** (`y = height * 0.5`, plus à la place/taille du dialogue).
+
+## ⏭️ RESTE (prochaine session)
+- **Apothicaire** : refaire avec la même méthode (maquette → port). Signature = **étagères de fioles colorées + chaudron + herbes** (≠ bar), lumière verdâtre. (L'ancien jet réutilisait des bibliothèques de la taverne = à différencier.)
+- **Auberge** (lits + comptoir) + **Banque** (coffre-fort) : non faites, à brancher dans `buildingEntrances` (= tavern/apothecary seulement aujourd'hui).
+- Étendre le Theme Wood aux menus marchand/sélection/création.
+
+---
+*(Le brief de design d'origine ci-dessous reste une référence, mais la VISION VALIDÉE prime : épuré, bois foncé, lumière tamisée, AUCUN client, AUCUN feu → lanternes, objets sur tables, UI bois.)*
 
 ## VISION VALIDÉE par l'utilisateur (via questions — à RESPECTER absolument)
 - **Murs** : PIERRE CHAUDE brun-gris (façon réf). Le bleu froid actuel = REJETÉ.
