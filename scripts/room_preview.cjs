@@ -90,14 +90,20 @@ function tintMul(rgb, tint) { // tint=0xRRGGBB multiply
   return [rgb[0] * tr / 255, rgb[1] * tg / 255, rgb[2] * tb / 255]
 }
 // blit une sous-image (sx,sy,sw,sh) de `img` vers le canvas, coin haut-gauche (dx,dy) px, scale entier-ish, tint mult, alpha global
-function blit(img, sx, sy, sw, sh, dx, dy, scale, tint, ga, flip) {
-  scale = scale || 1; ga = ga == null ? 1 : ga
+function blit(img, sx, sy, sw, sh, dx, dy, scale, tint, ga, flip, rot) {
+  scale = scale || 1; ga = ga == null ? 1 : ga; rot = rot || 0 // rot = 0/1/2/3 -> 0/90CW/180/90CCW
   dx = Math.round(dx); dy = Math.round(dy) // IMPERATIF : coords pixel ENTIERES (sinon py fractionnaire -> index plat fausse la colonne)
   if (process.env.DBG2) console.error('blit dest col', dx / 16, 'dx', dx)
   const ow = Math.round(sw * scale), oh = Math.round(sh * scale)
   for (let y = 0; y < oh; y++) for (let x = 0; x < ow; x++) {
-    const srcX = flip ? sx + (sw - 1 - Math.floor(x / scale)) : sx + Math.floor(x / scale) // miroir horizontal (chaises)
-    const s = sample(img, srcX, sy + Math.floor(y / scale))
+    let lx = Math.floor(x / scale), ly = Math.floor(y / scale)
+    if (flip) lx = sw - 1 - lx
+    let slx = lx, sly = ly
+    if (rot === 1) { slx = ly; sly = (sw - 1) - lx }            // 90 CW
+    else if (rot === 2) { slx = (sw - 1) - lx; sly = (sh - 1) - ly } // 180
+    else if (rot === 3) { slx = (sh - 1) - ly; sly = lx }       // 90 CCW
+    const srcX = sx + slx
+    const s = sample(img, srcX, sy + sly)
     let a = s[3] / 255 * ga
     if (a <= 0) continue
     const px = dx + x, py = dy + y
@@ -131,6 +137,13 @@ const ops = {
     for (let r = 2; r < ROWS; r++) { wt(0, r); wt(COLS - 1, r) }
     for (let c = 1; c < COLS - 1; c++) if (c !== g0 && c !== g1) wt(c, ROWS - 1)
   },
+  woodWallRing(frame, tint, g0, g1, rot) { // mur en PLANCHES BOIS (penz_floors), rot optionnel pour planches verticales
+    const wt = (cx, cy) => blit(sheets.penz_floors, (frame % cols.penz_floors) * 16, ((frame / cols.penz_floors) | 0) * 16, 16, 16, cx * 16, cy * 16, 1, tint, 1, false, rot || 0)
+    for (let c = 0; c < COLS; c++) { wt(c, 0); wt(c, 1) }
+    for (let r = 2; r < ROWS; r++) { wt(0, r); wt(COLS - 1, r) }
+    for (let c = 1; c < COLS - 1; c++) if (c !== g0 && c !== g1) wt(c, ROWS - 1)
+  },
+  tileRot(sheet, sc, sr, gx, gy, rot, tint) { const cc = cols[sheet]; const f = sr * cc + sc; blit(sheets[sheet], (f % cc) * 16, ((f / cc) | 0) * 16, 16, 16, gx * 16, gy * 16, 1, tint, 1, false, rot) },
   // pp : meuble penz_furn, origine HAUT-GAUCHE, (sc,sr,w,h) tuiles -> pose en (gx,gy) tuiles
   furn(sheet, sc, sr, w, h, gx, gy, tint, flip) { if (process.env.DBG) console.error('furn', sheet, 'col', sc, 'row', sr, w + 'x' + h, '@', gx, gy); const cc = cols[sheet]; for (let tr = 0; tr < h; tr++) for (let tc = 0; tc < w; tc++) { const f = (sr + tr) * cc + (sc + tc); blit(sheets[sheet], (f % cc) * 16, ((f / cc) | 0) * 16, 16, 16, (gx + tc) * 16, (gy + tr) * 16, 1, tint, 1, flip) } },
   // si : item penz_items par FRAME, origine CENTRE, (cx,cy) tuiles, scale option
@@ -1343,6 +1356,267 @@ designs.auberge_C = () => {
   ops.glowT(COLS - 5.1, 9.9, 38, 0xffcf8a, 0.30)               // 2e lampadaire (salon droite)
   ops.glowT(aL + 1.5, 4.95, 30, 0xffd27a, 0.3); ops.glowT(aR - 0.5, 4.95, 30, 0xffd27a, 0.3) // bougies d'accueil
   ops.glowT(cxm, 2.4, 120, 0xffce7a, 0.12)                       // halo sur les etageres d'accueil
+}
+
+designs.auberge_rev = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a
+  const g0 = 7, g1 = 8, doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  // tapis (avant meubles)
+  ops.furn('penz_furn', 10, 2, 3, 3, 3.5, 7.4)            // grand tapis sous la table commune
+  ops.furn('penz_furn', 10, 2, 3, 2, 12.0, 9.1)           // tapis coin du feu
+  ops.furn('penz_furn', 8, 3, 2, 1, 9.5, 4.5); ops.furn('penz_furn', 8, 3, 2, 1, 12.5, 4.5) // descentes de lit
+  ops.wallRing(0xc89860, g0, g1)
+  ops.wallShadow(11, 0.5)
+  ops.furn('penz_doors', 6, 3, 2, 2, 7.5, 0)              // 1 fenetre (entre accueil et lits)
+  // ACCUEIL fond-gauche : 2 etageres COLLEES au mur (gy 1.0)
+  ops.furn('penz_furn', 6, 4, 3, 3, 1, 1.0)
+  ops.furn('penz_furn', 2, 4, 3, 3, 4, 1.0)
+  ops.item(25, 1.6, 1.45); ops.item(56, 2.3, 1.45); ops.item(57, 3.0, 1.45)
+  ops.item(24, 1.6, 2.45); ops.item(58, 2.5, 2.45)
+  ops.item(54, 4.6, 1.45); ops.item(49, 5.3, 1.45); ops.item(56, 6.0, 1.45)
+  ops.item(61, 4.7, 2.45); ops.item(57, 5.6, 2.45)
+  // COMPTOIR d'accueil (cols 1-7, rang 5.4) infranchissable
+  const aL = 1, aR = 7
+  ops.furn('penz_furn', 8, 14, 1, 1, aL, 5.4)
+  for (let c = aL + 1; c < aR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, 5.4)
+  ops.furn('penz_furn', 11, 14, 1, 1, aR - 1, 5.4)
+  ops.item(24, 1.6, 5.4); ops.item(26, 2.3, 5.3); ops.item(49, 4.3, 5.4); ops.item(63, 5.2, 5.35); ops.item(54, 6.0, 5.4)
+  // 2 LITS (tete contre le mur du fond) au fond-droite
+  ops.bed('nin_bed_tan', 9.5, 1.4)
+  ops.bed('nin_bed_blue', 12.5, 1.4)
+  // CHEMINEE (mur droit, bas) + coin du feu
+  ops.furn('penz_furn', 9, 7, 1, 3, 15.0, 8.2)
+  ops.item(58, 14.4, 11.2, 0.85)
+  ops.furn('penz_furn', 10, 0, 1, 2, 12.6, 8.3)           // banc
+  ops.furn('penz_furn', 8, 9, 2, 2, 12.9, 9.5)           // fauteuil
+  ops.item(54, 11.9, 9.9)
+  // TABLE COMMUNE (centre) + chaises bien orientees (BAS = chaise_dos vers la table)
+  const tx = 3.5, ty = 7.6
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty - 1.05)
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 1.7, ty - 1.05)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx - 0.85, ty + 0.1, null, true)
+  ops.furn('penz_furn', 0, 2, 3, 2, tx, ty)
+  ops.item(61, tx + 0.7, ty + 0.25); ops.item(54, tx + 1.5, ty + 0.25); ops.item(42, tx + 2.2, ty + 0.25)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx + 3.05, ty + 0.1)
+  ops.furn('penz_furn', 7, 0, 1, 2, tx + 0.5, ty + 1.95)
+  ops.furn('penz_furn', 7, 0, 1, 2, tx + 1.7, ty + 1.95)
+  // DECO
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.6)              // lampadaire mur gauche
+  ops.item(15, 1.5, 10.7, 1.5)                           // plante coin bas-gauche
+  ops.item(15, 8.5, 5.6, 1.3)                            // plante entre accueil et lits
+  // LUMIERES
+  ops.glowT(cxm, 6.0, 230, 0xffba70, 0.10)
+  ops.glowT(15.3, 9.2, 72, 0xff9440, 0.42)
+  ops.glowT(15.0, 8.4, 40, 0xffd070, 0.26)
+  ops.glowT(3.5, 5.2, 60, 0xffce7a, 0.22)
+  ops.glowT(1.5, 8.0, 42, 0xffcf8a, 0.30)
+  ops.glowT(3.5, 2.0, 70, 0xffce7a, 0.14)
+  ops.glowT(11.5, 2.6, 80, 0xffd9a0, 0.14)
+}
+
+designs.auberge_rev2 = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a
+  const g0 = 7, g1 = 8, doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  // tapis (avant meubles)
+  ops.furn('penz_furn', 11, 4, 2, 2, 2.5, 9.0)        // tapis sous la petite table
+  ops.furn('penz_furn', 10, 2, 3, 2, 12.5, 9.4)       // tapis coin du feu
+  ops.furn('penz_furn', 8, 3, 2, 1, 7.5, 4.6); ops.furn('penz_furn', 8, 3, 2, 1, 10.5, 4.6); ops.furn('penz_furn', 8, 3, 2, 1, 13.5, 4.6) // descentes de lit
+  ops.woodWallRing(92, 0x5a3520, g0, g1, 1)           // MUR BOIS = planches VERTICALES (rot) + teinte foncee/rouge -> distinct du sol
+  ops.wallShadow(11, 0.5)
+  // === ACCUEIL coin haut-gauche : etageres collees au mur (remontees 10px) + COMPTOIR EN L (Mira enfermee) ===
+  ops.furn('penz_furn', 6, 4, 3, 3, 1, 0.375)         // bibliotheque (cols 1-4, remontee 10px)
+  ops.furn('penz_furn', 0, 0, 2, 2, 4, 0.375)         // commode (cols 4-6)
+  ops.item(57, 1.6, 0.825); ops.item(56, 2.5, 0.825); ops.item(49, 3.4, 0.825); ops.item(24, 1.6, 1.825); ops.item(58, 2.8, 1.825)
+  const aL = 1, aR = 7
+  ops.furn('penz_furn', 8, 14, 1, 1, aL, 5.0)
+  for (let c = aL + 1; c < aR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, 5.0) // comptoir HORIZONTAL (front)
+  ;[1, 2, 3, 4, 5].forEach((r) => ops.tileRot('penz_furn', 9, 14, 6, r, 3))        // comptoir horizontal REUTILISE en rotation 90° = jambe verticale du L
+  ops.item(24, 2.0, 5.0); ops.item(26, 3.0, 4.9); ops.item(63, 4.5, 5.0); ops.item(54, 5.2, 4.95) // + tasse deplacee sur le comptoir
+  // === 3 LITS espaces (tete au mur du fond) ===
+  ops.bed('nin_bed_tan', 7.5, 1.4)
+  ops.bed('nin_bed_red', 10.5, 1.4)
+  ops.bed('nin_bed_blue', 13.5, 1.4)
+  // 2e rangee (dortoir) : 2 lits sous les precedents, allee au milieu
+  ops.furn('penz_furn', 8, 3, 2, 1, 9.5, 9.7); ops.furn('penz_furn', 8, 3, 2, 1, 12.5, 9.7) // descentes de lit
+  ops.bed('nin_bed_green', 9.5, 6.6)
+  ops.bed('nin_bed_tan', 12.5, 6.6)
+  // === CHEMINEE (mur droit bas) — fauteuil RETIRE (meuble coupe) ===
+  ops.furn('penz_furn', 9, 7, 1, 3, 15.0, 8.4)
+  // === PETITE TABLE (bas-gauche) : table ronde + 2 chaises (gauche + droite, sens corrige) ; descendue de 3px ===
+  const tx = 3.0, ty = 9.2 + 3 / 16
+  ops.furn('penz_furn', 11, 0, 1, 2, tx, ty)          // table ronde
+  ops.furn('penz_furn', 9, 0, 1, 2, tx - 1.0, ty + 0.1)             // chaise GAUCHE profil (regarde a droite = table)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx + 1.0, ty + 0.1, null, true) // chaise DROITE profil miroir (regarde a gauche = table)
+  ops.item(54, tx + 0.5, ty + 0.5)
+  // === DECO (pas de pot au milieu) ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 8.0)           // lampadaire mur gauche
+  ops.item(15, 1.5, 11.2, 1.4)                        // plante coin bas-gauche
+  // === LUMIERES ===
+  ops.glowT(cxm, 6.5, 240, 0xffba70, 0.10)
+  ops.glowT(15.3, 9.8, 70, 0xff9440, 0.42); ops.glowT(15.0, 8.9, 38, 0xffd070, 0.26)
+  ops.glowT(3.0, 4.6, 60, 0xffce7a, 0.22)
+  ops.glowT(1.5, 8.4, 42, 0xffcf8a, 0.30)
+  ops.glowT(10.5, 2.6, 130, 0xffd9a0, 0.12)
+}
+
+designs.auberge_new = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a
+  const g0 = 7, g1 = 8, doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  // tapis (avant meubles) : 2 grands tapis "coin repos" (droite) + 1 tapis salon (centre)
+  ops.furn('penz_furn', 10, 2, 3, 3, 11.3, 1.4); ops.furn('penz_furn', 10, 2, 3, 3, 13.8, 1.4)
+  ops.furn('penz_furn', 10, 2, 3, 2, 4.0, 9.2)
+  ops.woodWallRing(92, 0x5a3520, g0, g1, 1)        // mur bois vertical
+  ops.wallShadow(11, 0.5)
+  ops.furn('penz_doors', 6, 3, 2, 2, 6.0, 0)       // fenetre (salon)
+  // === RECEPTION (haut-gauche) : Mira derriere un comptoir en L (quetes) ===
+  ops.furn('penz_furn', 6, 4, 3, 3, 1, 0.4)        // biblio
+  ops.furn('penz_furn', 0, 0, 2, 2, 4, 0.4)        // commode
+  ops.item(57, 1.6, 0.85); ops.item(49, 2.6, 0.85); ops.item(24, 1.6, 1.85); ops.item(58, 2.8, 1.85)
+  const aL = 1, aR = 6
+  ops.furn('penz_furn', 8, 14, 1, 1, aL, 4.6)
+  for (let c = aL + 1; c < aR; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, 4.6)  // comptoir front
+  for (let r = 1; r <= 4; r++) ops.tileRot('penz_furn', 9, 14, 6, r, 3)         // jambe verticale du L (bench tourne)
+  ops.item(24, 2.0, 4.6); ops.item(26, 3.0, 4.5); ops.item(54, 4.5, 4.6)
+  // === ZONE REPOS (droite, separee) : 4 lits 2x2 ===
+  ops.bed('nin_bed_tan', 11.3, 1.4); ops.bed('nin_bed_blue', 13.8, 1.4)
+  ops.bed('nin_bed_red', 11.3, 6.6); ops.bed('nin_bed_green', 13.8, 6.6)
+  ops.furn('penz_furn', 8, 3, 2, 1, 11.3, 4.5); ops.furn('penz_furn', 8, 3, 2, 1, 13.8, 4.5)  // descentes (1ere rangee)
+  // === COIN DU FEU (mur gauche) ===
+  ops.furn('penz_furn', 9, 7, 1, 3, 1, 7.5)        // poele cheminee
+  ops.furn('penz_furn', 11, 6, 2, 2, 2.4, 8.0)     // fauteuil
+  // === TABLE COMMUNE (centre-bas) : chaises tournees vers la table ===
+  const tx = 4.0, ty = 9.6
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty - 1.05); ops.furn('penz_furn', 8, 0, 1, 2, tx + 1.7, ty - 1.05)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx - 0.85, ty + 0.1)
+  ops.furn('penz_furn', 0, 2, 3, 2, tx, ty)
+  ops.item(61, tx + 0.8, ty + 0.3); ops.item(54, tx + 1.6, ty + 0.3)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx + 3.05, ty + 0.1, null, true)
+  ops.furn('penz_furn', 7, 0, 1, 2, tx + 0.5, ty + 1.95); ops.furn('penz_furn', 7, 0, 1, 2, tx + 1.7, ty + 1.95)
+  // === SEPARATION salon / repos : plantes en colonne ~col 9.5 ===
+  ops.item(15, 9.6, 3.0, 1.4); ops.item(15, 9.6, 6.0, 1.4); ops.item(15, 9.6, 9.0, 1.4)
+  // === DECO ===
+  ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 10.5)  // lampadaire bas-droite
+  ops.item(15, 1.5, 11.2, 1.4)                        // plante bas-gauche
+  // === PORTE ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // === LUMIERES ===
+  ops.glowT(cxm, 6.5, 240, 0xffba70, 0.10)
+  ops.glowT(1.4, 8.2, 64, 0xff9440, 0.42); ops.glowT(1.4, 7.4, 36, 0xffd070, 0.26)
+  ops.glowT(3, 4.6, 56, 0xffce7a, 0.20)
+  ops.glowT(13, 4, 110, 0xffd9a0, 0.12)
+}
+
+designs.auberge_2room = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  const DW = 13, dr0 = 6, dr1 = 7 // mur de separation (col DW) + porte interieure (gap rows dr0..dr1)
+  ops.floor(FLOOR, FT)
+  ops.furn('penz_furn', 10, 2, 3, 2, 6.0, 9.6)            // tapis table commune
+  ops.furn('penz_furn', 10, 2, 3, 3, 14.5, 1.4); ops.furn('penz_furn', 10, 2, 3, 3, 14.5, 7.4) // tapis dortoir
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // MUR DE SEPARATION vertical (col DW) avec PORTE interieure (gap dr0..dr1)
+  for (let r = 2; r < ROWS - 1; r++) if (r < dr0 || r > dr1) ops.tileRot('penz_floors', 2, 5, DW, r, 1, WT)
+  // === SALON (gauche) : reception Mira + cheminee + table commune ===
+  ops.furn('penz_furn', 6, 4, 3, 3, 1, 0.4); ops.furn('penz_furn', 0, 0, 2, 2, 4, 0.4)
+  ops.item(57, 1.6, 0.85); ops.item(49, 2.6, 0.85); ops.item(24, 1.6, 1.85); ops.item(58, 2.8, 1.85)
+  const aL = 1, aR = 6
+  ops.furn('penz_furn', 8, 14, 1, 1, aL, 4.6)
+  for (let c = aL + 1; c < aR; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, 4.6)
+  for (let r = 1; r <= 4; r++) ops.tileRot('penz_furn', 9, 14, 6, r, 3)
+  ops.item(24, 2.0, 4.6); ops.item(26, 3.0, 4.5); ops.item(54, 4.5, 4.6)
+  ops.furn('penz_doors', 6, 3, 2, 2, 8.5, 0)             // fenetre salon
+  ops.furn('penz_furn', 4, 7, 2, 3, 10.5, 0.4)          // horloge grand-pere
+  ops.furn('penz_furn', 9, 7, 1, 3, 1, 7.5)             // cheminee
+  ops.furn('penz_furn', 11, 6, 2, 2, 2.4, 8.0)          // fauteuil
+  const tx = 6.0, ty = 9.8
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty - 1.05); ops.furn('penz_furn', 8, 0, 1, 2, tx + 1.7, ty - 1.05)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx - 0.85, ty + 0.1)
+  ops.furn('penz_furn', 0, 2, 3, 2, tx, ty)
+  ops.item(61, tx + 0.8, ty + 0.3); ops.item(54, tx + 1.6, ty + 0.3)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx + 3.05, ty + 0.1, null, true)
+  ops.furn('penz_furn', 7, 0, 1, 2, tx + 0.5, ty + 1.95); ops.furn('penz_furn', 7, 0, 1, 2, tx + 1.7, ty + 1.95)
+  ops.furn('penz_furn', 6, 7, 1, 3, 11, 8)              // lampadaire salon
+  ops.item(15, 1.5, 11.5, 1.4)
+  // === DORTOIR (droite) : 4 lits + deco ===
+  ops.bed('nin_bed_tan', 14.5, 1.4); ops.bed('nin_bed_blue', 17, 1.4)
+  ops.bed('nin_bed_red', 14.5, 7.4); ops.bed('nin_bed_green', 17, 7.4)
+  ops.furn('penz_furn', 8, 3, 2, 1, 14.5, 4.4); ops.furn('penz_furn', 8, 3, 2, 1, 17, 4.4)
+  ops.furn('penz_furn', 6, 7, 1, 3, 19, 10.5)           // lampadaire dortoir
+  ops.item(15, 19, 5.5, 1.4)
+  // PORTE (village) + tapis
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // LUMIERES
+  ops.glowT(6, 6.5, 220, 0xffba70, 0.10); ops.glowT(16.5, 6.5, 150, 0xffba70, 0.10)
+  ops.glowT(1.4, 8.2, 64, 0xff9440, 0.42); ops.glowT(1.4, 7.4, 36, 0xffd070, 0.26)
+  ops.glowT(3, 4.6, 56, 0xffce7a, 0.20)
+  ops.glowT(16, 3, 90, 0xffd9a0, 0.12); ops.glowT(16, 9, 90, 0xffd9a0, 0.12)
+}
+
+// PETITE AUBERGE-RECEPTION : comptoir + Mira (quetes) + une PORTE vers le dortoir (~14x9)
+designs.auberge_recep = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  ops.furn('penz_furn', 10, 2, 3, 2, cxm - 1.5, 6.0)     // tapis devant le comptoir
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // COMPTOIR pleine largeur au fond (comme le barman) + etageres derriere + Mira
+  ;[2, 6, 9].forEach((c) => { ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4); ops.item(57, c + 0.5, 0.85); ops.item(49, c + 1.2, 0.85); ops.item(24, c + 0.6, 1.85) })
+  const bL = 1, bR = COLS - 1
+  for (const row of [3.6, 4.0]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  ops.item(24, 2.5, 3.6); ops.item(26, 4.0, 3.5); ops.item(54, cxm + 1, 3.6); ops.item(63, cxm + 2.5, 3.6)
+  // PORTE INTERIEURE vers le DORTOIR (mur droit, bas) : cadre + tapis de seuil + (panneau "Dortoir")
+  ops.furn('penz_doors', 6, 0, 2, 3, COLS - 3, ROWS - 4)  // cadre de porte ouverte
+  ops.furn('penz_furn', 8, 3, 2, 1, COLS - 3, ROWS - 1.6) // tapis de seuil de la porte du dortoir
+  // deco
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 6.0)               // lampadaire
+  ops.item(15, 1.5, ROWS - 1.6, 1.4)
+  // PORTE (village) + tapis
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  ops.glowT(cxm, 5, 200, 0xffba70, 0.12)
+  ops.glowT(1.5, 6.4, 42, 0xffcf8a, 0.30)
+  ops.glowT(COLS - 2, ROWS - 3, 60, 0xffd9a0, 0.18)
+}
+
+// GRAND DORTOIR : ~20 lits varies pour se reposer (15x18) + porte de sortie (retour auberge)
+designs.dortoir_big = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  const colsX = [1.5, 4.5, 7.5, 10.5, 13.5]   // 1 tuile de jeu entre 2 lits (horizontal)
+  const rowsY = [1.4, 5.4, 9.4, 13.4]          // 1 tuile d'allee entre 2 rangees (vertical)
+  const COL = ['nin_bed_tan', 'nin_bed_red', 'nin_bed_blue', 'nin_bed_green']
+  let i = 0
+  rowsY.forEach((ry) => colsX.forEach((cx) => {
+    ops.furn('penz_furn', 8, 3, 2, 1, cx, ry + 3.1)      // descente de lit
+    ops.bed(COL[i % 4], cx, ry); i++
+  }))
+  // lanternes aux coins
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, ROWS - 4); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, ROWS - 4)
+  // PORTE (retour auberge) + tapis
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  ops.glowT(cxm, 8, 320, 0xffba70, 0.10)
+  ops.glowT(1.5, ROWS - 3.4, 44, 0xffcf8a, 0.28); ops.glowT(COLS - 1.5, ROWS - 3.4, 44, 0xffcf8a, 0.28)
 }
 
 const which = process.argv[2] || 'tavern_current'
