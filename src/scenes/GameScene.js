@@ -3629,7 +3629,7 @@ export default class GameScene extends Phaser.Scene {
     this._promptId = id
     const name = { tavern: 'la Taverne', apothecary: "l'Apothicaire", inn: "l'Auberge", bank: 'la Banque' }[id] || 'le bâtiment'
     const cw = this.scale.width
-    const y = this.scale.height * 0.64 // bas-centre (près du héros), plus « tout en haut »
+    const y = this.scale.height * 0.5 // CENTRE de l'écran (modale distincte, plus à la place/taille du dialogue)
     const objs = []
     objs.push(woodPanel(this, cw / 2, y, 340, 100).setScrollFactor(0).setDepth(20000)) // panneau bois (nine-slice)
     objs.push(this.add.text(cw / 2, y - 26, `Entrer dans ${name} ?`, { fontFamily: 'Georgia, serif', fontSize: '15px', fontStyle: 'bold', color: '#fff2d8', stroke: '#3a1d12', strokeThickness: 4 }).setScrollFactor(0).setOrigin(0.5).setDepth(20002))
@@ -3689,8 +3689,8 @@ export default class GameScene extends Phaser.Scene {
     const cfg = this.interiorConfig(id)
     const ox = -3200
     const oy = -3200
-    const cols = 15
-    const rows = 12
+    const cols = id === 'tavern' ? 17 : 15 // taverne agrandie (circulation + 3 tables + bar)
+    const rows = id === 'tavern' ? 13 : 12
     const W = cols * TILE
     const H = rows * TILE
     const D = 7000
@@ -3702,20 +3702,28 @@ export default class GameScene extends Phaser.Scene {
     this.ensureInteriorGlow()
     // FOND SOMBRE plein écran (couvre le « gris » hors-map) — scrollFactor 0
     objs.push(this.add.rectangle(0, 0, this.scale.width + 80, this.scale.height + 80, 0x0a0810, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(D - 100))
-    // SOL en bois (planches Penzilla, tuile répétée)
-    objs.push(this.add.tileSprite(ox + W / 2, oy + H / 2, W, H, 'penz_floors', 28).setTint(0xb07a44).setDepth(D)) // bois FONCÉ chaleureux
+    // SOL en bois (planches Penzilla, tuile répétée) — taverne = planches + bois plus FONCÉ
+    const floorFrame = id === 'tavern' ? 92 : 28, floorTint = id === 'tavern' ? 0xb5895a : 0xb07a44
+    objs.push(this.add.tileSprite(ox + W / 2, oy + H / 2, W, H, 'penz_floors', floorFrame).setTint(floorTint).setDepth(D))
     // MURS pierre (tuile PLEINE 33/34 alternée — l'analyse pixel a montré que les rangées 4-5 sont 100% pleines) :
     // mur du fond sur 2 rangées + côtés + bas avec un trou de porte au centre
     const wt = (cx, cy) => objs.push(this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, 'mw_walls', (cx + cy) % 2 ? 33 : 34).setTint(0xc89860).setDepth(D + 6)) // PIERRE CHAUDE brun-gris (teinte forte qui tue le bleu)
     for (let c = 0; c < cols; c++) { wt(c, 0); wt(c, 1) }
     for (let r = 2; r < rows; r++) { wt(0, r); wt(cols - 1, r) }
     for (let c = 1; c < cols - 1; c++) { if (c !== g0 && c !== g1) wt(c, rows - 1) }
+    // OMBRE de profondeur : le sol s'assombrit contre les murs (rendu « intérieur épais »)
+    const sg = this.add.graphics().setDepth(D + 1); const SD = 13, ix = ox + TILE, iy = oy + 2 * TILE, iw = W - 2 * TILE, ih = H - 3 * TILE
+    sg.fillGradientStyle(0, 0, 0, 0, 0.5, 0.5, 0, 0); sg.fillRect(ix, iy, iw, SD)                 // haut
+    sg.fillGradientStyle(0, 0, 0, 0, 0, 0, 0.5, 0.5); sg.fillRect(ix, iy + ih - SD, iw, SD)        // bas
+    sg.fillGradientStyle(0, 0, 0, 0, 0.5, 0, 0.5, 0); sg.fillRect(ix, iy, SD, ih)                  // gauche
+    sg.fillGradientStyle(0, 0, 0, 0, 0, 0.5, 0, 0.5); sg.fillRect(ix + iw - SD, iy, SD, ih)        // droite
+    objs.push(sg)
     // LUMIÈRE chaude TAMISÉE d'ambiance (additif), cosy — pour les 2 pièces
     objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W * 1.2, H * 1.25).setTint(0xffba70).setAlpha(0.2).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 2))
     // PORTE Mystic (2 tuiles) au bas
     objs.push(this.add.image(doorCx, oy + (rows - 1) * TILE + 8, 'mw_door').setDepth(D + 5))
     // === MOBILIER Penzilla (vraies tuiles 16x16) — pp() pose une pièce multi-tuiles (origine haut-gauche) ===
-    const pp = (sc, sr, w, h, dx, dy, depth) => { for (let tr = 0; tr < h; tr++) for (let tc = 0; tc < w; tc++) objs.push(this.add.image(dx + tc * TILE, dy + tr * TILE, 'penz_furn', (sr + tr) * 13 + (sc + tc)).setOrigin(0, 0).setDepth(depth + tr)) }
+    const pp = (sc, sr, w, h, dx, dy, depth, flip) => { for (let tr = 0; tr < h; tr++) for (let tc = 0; tc < w; tc++) objs.push(this.add.image(dx + tc * TILE, dy + tr * TILE, 'penz_furn', (sr + tr) * 13 + (sc + tc)).setOrigin(0, 0).setFlipX(!!flip).setDepth(depth + tr)) }
     const furnSolids = [] // colliders de meubles (px) créés plus bas, une fois le helper wall() défini
     const solid = (dx, dy, wpx, hpx) => furnSolids.push([dx, dy, wpx, hpx])
     const si = (frame, dx, dy, depth) => objs.push(this.add.image(dx, dy, 'penz_items', frame).setDepth(depth)) // chope/plat/bocal posé sur un meuble
@@ -3723,36 +3731,51 @@ export default class GameScene extends Phaser.Scene {
     const pd = (sc, sr, w, h, dx, dy, depth) => { for (let tr = 0; tr < h; tr++) for (let tc = 0; tc < w; tc++) objs.push(this.add.image(dx + tc * TILE, dy + tr * TILE, 'penz_doors', (sr + tr) * 18 + (sc + tc)).setOrigin(0, 0).setDepth(depth + tr)) }
     // (aucun client assis — choix utilisateur : pièces calmes, seul le PNJ de service)
     // FENÊTRES sur le mur du fond (2 pièces) — rects exacts du catalogue Penzilla
-    pd(6, 3, 2, 2, ox + 1 * TILE, oy, D + 7); pd(6, 3, 2, 2, ox + 9 * TILE, oy, D + 7)
+    const winL = id === 'tavern' ? 2 : 1, winR = id === 'tavern' ? cols - 4 : 9
+    pd(6, 3, 2, 2, ox + winL * TILE, oy, D + 7); pd(6, 3, 2, 2, ox + winR * TILE, oy, D + 7)
     let npc // PNJ de service, placé derrière le comptoir de CHAQUE pièce
     if (id === 'tavern') {
-      // === TAVERNE (épuré, chaleureux, SANS feu) : bar + tavernier + étagère + ~4 tables garnies + lanternes ===
-      pp(10, 2, 3, 3, ox + 5 * TILE, oy + 6 * TILE, D + 1) // TAPIS (vraie tuile) sous les tables centrales
-      pp(6, 11, 6, 2, ox + 4 * TILE, oy + 2 * TILE, D + 18) // BAR (comptoir 6x2 entier — plus de découpe)
-      npc = this.add.sprite(ox + 6.5 * TILE, oy + 1.7 * TILE, cfg.npcTex, 0).setDepth(D + 16) // tavernier derrière le bar
-      pp(2, 4, 3, 3, ox + 10 * TILE, oy, D + 8) // étagère à bouteilles (mur du fond, droite — VRAIE bibliothèque, plus le « piano »)
-      si(57, ox + 10.5 * TILE, oy + 0.5 * TILE, D + 10); si(49, ox + 11.4 * TILE, oy + 0.5 * TILE, D + 10); si(57, ox + 11.6 * TILE, oy + 1.5 * TILE, D + 10)
-      pp(12, 1, 1, 1, ox + 4.6 * TILE, oy + 4 * TILE, D + 13); pp(12, 1, 1, 1, ox + 8.4 * TILE, oy + 4 * TILE, D + 13) // tabourets devant le bar
-      // LANTERNES (lumière chaude, PAS de feu) : 2 lampadaires + lueurs douces
-      pp(5, 6, 1, 3, ox + 1 * TILE, oy + 7 * TILE, D + 10); pp(5, 6, 1, 3, ox + 13 * TILE, oy + 7 * TILE, D + 10)
+      // === TAVERNE : BAR PLEINE LARGEUR au fond (mur de bouteilles + barman + comptoir-ligne infranchissable) + tables à chaises tournées vers la table ===
+      const cxm = cols / 2
+      // table OVALE + 3 chaises qui REGARDENT la table (haut=face, gauche=profil MIROIR, droite=profil)
+      const oval = (tx, ty, items) => {
+        pp(8, 0, 1, 2, ox + (tx + 0.5) * TILE, oy + (ty - 1.05) * TILE, D + 9)
+        pp(9, 0, 1, 2, ox + (tx - 0.85) * TILE, oy + (ty + 0.35) * TILE, D + 12, true) // gauche : miroir -> regarde la table
+        pp(5, 2, 2, 2, ox + tx * TILE, oy + ty * TILE, D + 10)
+        ;(items || []).forEach((it, i) => si(it, ox + (tx + 1 + (i - (items.length - 1) / 2) * 0.6) * TILE, oy + (ty + 0.55) * TILE, D + 14))
+        pp(9, 0, 1, 2, ox + (tx + 1.85) * TILE, oy + (ty + 0.35) * TILE, D + 12)
+        solid(ox + tx * TILE, oy + (ty + 0.3) * TILE, 2 * TILE, 1.5 * TILE)
+      }
+      // tapis sous les 2 tables
+      pp(10, 2, 3, 2, ox + 1.4 * TILE, oy + 8.9 * TILE, D + 2); pp(10, 2, 3, 2, ox + 12.0 * TILE, oy + 8.9 * TILE, D + 2)
+      // MUR DE BOUTEILLES (3 étagères sombres collées au mur du fond)
+      ;[3, 7, 11].forEach((c) => {
+        pp(6, 4, 3, 3, ox + c * TILE, oy + 1.6 * TILE, D + 8)
+        si(6, ox + (c + 0.5) * TILE, oy + 2.05 * TILE, D + 10); si(57, ox + (c + 1.1) * TILE, oy + 2.05 * TILE, D + 10); si(49, ox + (c + 1.7) * TILE, oy + 2.05 * TILE, D + 10)
+        si(58, ox + (c + 0.6) * TILE, oy + 3.05 * TILE, D + 10); si(56, ox + (c + 1.5) * TILE, oy + 3.05 * TILE, D + 10)
+      })
+      // BARMAN (Brewen) dans la bande derrière le comptoir
+      npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE, cfg.npcTex, 0).setDepth(D + 11)
+      // COMPTOIR PLEINE LARGEUR (ligne) — 2 rangs ; INFRANCHISSABLE (on ne passe pas derrière)
+      const bL = 1, bR = cols - 1
+      for (const row of [5.0, 5.4]) {
+        pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13)
+        for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13)
+        pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13)
+      }
+      for (let c = 2; c < bR - 1; c += 2) si([54, 42, 49, 61, 54, 42][((c / 2) | 0) % 6], ox + (c + 0.5) * TILE, oy + 5.05 * TILE, D + 16) // chopes/plats sur le bar
+      // TABOURETS (boire au bar)
+      for (let i = 0; i < 6; i++) pp(12, 1, 1, 1, ox + (2.5 + i * 2) * TILE, oy + 6.6 * TILE, D + 12)
+      // LANTERNES + lueurs chaudes — AUCUN feu
+      pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.0 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 7.0 * TILE, D + 10)
       objs.push(this.add.image(ox + 1.5 * TILE, oy + 7.4 * TILE, 'int_glow').setScale(1.5).setTint(0xffcf8a).setAlpha(0.3).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
-      objs.push(this.add.image(ox + 13.5 * TILE, oy + 7.4 * TILE, 'int_glow').setScale(1.5).setTint(0xffcf8a).setAlpha(0.3).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
-      // ~4 TABLES garnies (chopes/plats/bougies), SANS clients ; chaises de FACE (col8)
-      pp(11, 0, 1, 2, ox + 2 * TILE, oy + 6.4 * TILE, D + 10); si(54, ox + 2.3 * TILE, oy + 6.4 * TILE, D + 12); si(26, ox + 2.8 * TILE, oy + 6.5 * TILE, D + 12)
-      pp(8, 0, 1, 2, ox + 2 * TILE, oy + 7.8 * TILE, D + 13)
-      pp(0, 2, 3, 2, ox + 5 * TILE, oy + 6.4 * TILE, D + 10); si(54, ox + 5.6 * TILE, oy + 6.5 * TILE, D + 12); si(34, ox + 6.5 * TILE, oy + 6.5 * TILE, D + 12); si(26, ox + 7.2 * TILE, oy + 6.5 * TILE, D + 12)
-      pp(8, 0, 1, 2, ox + 5 * TILE, oy + 7.8 * TILE, D + 13); pp(8, 0, 1, 2, ox + 7 * TILE, oy + 7.8 * TILE, D + 13)
-      pp(11, 0, 1, 2, ox + 10 * TILE, oy + 6.4 * TILE, D + 10); si(49, ox + 10.3 * TILE, oy + 6.4 * TILE, D + 12); si(26, ox + 10.8 * TILE, oy + 6.5 * TILE, D + 12)
-      pp(8, 0, 1, 2, ox + 10 * TILE, oy + 7.8 * TILE, D + 13)
-      pp(11, 0, 1, 2, ox + 4 * TILE, oy + 9.2 * TILE, D + 10); si(54, ox + 4.4 * TILE, oy + 9.2 * TILE, D + 12)
-      // déco : fauteuil (lounge) + plante + tonneau
-      pp(8, 9, 2, 2, ox + 11 * TILE, oy + 9 * TILE, D + 10)
-      pp(0, 9, 1, 2, ox + 1 * TILE, oy + 5 * TILE, D + 10)
-      if (this.textures.exists('barrel')) objs.push(this.add.image(ox + 13.4 * TILE, oy + 5 * TILE, 'barrel').setDepth(D + 12))
-      // COLLISIONS (gros meubles ; couloir central libre)
-      solid(ox + 4 * TILE, oy + 2 * TILE, 6 * TILE, 2 * TILE); solid(ox + 10 * TILE, oy + TILE, 3 * TILE, TILE)
-      solid(ox + 2 * TILE, oy + 6.7 * TILE, TILE, TILE); solid(ox + 5 * TILE, oy + 6.6 * TILE, 3 * TILE, TILE); solid(ox + 10 * TILE, oy + 6.7 * TILE, TILE, TILE)
-      solid(ox + 4 * TILE, oy + 9.4 * TILE, TILE, TILE); solid(ox + 11 * TILE, oy + 9 * TILE, 2 * TILE, 2 * TILE)
+      objs.push(this.add.image(ox + (cols - 1.5) * TILE, oy + 7.4 * TILE, 'int_glow').setScale(1.5).setTint(0xffcf8a).setAlpha(0.3).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
+      objs.push(this.add.image(ox + cxm * TILE, oy + 2.6 * TILE, 'int_glow').setScale(2.2).setTint(0xffce7a).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
+      // 2 GRANDES TABLES OVALES (chaises face à la table)
+      oval(1.8, 9.4, [54, 26])
+      oval(12.4, 9.4, [49, 61])
+      // COLLISION : comptoir pleine largeur = on ne passe pas derrière le bar
+      solid(ox + bL * TILE, oy + 5.0 * TILE, (bR - bL) * TILE, 1.4 * TILE)
     } else {
       // === APOTHICAIRE : comptoir + étagères de fioles + CHAUDRON qui mijote + caisses (≠ taverne) ===
       pp(0, 0, 2, 2, ox + 6 * TILE, oy + 2 * TILE, D + 18) // comptoir = commode
