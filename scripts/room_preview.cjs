@@ -74,6 +74,7 @@ const sheets = {
   nin_bed_green: decode(A + 'nin_bed_green.png'),
   nin_bed_red: decode(A + 'nin_bed_red.png'),
   nin_bed_blue: decode(A + 'nin_bed_blue.png'),
+  spr_door: decode(A + 'spr_door.png'), // porte Sprout animee (16x16 x 4 frames empilees) : f0/f2=ouverte, f1=fermee, f3=battant
 }
 const cols = { penz_floors: sheets.penz_floors.W / 16, penz_furn: 13, penz_doors: 18, penz_items: 8, mw_walls: sheets.mw_walls.W / 16 }
 console.error('DIMS', Object.fromEntries(Object.entries(sheets).map(([k, v]) => [k, `${v.W}x${v.H} (${v.W / 16}col x ${v.H / 16}row)`])))
@@ -150,6 +151,7 @@ const ops = {
   item(frame, cx, cy, scale, tint) { scale = scale || 1; const cc = cols.penz_items; const sz = 16 * scale; blit(sheets.penz_items, (frame % cc) * 16, ((frame / cc) | 0) * 16, 16, 16, Math.round(cx * 16 - sz / 2), Math.round(cy * 16 - sz / 2), scale, tint) },
   whole(sheet, cx, cy, tint) { const img = sheets[sheet]; blit(img, 0, 0, img.W, img.H, Math.round(cx * 16 - img.W / 2), Math.round(cy * 16 - img.H / 2), 1, tint) },
   bed(name, gx, gy, flip) { const img = sheets[name]; blit(img, 0, 0, img.W, img.H, Math.round(gx * 16), Math.round(gy * 16), 1, null, 1, flip) }, // lit Ninja (32x48), origine HAUT-GAUCHE
+  doorf(frame, cx, cy, scale) { scale = scale || 1; const sz = 16 * scale; blit(sheets.spr_door, 0, (frame || 0) * 16, 16, 16, Math.round(cx * 16 - sz / 2), Math.round(cy * 16 - sz / 2), scale) }, // porte Sprout, frame 0..3, origine CENTRE
   glowT(cx, cy, R, tint, k) { glow(Math.round(cx * 16), Math.round(cy * 16), R, tint, k) },
   // OMBRE DE MUR : assombrit le sol pres des murs (profondeur/relief interieur) ; depth=px de degrade
   wallShadow(depth, k) {
@@ -1617,6 +1619,341 @@ designs.dortoir_big = () => {
   ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
   ops.glowT(cxm, 8, 320, 0xffba70, 0.10)
   ops.glowT(1.5, ROWS - 3.4, 44, 0xffcf8a, 0.28); ops.glowT(COLS - 1.5, ROWS - 3.4, 44, 0xffcf8a, 0.28)
+}
+
+// ===== ANGLE A : CLASSIQUE SOIGNE =====
+// RECEPTION (14x9) : comptoir pleine largeur au fond + etageres garnies + Mira ; PORTE INTERIEURE sur le mur DROIT vers le dortoir.
+designs.recep_A = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2 // 14 -> g0=6,g1=7,doorCx=7
+  ops.floor(FLOOR, FT)
+  // tapis d'accueil devant le comptoir (avant les meubles)
+  ops.furn('penz_furn', 10, 2, 3, 2, cxm - 1.5, 6.0)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+
+  // === ETAGERES garnies COLLEES au mur du fond (3 bibliotheques sombres 3x3) ===
+  ;[2, 5.5, 9].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4)               // bibliotheque sombre 3x3 (rows 0.4-3.4, sous le haut de mur)
+    ops.item(57, c + 0.5, 0.85); ops.item(49, c + 1.3, 0.85); ops.item(56, c + 2.1, 0.85)  // rayon haut : chopes/bocaux
+    ops.item(24, c + 0.6, 1.85); ops.item(63, c + 1.5, 1.85); ops.item(58, c + 2.2, 1.85)  // rayon bas : registres/bocaux
+  })
+
+  // === COMPTOIR PLEINE LARGEUR au fond (2 rangs, infranchissable) — Mira s'affaire DERRIERE (bande ~row 3.0) ===
+  const bL = 1, bR = COLS - 1
+  for (const row of [4.0, 4.4]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  // clutter sur le comptoir : registre de quetes, bougie, clochette, chope
+  ops.item(24, 2.3, 4.05); ops.item(26, 3.3, 3.95); ops.item(63, cxm + 0.5, 4.05); ops.item(54, cxm + 2.2, 4.05)
+
+  // === PORTE INTERIEURE vers le DORTOIR (mur DROIT) : cadre de porte FLUSH au mur droit + tapis de seuil, bien degagee ===
+  ops.furn('penz_doors', 6, 0, 2, 3, COLS - 3, ROWS - 4)    // cadre de porte (2x3) colle au mur droit (cols 11-12, rows 5-7)
+  ops.furn('penz_furn', 8, 3, 2, 1, COLS - 3, ROWS - 1.3)   // tapis de seuil devant la porte du dortoir
+
+  // === DECO LEGERE : lampadaire + plante + tapis (deja pose) ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 6.0)                 // lampadaire mur gauche
+  ops.item(15, 1.5, ROWS - 1.6, 1.4)                        // plante coin bas-gauche
+
+  // === PORTE (village) en bas + tapis de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : ambre chaleureux ===
+  ops.glowT(cxm, 5, 210, 0xffba70, 0.12)                    // bain ambre global
+  ops.glowT(cxm, 2.0, 120, 0xffce7a, 0.16)                  // halo sur l'accueil (etageres)
+  ops.glowT(1.5, 6.4, 42, 0xffcf8a, 0.30)                   // lampadaire gauche
+  ops.glowT(COLS - 3, ROWS - 2.5, 56, 0xffd9a0, 0.20)       // lueur de la porte du dortoir
+}
+
+// DORTOIR (17x18) : grille reguliere 5x4 = 20 lits couleurs alternees, allees larges et nettes, porte de sortie en bas.
+designs.dorm_A = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2 // 17 -> g0=7,g1=8,doorCx=8
+  ops.floor(FLOOR, FT)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+
+  // GRILLE 5 colonnes x 4 rangees = 20 lits. Lit = 2x3 (origine haut-gauche).
+  // colsX : lit[cx,cx+2] ; 1.5,4.5,7.5,10.5,13.5 -> allee de 1 tuile entre lits (ex [3.5,4.5]).
+  // rowsY : lit[ry,ry+3] ; 2.0,6.0,10.0,14.0 -> allee de 1 tuile entre rangees (ex [5,6]).
+  const colsX = [1.5, 4.5, 7.5, 10.5, 13.5]
+  const rowsY = [2.0, 6.0, 10.0, 14.0]
+  const COL = ['nin_bed_tan', 'nin_bed_red', 'nin_bed_blue', 'nin_bed_green']
+  rowsY.forEach((ry, r) => colsX.forEach((cx, c) => {
+    const k = (r * 5 + c) % 4   // couleurs alternees en damier
+    ops.bed(COL[k], cx, ry)
+    if (ry + 3 < ROWS - 1) ops.furn('penz_furn', 8, 3, 2, 1, cx, ry + 3)   // descente de lit au pied (dans l'allee)
+  }))
+
+  // lanternes (lampadaires) aux 4 coins de la piece
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 2.2); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 2.2)
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, ROWS - 4); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, ROWS - 4)
+
+  // PORTE de sortie (retour reception) en bas + tapis de seuil
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // LUMIERES (ADD) : ambiance douce et chaude, rangee
+  ops.glowT(cxm, 8, 340, 0xffba70, 0.10)
+  ops.glowT(1.5, 2.6, 40, 0xffcf8a, 0.26); ops.glowT(COLS - 1.5, 2.6, 40, 0xffcf8a, 0.26)
+  ops.glowT(1.5, ROWS - 3.4, 40, 0xffcf8a, 0.26); ops.glowT(COLS - 1.5, ROWS - 3.4, 40, 0xffcf8a, 0.26)
+}
+
+// helper : un rayon de LIVRES alignes garnissant une etagere (frames livre 24/25), de gx..gx+2.4
+function op_shelfBooks(gx, y) { for (let i = 0; i < 4; i++) ops.item(i % 2 ? 25 : 24, gx + 0.45 + i * 0.62, y, 0.95) }
+
+// RECEPTION recep_B (14x9) : comptoir pleine largeur au fond + etageres garnies (Mira/quetes),
+// coin LECTURE (etagere de livres + lampadaire + plante) bas-gauche, PORTE du dortoir au FOND-DROIT (mur droit),
+// porte du village en bas. Petite piece chaleureuse et epuree.
+designs.recep_B = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2 // 14 -> g0=6,g1=7,doorCx=7,cxm=7
+  ops.floor(FLOOR, FT)
+  // tapis d'accueil devant le comptoir (avant les meubles)
+  ops.furn('penz_furn', 10, 2, 3, 2, 3.0, 6.0)            // grand tapis losanges devant le comptoir
+  ops.woodWallRing(92, WT, g0, g1, 1)                     // mur en planches bois VERTICALES
+  ops.wallShadow(11, 0.5)
+
+  // === COMPTOIR PLEINE LARGEUR au fond (laisse cols 11-13 = passage de droite vers la porte du dortoir) ===
+  // ETAGERES GARNIES (bibliotheque) collees au mur du fond, derriere Mira
+  ;[1, 4, 7].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4)            // bibliotheque_sombre 3x3 (livres + bocaux)
+    ops.item(25, c + 0.5, 0.85); ops.item(24, c + 1.4, 0.85); ops.item(57, c + 2.2, 0.85)  // livres + chope (registres)
+     op_shelfBooks(c, 1.85)                                // rayon de livres garni
+  })
+  // (BANDE DEGAGEE rows ~3.4->4.2 : Mira va-et-vient etagere<->comptoir)
+  // COMPTOIR (2 rangs, infranchissable) cols 1..10 -> Mira derriere, accueil large ; passage libre cols 11-13
+  const bL = 1, bR = 11
+  for (const row of [4.2, 4.6]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  // clutter d'accueil sur le comptoir (registre, bougie, clochette/chope, theiere)
+  ops.item(24, 2.0, 4.25); ops.item(26, 3.0, 4.15); ops.item(54, 5.5, 4.25); ops.item(63, 8.5, 4.25)
+
+  // === PORTE INTERIEURE vers le DORTOIR (mur DROIT, au FOND) — cadre + tapis de seuil ===
+  // cadre de porte 2x3 contre le mur droit, en haut (rows 2-4), atteignable par le passage de droite (cols 11-13)
+  ops.furn('penz_doors', 6, 0, 2, 3, COLS - 2, 2)         // cadre_porte_vide colle au mur droit (cols 12-13, rows 2-4)
+  ops.furn('penz_furn', 8, 3, 2, 1, COLS - 3.2, 3.0)      // tapis ovale de seuil DEVANT (cote interieur) de la porte du dortoir
+
+  // === COIN LECTURE (bas-GAUCHE) : etagere de livres garnie + fauteuil + lampadaire + plante ===
+  ops.furn('penz_furn', 3, 2, 2, 2, 1, 5.6)              // bibliotheque_basse (livres) contre le mur gauche (rows 5.6-7.6)
+  ops.item(25, 1.5, 6.1, 0.9); ops.item(24, 2.3, 6.1, 0.9)            // livres sur le rayon haut
+  ops.item(25, 1.5, 7.05, 0.9); ops.item(57, 2.3, 7.05, 0.9)          // livre + chope sur le rayon bas
+  ops.furn('penz_furn', 11, 6, 2, 2, 3.2, 5.9)          // fauteuil profil (regarde a gauche = vers l'etagere/coin lecture)
+  ops.item(24, 4.3, 6.5, 0.85)                          // livre ouvert pose pres du fauteuil
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, ROWS - 4)        // lampadaire (lit la lecture), coin bas-gauche (rows 5-8)
+  ops.item(15, 5.0, ROWS - 1.4, 1.4)                    // plante touffue (verdure) pres du coin lecture
+
+  // === PORTE du VILLAGE (bas-centre) + tapis de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : ambre chaleureux ===
+  ops.glowT(cxm, 4.6, 210, 0xffba70, 0.12)              // bain ambre global
+  ops.glowT(cxm, 1.8, 120, 0xffce7a, 0.16)             // halo sur les etageres d'accueil
+  ops.glowT(2.0, 7.0, 50, 0xffcf8a, 0.34)             // coin lecture (lampadaire, chaud)
+  ops.glowT(COLS - 1.7, 3.4, 50, 0xffd9a0, 0.20)      // douce lueur sur la porte du dortoir
+}
+
+// DORTOIR dorm_B (17x18) : 20 lits (couleurs variees) en 4 rangees x 5 colonnes, allees praticables (1 tuile partout),
+// GRAND TAPIS-ALLEE central (runner rouge) qui descend au centre, lanternes NOMBREUSES, porte de sortie en bas.
+designs.dorm_B = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2 // 17 -> g0=7,g1=8,doorCx=8,cxm=8.5
+  ops.floor(FLOOR, FT)
+  // === GRAND TAPIS-ALLEE CENTRAL (runner) : longue bande de tapis losanges au centre, avant les meubles ===
+  // colonne centrale = cols 7-9 (3 tuiles), de la 1ere rangee jusqu'a la porte. Pose en blocs 3x2 empiles.
+  for (let ry = 1.6; ry < ROWS - 1.5; ry += 2) ops.furn('penz_furn', 10, 2, 3, 2, cxm - 1.5, ry)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+
+  // === 20 LITS : 4 rangees x 5 colonnes, couleurs variees, allee de 1 tuile entre chaque (H et V) ===
+  // colonnes (gx, lit 2 large) : 2 groupes ecartes par le tapis central ; gaps 1 tuile partout = circulation fluide
+  const colsX = [1, 4, 7, 10, 13]      // lits cols 1-2,4-5,7-8,10-11,13-14 ; gaps cols 3,6,9,12 ; marges 0/15
+  const rowsY = [2, 6, 10, 14]          // tetes au rang 2/6/10/14 ; corps 3 de haut ; allee 1 tuile entre rangees
+  const PAL = ['nin_bed_tan', 'nin_bed_red', 'nin_bed_blue', 'nin_bed_green']
+  let i = 0
+  rowsY.forEach((ry, ri) => colsX.forEach((cx, ci) => {
+    ops.bed(PAL[(ci + ri) % 4], cx, ry)                  // couleur variee (decalage par rangee = pas 2 fois la meme cote a cote)
+    if (ry + 3 < ROWS - 1) ops.furn('penz_furn', 8, 3, 2, 1, cx, ry + 3) // descente de lit au pied (sauf derniere rangee = collerait au mur du bas)
+    i++
+  }))
+
+  // === LANTERNES NOMBREUSES : lampadaires aux 4 coins + 2 sur le mur du fond, lueurs douces partout ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, ROWS - 4); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, ROWS - 4) // bas G/D
+  // bougies sur les descentes de lit centrales (chaleur) — petites lueurs ponctuelles
+  // (les lueurs sont posees en fin via glowT pour rester douces)
+
+  // === PORTE de sortie (retour auberge) en bas + tapis de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : ambiance dortoir chaud, NOMBREUSES lueurs douces ===
+  ops.glowT(cxm, ROWS / 2, 360, 0xffba70, 0.10)         // bain ambre global doux
+  // lueurs douces reparties (sensation de nombreuses lanternes) aux croisees d'allees
+  ;[3, 7.5, 12].forEach((gy) => [3, 8.5, 14].forEach((gx) => ops.glowT(gx, gy, 70, 0xffcf8a, 0.12)))
+  ops.glowT(1.5, ROWS - 3.4, 46, 0xffcf8a, 0.30); ops.glowT(COLS - 1.5, ROWS - 3.4, 46, 0xffcf8a, 0.30) // lampadaires bas
+}
+
+// RECEPTION COSY (recep_C, 14x9) : comptoir pleine largeur au fond + etageres garnies
+// + Mira s'affaire dans la bande degagee ; porte du dortoir BIEN VISIBLE (mur droit) ;
+// tapis d'accueil central + 2 plantes ; lueurs ambrees ; porte village en bas.
+designs.recep_C = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  // tapis d'accueil central (devant le comptoir) - pose AVANT les meubles
+  ops.furn('penz_furn', 10, 2, 3, 2, cxm - 1.5, 5.4)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // === ETAGERES GARNIES collees au mur du fond (bibliotheque sombre 3x3, posees a y0.4 comme la base) ===
+  ;[1, 5, 9].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4)               // bibliotheque sombre (3x3) sous le mur du fond
+    ops.item(57, c + 0.5, 0.9); ops.item(49, c + 1.2, 0.9); ops.item(63, c + 2.0, 0.9)  // bocaux/flacons garnis (rayon haut)
+    ops.item(24, c + 0.6, 1.9); ops.item(26, c + 1.6, 1.9)                              // livres/chopes (rayon bas)
+  })
+  // (Mira s'affaire dans la bande degagee rangs ~3.5, entre etageres et comptoir)
+  // === COMPTOIR pleine largeur au fond (2 rangs, infranchissable) ===
+  const bL = 1, bR = COLS - 1
+  for (const row of [3.6, 4.0]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)             // embout gauche
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row) // corps
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)        // embout droit
+  }
+  // clutter d'accueil sur le comptoir (registre/chope/plat/bougie)
+  ops.item(48, 2.5, 3.5); ops.item(54, 4.5, 3.5); ops.item(56, cxm + 1, 3.5); ops.item(40, cxm + 2.5, 3.5)
+  // === PORTE INTERIEURE vers le DORTOIR (mur DROIT, BIEN VISIBLE) : porte OUVERTE 2x3 contre le mur droit + tapis de seuil ===
+  ops.furn('penz_doors', 10, 0, 2, 3, COLS - 3, 4.8)        // porte OUVERTE brun/or (cols 11-12, rangs ~5-7) collee au mur droit
+  ops.furn('penz_furn', 8, 3, 2, 1, COLS - 3, 7.5)          // tapis de seuil sous la porte du dortoir
+  // === DECO LEGERE COSY : 2 plantes (1 grande en pot + 1 d'appoint) + 1 lampadaire ===
+  ops.furn('penz_furn', 0, 9, 1, 2, 1, ROWS - 3)            // grande plante en pot, coin bas-gauche
+  ops.item(15, COLS - 4, ROWS - 1.7, 1.3)                   // plante d'appoint (pot automne) a gauche de la porte du dortoir
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 4.6)                 // lampadaire (mur gauche)
+  // === PORTE (village) + tapis de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // === LUEURS AMBREES ===
+  ops.glowT(cxm, 5, 210, 0xffba70, 0.12)
+  ops.glowT(1.5, 4.8, 44, 0xffcf8a, 0.30)
+  ops.glowT(cxm, 2.6, 90, 0xffce7a, 0.14)
+  ops.glowT(COLS - 2.5, 6, 56, 0xffd9a0, 0.18)               // halo chaud sur la porte du dortoir
+}
+
+// DORTOIR COSY (dorm_C, 17x18) : 20 lits couleurs variees, TETES alignees au mur,
+// allees TRES aerees (1 tuile horizontal entre lits, 1 rang d'allee entre les rangees) ;
+// descente de lit au pied de chaque lit ; lanternes + lueurs douces ; porte de sortie en bas.
+designs.dorm_C = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // 20 lits = 4 rangees x 5 lits. Lit = 2 large x 3 haut, TETE en haut (alignee).
+  // X : lits a cols [1-2],[4-5],[7-8],[10-11],[13-14] (ecart 3 = 1 tuile d'allee entre 2 lits) ; bords libres.
+  const colsX = [1, 4, 7, 10, 13]
+  // Y : 4 rangees, lit occupe 3 rangs (ry..ry+2), 1 rang d'allee entre rangees.
+  //   r1 y2(2-4) | allee5 | r2 y6(6-8) | allee9 | r3 y10(10-12) | allee13 | r4 y14(14-16) | mur17
+  const rowsY = [2, 6, 10, 14]
+  const COL = ['nin_bed_tan', 'nin_bed_red', 'nin_bed_blue', 'nin_bed_green']
+  let i = 0
+  rowsY.forEach((ry, rIdx) => colsX.forEach((cx) => {
+    ops.bed(COL[(i + (rIdx % 4)) % 4], cx, ry)         // lit (tete en haut), couleurs variees melangees
+    if (ry + 3 < ROWS - 1) ops.furn('penz_furn', 8, 3, 2, 1, cx, ry + 3) // descente de lit (sauf derniere rangee = mur)
+    i++
+  }))
+  // lanternes aux coins bas (murs)
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, ROWS - 4); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, ROWS - 4)
+  // PORTE (sortie auberge) + tapis de seuil
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // lueurs douces d'ambiance
+  ops.glowT(cxm, 8, 360, 0xffba70, 0.09)
+  ops.glowT(1.5, ROWS - 3.4, 46, 0xffcf8a, 0.26); ops.glowT(COLS - 1.5, ROWS - 3.4, 46, 0xffcf8a, 0.26)
+  ops.glowT(cxm, 2, 110, 0xffce7a, 0.10)
+}
+
+designs.bartest2 = () => {
+  ops.floor(92, 0xb5895a)
+  ops.woodWallRing(92, 0x5a3520, Math.floor(COLS / 2) - 1, Math.floor(COLS / 2), 1)
+  // comptoir_bar MODULAIRE (l'ensemble), rangee 12 corrigee : evier(sink) + tiroirs + placards + retour d'angle
+  ops.furn('penz_furn', 6, 12, 2, 3, 1, 2.5)    // evier/sink (cols 1-2)
+  ops.furn('penz_furn', 8, 12, 2, 3, 3, 2.5)    // tiroirs (3-4)
+  ops.furn('penz_furn', 10, 12, 2, 3, 5, 2.5)   // placard (5-6)
+  ops.furn('penz_furn', 8, 12, 2, 3, 7, 2.5)    // tiroirs (7-8)
+  ops.furn('penz_furn', 10, 12, 2, 3, 9, 2.5)   // placard (9-10)
+  ops.furn('penz_furn', 12, 12, 1, 3, 11, 2.5)  // comptoir_coin = retour d'angle en L (col 11)
+}
+
+// RECEPTION finale (14x11) : etageres + COMPTOIR_BAR (sink+tiroirs+placards+coin) + Mira ; porte mw_door (mur droit) vers le dortoir
+designs.recep_bar = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  ops.furn('penz_furn', 10, 2, 3, 2, 3.0, 8.2)            // tapis d'accueil
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // ETAGERES garnies collees au mur (Mira s'affaire devant)
+  ;[1, 5].forEach((c) => { ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4); ops.item(57, c + 0.5, 0.85); ops.item(49, c + 1.3, 0.85); ops.item(24, c + 0.6, 1.85); ops.item(58, c + 1.6, 1.85) })
+  // COMPTOIR_BAR (rows 4-6, 3 tall) : evier + tiroirs + placard + tiroirs + coin
+  ops.furn('penz_furn', 6, 12, 2, 3, 1, 4)
+  ops.furn('penz_furn', 8, 12, 2, 3, 3, 4)
+  ops.furn('penz_furn', 10, 12, 2, 3, 5, 4)
+  ops.furn('penz_furn', 8, 12, 2, 3, 7, 4)
+  ops.furn('penz_furn', 12, 12, 1, 3, 9, 4)              // retour d'angle
+  ops.item(24, 2, 4.3); ops.item(26, 4, 4.2); ops.item(54, 6, 4.3); ops.item(63, 8, 4.3) // clutter (registre quetes/bougie/chope)
+  // PORTE du DORTOIR : mw_door sur le mur droit (ici pose pour reperer ; sera tournee 90° en jeu)
+  ops.whole('mw_door', COLS - 1, 6.5)
+  // DECO
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 8.0)              // lampadaire
+  ops.item(15, 1.5, ROWS - 1.5, 1.4)                     // plante
+  // PORTE village
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  ops.glowT(cxm, 6, 200, 0xffba70, 0.12); ops.glowT(2, 2, 90, 0xffce7a, 0.14)
+  ops.glowT(COLS - 1.6, 6.5, 50, 0xffd9a0, 0.22)        // halo porte dortoir
+}
+
+// RECEPTION v2 (14x10) : ANCIEN comptoir (banc, comme apothicaire) avec bout OUVERT a droite + porte (mw_door) EN HAUT A DROITE
+designs.recep_v2 = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  ops.furn('penz_furn', 10, 2, 3, 2, 3, 7.6)             // tapis d'accueil
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // ETAGERES (cols 1-7) — laisse le HAUT-DROITE libre pour la porte du dortoir
+  ;[1, 4].forEach((c) => { ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4); ops.item(57, c + 0.5, 0.85); ops.item(49, c + 1.3, 0.85); ops.item(24, c + 0.6, 1.85); ops.item(58, c + 1.6, 1.85) })
+  // COMPTOIR = ANCIEN BANC (comme apothicaire), 2 rangs, cols 1-10 + BOUT OUVERT a droite (cols 11-13)
+  const bL = 1, bR = 11
+  for (const row of [4.6, 5.0]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  ops.item(24, 2, 4.6); ops.item(26, 3.5, 4.5); ops.item(54, 6, 4.6); ops.item(63, 8, 4.6)
+  // PORTE du DORTOIR : mw_door EN HAUT A DROITE (mur du fond, cols 11-12), atteignable par le bout ouvert
+  ops.whole('mw_door', 11.5, 0.5)
+  // DECO
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.0)             // lampadaire
+  ops.item(15, 1.5, ROWS - 1.5, 1.4)                    // plante
+  // PORTE village
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  ops.glowT(cxm, 6, 200, 0xffba70, 0.12); ops.glowT(2, 2, 90, 0xffce7a, 0.14)
+  ops.glowT(11.5, 1.5, 60, 0xffd9a0, 0.24)              // halo porte du dortoir (haut-droite)
 }
 
 const which = process.argv[2] || 'tavern_current'
