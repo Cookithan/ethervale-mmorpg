@@ -103,6 +103,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('penz_furn', 'assets/tiles/penz_furn.png', { frameWidth: 16, frameHeight: 16 })
     this.load.spritesheet('penz_doors', 'assets/tiles/penz_doors.png', { frameWidth: 16, frameHeight: 16 })
     this.load.spritesheet('penz_items', 'assets/tiles/penz_items.png', { frameWidth: 16, frameHeight: 16 })
+    for (const c of ['tan', 'green', 'red', 'blue']) this.load.image('nin_bed_' + c, `assets/tiles/nin_bed_${c}.png`) // lits Ninja (32x48) pour l'auberge
     // UI « Theme Wood » (Ninja, CC0) : panneaux + boutons nine-slice (vraies textures)
     for (const k of ['ui_panel', 'ui_bg', 'btn_normal', 'btn_hover', 'btn_pressed', 'ui_cell', 'ui_tab', 'btn_yes', 'btn_no']) this.load.image(k, `assets/ui/${k}.png`)
     // bâtiments (maisons, igloos, portails...) : spritesheet 16x16, 33 colonnes

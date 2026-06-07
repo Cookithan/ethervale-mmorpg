@@ -3296,7 +3296,7 @@ export default class GameScene extends Phaser.Scene {
         // Posé PILE au seuil = juste sous le BAS DU COLLIDER du bâtiment (= là où le joueur s'arrête), colonne de la porte.
         // (Le collider de la taverne est remonté de 16 px -> on remonte aussi son carré d'autant.) Seulement taverne/apothicaire.
         let zone = null
-        if (v.enter === 'tavern' || v.enter === 'apothecary') {
+        if (v.enter === 'tavern' || v.enter === 'apothecary' || v.enter === 'inn') {
           // carré VERT d'entrée = CONTOUR de l'ouverture de la PORTE, calé sur le BAS DU COLLIDER (= base VISIBLE
           // du bâtiment ; tient compte de la rangée vide remontée pour la taverne). Couvre la tuile de la porte +
           // 4 px sous le collider pour que le joueur collé à la porte le touche -> il entre.
@@ -3638,6 +3638,7 @@ export default class GameScene extends Phaser.Scene {
 
   interiorConfig(id) {
     if (id === 'tavern') return { title: 'Taverne du Dernier Repos', npcTex: 'npc_noble', npcName: 'Brewen', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a3a2c, wallTop: 0x5e241a, accent: 0xffb24a, lines: ['« Assieds-toi, l’ami ! Bientôt, des chopes et ragoûts qui requinquent. »'] }
+    if (id === 'inn') return { title: 'Auberge du Voyageur', npcTex: 'npc_woman', npcName: 'Mira', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a6a3c, wallTop: 0x5e3a1a, accent: 0xffc46a, lines: ['« Bienvenue à l’auberge, voyageur ! Repose-toi près du feu, une chambre chaude t’attend à l’étage. »'] }
     return { title: 'Échoppe d’Ylva', npcTex: 'npc_shaman', npcName: 'Ylva', floor: 0x5c5238, plank: 0x453d2b, wall: 0x2f6a3a, wallTop: 0x214c29, accent: 0x8ef0a0, lines: ['« Mes potions soignent, restaurent la mana et bravent le froid. (Bientôt en vente ici.) »'] }
   }
 
@@ -3684,8 +3685,8 @@ export default class GameScene extends Phaser.Scene {
     const cfg = this.interiorConfig(id)
     const ox = -3200
     const oy = -3200
-    const cols = id === 'tavern' ? 17 : 15 // taverne agrandie (circulation + 3 tables + bar)
-    const rows = id === 'tavern' ? 13 : 12
+    const cols = (id === 'tavern' || id === 'inn') ? 17 : 15 // taverne + auberge agrandies
+    const rows = (id === 'tavern' || id === 'inn') ? 13 : 12
     const W = cols * TILE
     const H = rows * TILE
     const D = 7000
@@ -3698,11 +3699,11 @@ export default class GameScene extends Phaser.Scene {
     // FOND SOMBRE plein écran (couvre le « gris » hors-map) — scrollFactor 0
     objs.push(this.add.rectangle(0, 0, this.scale.width + 80, this.scale.height + 80, 0x0a0810, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(D - 100))
     // SOL en bois (planches Penzilla, tuile répétée) — taverne = planches + bois plus FONCÉ
-    const floorFrame = id === 'tavern' ? 92 : 28, floorTint = id === 'tavern' ? 0xb5895a : 0x8f8270 // apothicaire = sol froid (laisse parler le violet)
+    const floorFrame = id === 'apothecary' ? 28 : 92, floorTint = id === 'apothecary' ? 0x8f8270 : 0xb5895a // apothicaire = sol froid (laisse parler le violet) ; taverne + auberge = planches bois chaud
     objs.push(this.add.tileSprite(ox + W / 2, oy + H / 2, W, H, 'penz_floors', floorFrame).setTint(floorTint).setDepth(D))
     // MURS pierre (tuile PLEINE 33/34 alternée — l'analyse pixel a montré que les rangées 4-5 sont 100% pleines) :
     // mur du fond sur 2 rangées + côtés + bas avec un trou de porte au centre
-    const wallTint = id === 'tavern' ? 0xc89860 : 0x9a8aa8 // taverne = pierre CHAUDE ; apothicaire = pierre FROIDE violacée
+    const wallTint = id === 'apothecary' ? 0x9a8aa8 : 0xc89860 // apothicaire = pierre FROIDE violacée ; taverne + auberge = pierre CHAUDE
     const wt = (cx, cy) => objs.push(this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, 'mw_walls', (cx + cy) % 2 ? 33 : 34).setTint(wallTint).setDepth(D + 6))
     for (let c = 0; c < cols; c++) { wt(c, 0); wt(c, 1) }
     for (let r = 2; r < rows; r++) { wt(0, r); wt(cols - 1, r) }
@@ -3715,7 +3716,7 @@ export default class GameScene extends Phaser.Scene {
     sg.fillGradientStyle(0, 0, 0, 0, 0, 0.5, 0, 0.5); sg.fillRect(ix + iw - SD, iy, SD, ih)        // droite
     objs.push(sg)
     // LUMIÈRE chaude TAMISÉE d'ambiance (additif), cosy — pour les 2 pièces
-    objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W * 1.2, H * 1.25).setTint(id === 'tavern' ? 0xffba70 : 0x9a70d0).setAlpha(id === 'tavern' ? 0.2 : 0.28).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 2)) // ambiance : chaude (taverne) / violette renforcée (apothicaire)
+    objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W * 1.2, H * 1.25).setTint(id === 'apothecary' ? 0x9a70d0 : 0xffba70).setAlpha(id === 'apothecary' ? 0.28 : 0.2).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 2)) // ambiance : chaude (taverne/auberge) / violette renforcée (apothicaire)
     // PORTE Mystic (2 tuiles) au bas
     objs.push(this.add.image(doorCx, oy + (rows - 1) * TILE + 8, 'mw_door').setDepth(D + 5))
     // === MOBILIER Penzilla (vraies tuiles 16x16) — pp() pose une pièce multi-tuiles (origine haut-gauche) ===
@@ -3776,6 +3777,71 @@ export default class GameScene extends Phaser.Scene {
       oval(10.5, 9.125, [49, 61])
       // COLLISION : comptoir pleine largeur = on ne passe pas derrière le bar (bord du HAUT descendu de 5 px, bas inchangé)
       solid(ox + bL * TILE, oy + 5.0 * TILE, (bR - bL) * TILE, 1.4 * TILE - 8)
+    } else if (id === 'inn') {
+      // === AUBERGE : accueil au fond-gauche (Mira s'affaire) + escalier vers les chambres + coin du feu + table commune (bois chaleureux) ===
+      const glow = (gx, gy, rpx, color, alpha) => objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, 'int_glow').setDisplaySize(rpx * 2, rpx * 2).setTint(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
+      // TAPIS (sous les meubles)
+      pp(10, 2, 3, 3, ox + 5.5 * TILE, oy + 6.0 * TILE, D + 2)        // grand tapis sous la table commune
+      pp(10, 2, 3, 2, ox + 12.2 * TILE, oy + 9.1 * TILE, D + 2)       // tapis du coin du feu
+      // FENÊTRES (mur du fond)
+      pd(6, 3, 2, 2, ox + 6.5 * TILE, oy, D + 7); pd(6, 3, 2, 2, ox + 11.3 * TILE, oy, D + 7)
+      // ACCUEIL (fond-gauche) : 2 étagères + clutter ; Mira s'affaire devant
+      pp(6, 4, 3, 3, ox + 1 * TILE, oy + 1.6 * TILE, D + 8)           // bibliothèque sombre (cols 1-4)
+      pp(2, 4, 3, 3, ox + 4 * TILE, oy + 1.6 * TILE, D + 8)           // bibliothèque claire (cols 4-7)
+      solid(ox + 1 * TILE, oy + 1.6 * TILE, 3 * TILE, 3 * TILE); solid(ox + 4 * TILE, oy + 1.6 * TILE, 3 * TILE, 3 * TILE) // hitbox des étagères (armoires de Mira)
+      si(25, ox + 1.6 * TILE, oy + 2.05 * TILE, D + 10); si(56, ox + 2.3 * TILE, oy + 2.05 * TILE, D + 10); si(57, ox + 3.0 * TILE, oy + 2.05 * TILE, D + 10)
+      si(24, ox + 1.6 * TILE, oy + 3.05 * TILE, D + 10); si(58, ox + 2.5 * TILE, oy + 3.05 * TILE, D + 10)
+      si(54, ox + 4.6 * TILE, oy + 2.05 * TILE, D + 10); si(49, ox + 5.3 * TILE, oy + 2.05 * TILE, D + 10); si(56, ox + 6.0 * TILE, oy + 2.05 * TILE, D + 10)
+      si(61, ox + 4.7 * TILE, oy + 3.05 * TILE, D + 10); si(57, ox + 5.6 * TILE, oy + 3.05 * TILE, D + 10)
+      // COMPTOIR d'accueil (cols 1-7, rang 5.6) — INFRANCHISSABLE
+      const aL = 1, aR = 7
+      pp(8, 14, 1, 1, ox + aL * TILE, oy + 5.6 * TILE, D + 13)
+      for (let c = aL + 1; c < aR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + 5.6 * TILE, D + 13)
+      pp(11, 14, 1, 1, ox + (aR - 1) * TILE, oy + 5.6 * TILE, D + 13)
+      si(24, ox + 1.6 * TILE, oy + 5.6 * TILE, D + 16); si(26, ox + 2.3 * TILE, oy + 5.5 * TILE, D + 16); si(49, ox + 4.3 * TILE, oy + 5.6 * TILE, D + 16); si(63, ox + 5.2 * TILE, oy + 5.55 * TILE, D + 16); si(54, ox + 6.0 * TILE, oy + 5.6 * TILE, D + 16)
+      solid(ox + 1 * TILE, oy + 5.6 * TILE, 6 * TILE, 1.0 * TILE)     // comptoir infranchissable
+      // MIRA derrière le comptoir (animée : cf. bw plus bas)
+      npc = this.add.sprite(ox + 3.5 * TILE, oy + 4.9 * TILE, cfg.npcTex, 0).setDepth(D + 11)
+      // ESCALIER (fond-droite) vers les chambres de l'étage
+      pd(0, 5, 2, 5, ox + 13.5 * TILE, oy + 1.5 * TILE, D + 8)
+      solid(ox + 13.5 * TILE, oy + 2.0 * TILE, 2 * TILE, 4.2 * TILE)  // escalier infranchissable
+      si(15, ox + 12.4 * TILE, oy + 5.6 * TILE, D + 12, 1.5)          // plante au pied de l'escalier
+      // CHEMINÉE (mur droit, bas) + coin du feu
+      pp(9, 7, 1, 3, ox + 15.0 * TILE, oy + 8.2 * TILE, D + 10)       // poêle-cheminée collé au mur droit
+      solid(ox + 15.0 * TILE, oy + 8.4 * TILE, 1 * TILE, 2.6 * TILE)  // cheminée
+      si(58, ox + 14.4 * TILE, oy + 11.2 * TILE, D + 12, 0.85)        // bocal au pied du foyer
+      pp(10, 0, 1, 2, ox + 12.6 * TILE, oy + 8.3 * TILE, D + 10)      // banc bois (face au feu)
+      pp(8, 9, 2, 2, ox + 12.9 * TILE, oy + 9.5 * TILE, D + 12)       // fauteuil
+      solid(ox + 13.1 * TILE, oy + 10.0 * TILE, 1.4 * TILE, 1.2 * TILE) // hitbox du fauteuil (réduite)
+      si(54, ox + 11.9 * TILE, oy + 9.9 * TILE, D + 14)               // chope près du fauteuil
+      // TABLE COMMUNE (centre) + 6 chaises
+      const itx = 5.5, ity = 6.8
+      pp(8, 0, 1, 2, ox + (itx + 0.5) * TILE, oy + (ity - 1.05) * TILE, D + 9)        // chaise face (haut)
+      pp(8, 0, 1, 2, ox + (itx + 1.7) * TILE, oy + (ity - 1.05) * TILE, D + 9)        // chaise face (haut)
+      pp(9, 0, 1, 2, ox + (itx - 0.85) * TILE, oy + (ity + 0.1) * TILE, D + 12, true) // chaise profil gauche
+      pp(0, 2, 3, 2, ox + itx * TILE, oy + ity * TILE, D + 10)                        // table longue claire
+      si(61, ox + (itx + 0.7) * TILE, oy + (ity + 0.25) * TILE, D + 14); si(54, ox + (itx + 1.5) * TILE, oy + (ity + 0.25) * TILE, D + 14); si(42, ox + (itx + 2.2) * TILE, oy + (ity + 0.25) * TILE, D + 14)
+      pp(9, 0, 1, 2, ox + (itx + 3.05) * TILE, oy + (ity + 0.1) * TILE, D + 12)       // chaise profil droite
+      pp(8, 0, 1, 2, ox + (itx + 0.5) * TILE, oy + (ity + 1.95) * TILE, D + 12)       // chaise face (bas)
+      pp(8, 0, 1, 2, ox + (itx + 1.7) * TILE, oy + (ity + 1.95) * TILE, D + 12)       // chaise face (bas)
+      solid(ox + (itx + 0.3) * TILE, oy + (ity + 0.5) * TILE, 2.4 * TILE, 1.0 * TILE) // table commune (hitbox réduite)
+      const chairHit = (cx, cy) => solid(ox + (cx + 0.25) * TILE, oy + (cy + 0.95) * TILE, 0.5 * TILE, 0.5 * TILE)
+      chairHit(itx + 0.5, ity - 1.05); chairHit(itx + 1.7, ity - 1.05); chairHit(itx - 0.85, ity + 0.1)
+      chairHit(itx + 3.05, ity + 0.1); chairHit(itx + 0.5, ity + 1.95); chairHit(itx + 1.7, ity + 1.95)
+      // DÉCO cosy
+      pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.6 * TILE, D + 10)          // lampadaire mur gauche
+      solid(ox + 1.3 * TILE, oy + 9.0 * TILE, 0.5 * TILE, 1.2 * TILE) // pied du lampadaire
+      si(15, ox + 1.5 * TILE, oy + 10.7 * TILE, D + 12, 1.5)          // plante coin bas-gauche
+      pp(4, 7, 2, 3, ox + 8.5 * TILE, oy + 1.6 * TILE, D + 8)         // horloge grand-père (mur du fond)
+      solid(ox + 8.5 * TILE, oy + 1.6 * TILE, 2 * TILE, 3 * TILE)     // horloge
+      si(15, ox + 9.6 * TILE, oy + 9.0 * TILE, D + 12, 1.3)           // plante d'appoint
+      // LUMIÈRES (ADD) — bois chaud + foyer
+      glow(15.3, 9.2, 72, 0xff9440, 0.42)   // FEU de la cheminée
+      glow(15.0, 8.4, 40, 0xffd070, 0.26)   // halo du foyer
+      glow(3.5, 5.4, 60, 0xffce7a, 0.22)    // comptoir d'accueil
+      glow(1.5, 8.0, 42, 0xffcf8a, 0.30)    // lampadaire gauche
+      glow(3.5, 2.4, 70, 0xffce7a, 0.14)    // étagères d'accueil
+      glow(14.5, 2.6, 46, 0xffd9a0, 0.16)   // escalier
     } else {
       // === APOTHICAIRE : modèle TAVERNE — Ylva CENTRÉE derrière un GRAND comptoir + mur de fioles JOINTIF + chaudron en COIN ===
       const cxm = cols / 2
@@ -3806,19 +3872,19 @@ export default class GameScene extends Phaser.Scene {
       si(6, ox + (cxm + 0.4) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0xff7050); si(40, ox + (cxm + 1.1) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0x8050d0); si(40, ox + (cxm + 1.8) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0x40c0d0)
       si(29, ox + (cxm + 2.7) * TILE, oy + 5.6 * TILE, D + 16, 0.95)
       si(56, ox + (cxm + 3.5) * TILE, oy + 5.6 * TILE, D + 16, 0.9); si(6, ox + (cxm + 4.3) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0x60d070)
-      solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE) // comptoir infranchissable
+      solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE - 6) // comptoir infranchissable (bas réduit de 6 px)
       // COIN PRÉPARATION (bas-gauche) : tapis + cabinet + MOINS d'objets (mortier + 1 fiole)
       pp(8, 3, 2, 1, ox + 1.7 * TILE, oy + 9.55 * TILE, D + 6)          // tapis sous le cabinet
       pp(0, 0, 2, 2, ox + 1.7 * TILE, oy + 7.9 * TILE, D + 12)          // commode = cabinet à ingrédients
       si(29, ox + 2.4 * TILE, oy + 7.95 * TILE, D + 14, 0.9)            // mortier (urne)
       si(6, ox + 3.2 * TILE, oy + 7.95 * TILE, D + 14, 0.85, 0x8050d0)  // fiole violette
-      solid(ox + 1.7 * TILE, oy + 7.9 * TILE, 2 * TILE, 2 * TILE)
+      solid(ox + 2.0 * TILE, oy + 8.2 * TILE, 1.4 * TILE, 1.4 * TILE) // cabinet : hitbox réduite
       // COIN HERBORISTE (bas-droite) : tapis + étagère basse
       pp(8, 3, 2, 1, ox + (cols - 3.4) * TILE, oy + 9.8 * TILE, D + 6)  // tapis sous l'étagère
       pp(3, 2, 2, 2, ox + (cols - 3.4) * TILE, oy + 8.1 * TILE, D + 10)
       si(58, ox + (cols - 2.9) * TILE, oy + 8.35 * TILE, D + 12, 0.9); si(56, ox + (cols - 2.0) * TILE, oy + 8.35 * TILE, D + 12, 0.9)
       si(6, ox + (cols - 2.9) * TILE, oy + 9.25 * TILE, D + 12, 0.9, 0x60d070); si(40, ox + (cols - 2.0) * TILE, oy + 9.25 * TILE, D + 12, 0.9, 0x8050d0)
-      solid(ox + (cols - 3.4) * TILE, oy + 8.1 * TILE, 2 * TILE, 2 * TILE)
+      solid(ox + (cols - 3.1) * TILE, oy + 8.4 * TILE, 1.4 * TILE, 1.4 * TILE) // étagère herboriste : hitbox réduite
       // HERBES en pot (coins bas)
       si(15, ox + 1.5 * TILE, oy + 10.1 * TILE, D + 12, 1.4); si(14, ox + (cols - 1.5) * TILE, oy + 10.1 * TILE, D + 12, 1.3)
       // LUMIÈRES violet alchimiste (ADD)
@@ -3857,17 +3923,20 @@ export default class GameScene extends Phaser.Scene {
       entry: { x: doorCx, y: oy + (rows - 2.2) * TILE },
       exit: { x: doorCx, y: oy + (rows - 1) * TILE + 8 },
     }
-    if (id === 'tavern' || id === 'apothecary') { // tenancier qui s'affaire : va-et-vient ALÉATOIRE armoire (fond) <-> comptoir (devant)
+    if (id === 'tavern' || id === 'apothecary' || id === 'inn') { // tenancier qui s'affaire : va-et-vient ALÉATOIRE armoire (fond) <-> comptoir (devant)
       // hitbox du tenancier (corps dynamique immobile qui le SUIT) -> invisible en jeu, visible en debug
       const bhb = this.add.rectangle(npc.x, npc.y + 3, 11, 9).setVisible(false)
       this.physics.add.existing(bhb); bhb.body.setAllowGravity(false); bhb.body.moves = false; bhb.body.immovable = true
       objs.push(bhb); colliders.push(this.physics.add.collider(this.player, bhb))
-      const tav = id === 'tavern' // géométrie propre à chaque salle (étagères + comptoir)
+      // géométrie propre à chaque salle (centres d'étagères / plage du comptoir / Y de la bande dégagée)
+      const geo = id === 'tavern' ? { midY: 4.1, ax: [4.5, 8.5, 12.5], fxmin: 3, fxmax: 13 }
+        : id === 'apothecary' ? { midY: 4.6, ax: [3.0, 6.0, 9.0, 12.0], fxmin: 3, fxmax: 12 }
+        : { midY: 4.9, ax: [2.5, 5.5], fxmin: 1.5, fxmax: 6 } // auberge (Mira)
       this._interior.bw = {
         sprite: npc, hitbox: bhb, texture: cfg.npcTex, facing: 'down', pauseUntil: 0, zone: 'comptoir', phase: 'toX', speed: 26, tx: npc.x,
-        midY: oy + (tav ? 4.1 : 4.6) * TILE, // Y de la bande dégagée pour le déplacement horizontal
-        armoireXs: (tav ? [4.5, 8.5, 12.5] : [3.0, 6.0, 9.0, 12.0]).map((c) => ox + c * TILE), // centres des étagères
-        frontXmin: ox + 3 * TILE, frontXmax: ox + (tav ? 13 : 12) * TILE,
+        midY: oy + geo.midY * TILE,
+        armoireXs: geo.ax.map((c) => ox + c * TILE),
+        frontXmin: ox + geo.fxmin * TILE, frontXmax: ox + geo.fxmax * TILE,
       }
       this.pickBarmanTarget(this._interior.bw)
     }
@@ -5781,7 +5850,7 @@ export default class GameScene extends Phaser.Scene {
     let nearDoor = null
     const pb = p.body
     for (const e of this.buildingEntrances || []) {
-      if ((e.id !== 'tavern' && e.id !== 'apothecary') || !e.zone) continue
+      if ((e.id !== 'tavern' && e.id !== 'apothecary' && e.id !== 'inn') || !e.zone) continue
       const zb = e.zone.body
       if (pb.x + pb.width > zb.x && pb.x < zb.x + zb.width && pb.y + pb.height > zb.y && pb.y < zb.y + zb.height) { nearDoor = e; break }
     }

@@ -70,6 +70,10 @@ const sheets = {
   penz_items: decode(A + 'penz_items.png'),
   mw_walls: decode(A + 'mw_walls.png'),
   mw_door: decode(A + 'mw_door.png'),
+  nin_bed_tan: decode(A + 'nin_bed_tan.png'),
+  nin_bed_green: decode(A + 'nin_bed_green.png'),
+  nin_bed_red: decode(A + 'nin_bed_red.png'),
+  nin_bed_blue: decode(A + 'nin_bed_blue.png'),
 }
 const cols = { penz_floors: sheets.penz_floors.W / 16, penz_furn: 13, penz_doors: 18, penz_items: 8, mw_walls: sheets.mw_walls.W / 16 }
 console.error('DIMS', Object.fromEntries(Object.entries(sheets).map(([k, v]) => [k, `${v.W}x${v.H} (${v.W / 16}col x ${v.H / 16}row)`])))
@@ -132,6 +136,7 @@ const ops = {
   // si : item penz_items par FRAME, origine CENTRE, (cx,cy) tuiles, scale option
   item(frame, cx, cy, scale, tint) { scale = scale || 1; const cc = cols.penz_items; const sz = 16 * scale; blit(sheets.penz_items, (frame % cc) * 16, ((frame / cc) | 0) * 16, 16, 16, Math.round(cx * 16 - sz / 2), Math.round(cy * 16 - sz / 2), scale, tint) },
   whole(sheet, cx, cy, tint) { const img = sheets[sheet]; blit(img, 0, 0, img.W, img.H, Math.round(cx * 16 - img.W / 2), Math.round(cy * 16 - img.H / 2), 1, tint) },
+  bed(name, gx, gy, flip) { const img = sheets[name]; blit(img, 0, 0, img.W, img.H, Math.round(gx * 16), Math.round(gy * 16), 1, null, 1, flip) }, // lit Ninja (32x48), origine HAUT-GAUCHE
   glowT(cx, cy, R, tint, k) { glow(Math.round(cx * 16), Math.round(cy * 16), R, tint, k) },
   // OMBRE DE MUR : assombrit le sol pres des murs (profondeur/relief interieur) ; depth=px de degrade
   wallShadow(depth, k) {
@@ -1103,6 +1108,241 @@ designs.tav_seat_C = () => {
   ops.glowT(cxm, 5.0, 235, 0xffba70, 0.10)
   ops.glowT(1.5, 7.4, 44, 0xffcf8a, 0.32); ops.glowT(COLS - 1.5, 7.4, 44, 0xffcf8a, 0.32)
   ops.glowT(cxm, 2.6, 72, 0xffce7a, 0.15)
+}
+
+designs.auberge_A = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a            // bois FONCE chaleureux
+  const WALL = 0xc89860          // pierre chaude
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2 // 17 cols -> g0=7,g1=8,doorCx=8
+  ops.floor(FLOOR, FT)
+
+  // === TAPIS (avant les meubles) ===
+  ops.furn('penz_furn', 10, 2, 3, 3, 2.0, 5.2)             // coin du feu (gauche, devant le poele)
+  ops.furn('penz_furn', 10, 2, 3, 2, cxm - 1.5, 9.2)       // sous la table commune (centre-bas)
+
+  ops.wallRing(WALL, g0, g1)
+  ops.wallShadow(11, 0.5)
+
+  // === ACCUEIL (fond-CENTRE) : ETAGERES contre le mur du fond, puis BANDE Mira, puis COMPTOIR devant ===
+  // 2 grandes bibliotheques SOMBRES (3x3) collees au mur (symetriques), encadrant un buffet central -> mur d'accueil large
+  ops.furn('penz_furn', 6, 4, 3, 3, cxm - 4, 1.6)          // biblio sombre gauche (cols ~4-7)
+  ops.furn('penz_furn', 6, 4, 3, 3, cxm + 1, 1.6)          // biblio sombre droite (cols ~9-12)
+  ops.furn('penz_furn', 3, 0, 1, 2, cxm - 0.5, 1.6)        // buffet central (sous l'enseigne d'accueil)
+  // clutter sur les rayons (chopes/bocaux/theiere = accueil d'auberge)
+  ops.item(57, cxm - 3.5, 2.05); ops.item(63, cxm - 2.7, 2.05); ops.item(56, cxm - 1.9, 2.05)
+  ops.item(58, cxm + 1.5, 2.05); ops.item(57, cxm + 2.3, 2.05); ops.item(63, cxm + 3.1, 2.05)
+  ops.item(57, cxm - 3.5, 3.05); ops.item(56, cxm - 1.9, 3.05); ops.item(58, cxm + 1.5, 3.05); ops.item(57, cxm + 3.1, 3.05)
+  ops.item(61, cxm - 0.1, 2.1)                              // pain sur le buffet central
+  // (BANDE DEGAGEE rows ~4.6->5.4 : Mira va-et-vient etagere<->comptoir)
+  // COMPTOIR d'accueil (1 rang, infranchissable) devant la bande, centre — bords + corps repete
+  const aL = cxm - 4, aR = cxm + 5, aRow = 5.4
+  ops.furn('penz_furn', 8, 14, 1, 1, aL, aRow)
+  for (let c = aL + 1; c < aR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, aRow)
+  ops.furn('penz_furn', 11, 14, 1, 1, aR - 1, aRow)
+  // registre + bougie + clochette/chope sur le comptoir d'accueil
+  ops.item(24, cxm - 3, aRow + 0.05); ops.item(26, cxm - 2.2, aRow - 0.02)
+  ops.item(63, cxm + 1.5, aRow + 0.05); ops.item(54, cxm + 3, aRow + 0.05)
+
+  // === CHEMINEE (mur GAUCHE) + COIN DU FEU : poele + 2 fauteuils profil qui REGARDENT le feu (a gauche) sur le tapis ===
+  ops.furn('penz_furn', 9, 7, 1, 3, 1, 5.4)                // poele_cheminee colle au mur gauche (rows 5.4-8.4)
+  ops.furn('penz_furn', 11, 6, 2, 2, 3.0, 5.0)            // fauteuil profil HAUT (regarde a gauche = le feu)
+  ops.furn('penz_furn', 11, 6, 2, 2, 3.0, 8.0)            // fauteuil profil BAS (regarde a gauche = le feu)
+  ops.item(5, 1.5, 9.4, 0.85)                              // pain_panier au coin du feu
+
+  // === ESCALIER (mur DROIT) vers les chambres ===
+  ops.furn('penz_doors', 0, 5, 2, 5, COLS - 3, 1.6)        // escalier de face avec rampe (2x5) colle a droite (cols 14-15, rows 1.6-6.6)
+  ops.furn('penz_furn', 0, 9, 1, 2, COLS - 2.1, 7.0)       // plante au pied de l'escalier (sous, degagee)
+
+  // === TABLE COMMUNE (centre-bas) : table longue claire + chaises haut/bas ===
+  const tx = cxm - 1.5, ty = 9.4
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.4, ty - 1.0)    // chaise face (derriere, haut)
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 2.1, ty - 1.0)    // chaise face (derriere, haut)
+  ops.furn('penz_furn', 0, 2, 3, 2, tx, ty)               // table longue claire (3x2)
+  ops.item(61, tx + 0.7, ty + 0.25); ops.item(54, tx + 1.5, ty + 0.2); ops.item(63, tx + 2.3, ty + 0.25) // pain + chopes
+  ops.furn('penz_furn', 7, 0, 1, 2, tx + 0.4, ty + 1.95)  // chaise dos (devant, bas)
+  ops.furn('penz_furn', 7, 0, 1, 2, tx + 2.1, ty + 1.95)  // chaise dos (devant, bas)
+
+  // === LAMPADAIRES + DECO cosy ===
+  ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2.1, 9.4)      // lampadaire bas-droite (eclaire la table / l'escalier)
+  ops.furn('penz_furn', 0, 9, 1, 2, 1.1, 11.0)           // plante bas-gauche
+
+  // === PORTE + tapis de seuil (cols 8) DEGAGEE ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : ambre chaleureux + foyer ===
+  ops.glowT(cxm, 6.0, 250, 0xffba70, 0.10)                // bain ambre global
+  ops.glowT(1.4, 7.0, 64, 0xff9a40, 0.52)                // FOYER (cheminee, orange vif)
+  ops.glowT(1.4, 6.0, 36, 0xffce7a, 0.30)                // halo chaud au-dessus du poele
+  ops.glowT(cxm, 3.6, 130, 0xffce7a, 0.16)               // halo sur l'accueil (etageres)
+  ops.glowT(COLS - 1.7, 9.6, 42, 0xffcf8a, 0.32)         // lampadaire bas-droite
+  ops.glowT(cxm, 9.6, 70, 0xffba70, 0.16)                // chaleur sur la table commune
+}
+
+// AUBERGE_B — angle : ACCUEIL au fond-GAUCHE (comptoir + etageres), ESCALIER au fond-DROIT,
+// CHEMINEE sur le mur DROIT (bas) avec coin du feu, TABLE commune au centre. Asymetrique, cosy, bois chaud + feu.
+designs.auberge_B = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a            // bois chaud
+  const g0 = 7, g1 = 8, doorCx = g0 + 1, cxm = COLS / 2  // porte centree (cols 7-8), doorCx=8
+  ops.floor(FLOOR, FT)
+  // --- TAPIS (avant les meubles) ---
+  ops.furn('penz_furn', 10, 2, 3, 3, 5.5, 6.0)           // grand tapis losanges sous la table commune (centre)
+  ops.furn('penz_furn', 10, 2, 3, 2, 12.2, 9.1)          // tapis losanges du coin du feu (mur droit bas)
+  ops.wallRing(0xc89860, g0, g1)
+  ops.wallShadow(11, 0.5)
+  // FENETRES sur le mur du fond (entre les zones) — lumiere du dehors
+  ops.furn('penz_doors', 6, 3, 2, 2, 6.5, 0)             // fenetre entre l'accueil et l'horloge
+  ops.furn('penz_doors', 6, 3, 2, 2, 11.3, 0)            // fenetre entre l'horloge et l'escalier
+
+  // === ACCUEIL (fond-GAUCHE) ===
+  // 1) ETAGERES contre le mur du fond, moitie gauche (cols 1..6). Mira s'affaire devant.
+  ops.furn('penz_furn', 6, 4, 3, 3, 1, 1.6)              // bibliotheque sombre 3x3 (cols 1-3)
+  ops.furn('penz_furn', 2, 4, 3, 3, 4, 1.6)              // bibliotheque claire 3x3 (cols 4-6)
+  // clutter sur les rayons (registres, bocaux, chopes)
+  ops.item(25, 1.6, 2.05); ops.item(56, 2.3, 2.05); ops.item(57, 3.0, 2.05)
+  ops.item(24, 1.6, 3.05); ops.item(58, 2.5, 3.05)
+  ops.item(54, 4.6, 2.05); ops.item(49, 5.3, 2.05); ops.item(56, 6.0, 2.05)
+  ops.item(61, 4.7, 3.05); ops.item(57, 5.6, 3.05)
+  // (Mira s'affaire ligne ~5.0, entre les etageres et le comptoir)
+  // 2) COMPTOIR D'ACCUEIL (ligne bois bas), devant les etageres, infranchissable (cols 1..6)
+  const aL = 1, aR = 7
+  ops.furn('penz_furn', 8, 14, 1, 1, aL, 5.6)            // bord gauche du comptoir
+  for (let c = aL + 1; c < aR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, 5.6) // corps
+  ops.furn('penz_furn', 11, 14, 1, 1, aR - 1, 5.6)       // bord droit du comptoir
+  // clutter sur le comptoir d'accueil (registre, bougie, calice, theiere, chope)
+  ops.item(24, 1.6, 5.6); ops.item(26, 2.3, 5.5); ops.item(49, 4.3, 5.6); ops.item(63, 5.2, 5.55); ops.item(54, 6.0, 5.6)
+
+  // === ESCALIER (fond-DROITE) contre le mur du fond ===
+  ops.furn('penz_doors', 0, 5, 2, 5, 13.5, 1.5)          // escalier de face + rampe (2x5) vers l'etage
+  // plante au pied gauche de l'escalier (habille le coin) — item fiable (le furn plante_pot rend casse)
+  ops.item(15, 12.4, 5.6, 1.5)                            // plante touffue au pied de l'escalier
+
+  // === CHEMINEE (mur DROIT, bas) + coin du feu ===
+  ops.furn('penz_furn', 9, 7, 1, 3, 15.0, 8.2)           // poele_cheminee colle au mur droit (LE point chaud)
+  ops.item(58, 14.4, 11.2, 0.85)                         // bocal au pied du foyer
+  // coin du feu = banc bois (haut) + fauteuil orange (bas) sur le tapis, face au foyer ; rien ne touche le mur du bas
+  ops.furn('penz_furn', 10, 0, 1, 2, 12.6, 8.3)          // banc_bois (assise par le feu)
+  ops.furn('penz_furn', 8, 9, 2, 2, 12.9, 9.5)          // fauteuil_face orange (coin lounge du feu)
+  ops.item(54, 11.9, 9.9)                                 // chope posee a cote du fauteuil
+
+  // === TABLE COMMUNE (centre) — table longue + chaises ===
+  const tx = 5.5, ty = 6.8
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty - 1.05) // chaise face haut (derriere)
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 1.7, ty - 1.05) // 2e chaise face haut
+  ops.furn('penz_furn', 9, 0, 1, 2, tx - 0.85, ty + 0.1, null, true)  // chaise profil gauche (regarde a droite)
+  ops.furn('penz_furn', 0, 2, 3, 2, tx, ty)              // table longue claire 3x2
+  ops.item(61, tx + 0.7, ty + 0.25); ops.item(54, tx + 1.5, ty + 0.25); ops.item(42, tx + 2.2, ty + 0.25)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx + 3.05, ty + 0.1) // chaise profil droite (regarde a gauche)
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty + 1.95) // chaise face bas (devant)
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 1.7, ty + 1.95) // 2e chaise face bas
+
+  // === DECO cosy ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.6)              // lampadaire mur gauche
+  ops.item(15, 1.5, 10.7, 1.5)                            // plante touffue coin bas-gauche (item fiable)
+  ops.furn('penz_furn', 4, 7, 2, 3, 8.5, 1.6)            // horloge grand-pere (mur du fond, entre accueil et escalier)
+  ops.item(15, 9.6, 9.0, 1.3)                             // plante d'appoint dans l'espace ouvert (equilibre droite)
+
+  // === PORTE + tapis de seuil (cols 7-8) ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : lueurs ambrees ===
+  ops.glowT(cxm, 6.0, 230, 0xffba70, 0.10)               // bain ambre general
+  ops.glowT(15.3, 9.2, 72, 0xff9440, 0.5)                // FEU de la cheminee (orange chaud vif)
+  ops.glowT(15.0, 8.4, 40, 0xffd070, 0.28)               // halo chaud au-dessus du foyer
+  ops.glowT(3.5, 5.4, 60, 0xffce7a, 0.22)                // halo chaud sur le comptoir d'accueil
+  ops.glowT(1.5, 8.0, 42, 0xffcf8a, 0.30)                // lampadaire gauche
+  ops.glowT(3.5, 2.4, 70, 0xffce7a, 0.14)                // lueur sur les etageres d'accueil
+  ops.glowT(14.5, 2.6, 46, 0xffd9a0, 0.16)               // douce lueur sur l'escalier
+}
+
+designs.auberge_C = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a            // bois chaud chaleureux
+  const WALL = 0xc89860          // pierre chaude
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2 // door cols 7,8 -> doorCx 8
+  ops.floor(FLOOR, FT)
+
+  // --- TAPIS sous le salon (avant les meubles) : grand tapis losanges au centre-bas ---
+  ops.furn('penz_furn', 10, 2, 3, 3, cxm - 1.5, 8.0)     // grand tapis losanges 3x3 sous le salon (coin du feu)
+
+  ops.wallRing(WALL, g0, g1)
+  ops.wallShadow(11, 0.5)
+
+  // === FENETRES au mur du fond (de part et d'autre de l'accueil) ===
+  ops.furn('penz_doors', 6, 3, 2, 2, 1.5, 0)
+  ops.furn('penz_doors', 6, 3, 2, 2, COLS - 3.5, 0)
+
+  // === ACCUEIL (fond/haut) : ETAGERES contre le mur (rang ~1.6) ; bande degagee rang ~4 ; COMPTOIR rang ~5 ===
+  // Etageres derriere Mira : 3 bibliotheques collees au mur du fond (cols 5..14 centrees autour de cxm)
+  ;[5, 8, 11].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 1.6)            // bibliotheque_sombre 3x3
+    ops.item(57, c + 0.5, 2.05); ops.item(58, c + 1.1, 2.05); ops.item(49, c + 1.7, 2.05) // bocaux/calices
+    ops.item(25, c + 0.6, 3.05); ops.item(24, c + 1.5, 3.05)                               // livres (registres d'auberge)
+  })
+  // (MIRA s'affaire dans la bande degagee rang ~4, entre les etageres (haut) et le comptoir (bas))
+  // COMPTOIR D'ACCUEIL (ligne de banc-console, 2 rangs) — large, centre ; on ne passe PAS derriere
+  const aL = 4, aR = COLS - 4  // accueil cols 4..12 (centre)
+  for (const row of [5.0, 5.4]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, aL, row)
+    for (let c = aL + 1; c < aR; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, aR, row)
+  }
+  // clutter d'accueil sur le comptoir (registre, bougie, clochette/calice, theiere)
+  ops.item(24, aL + 0.7, 5.05); ops.item(26, aL + 1.5, 4.95); ops.item(49, cxm - 0.3, 5.05)
+  ops.item(63, cxm + 1.0, 5.05); ops.item(26, aR - 0.5, 4.95)
+  // 2 plantes encadrant le comptoir d'accueil (verdure d'entree)
+  ops.furn('penz_furn', 0, 9, 1, 2, aL - 1.1, 4.6); ops.furn('penz_furn', 0, 9, 1, 2, aR + 1.1, 4.6)
+
+  // === CHEMINEE (mur GAUCHE, mi-hauteur) — LE point chaud, le coin du feu se range autour ===
+  ops.furn('penz_furn', 9, 7, 1, 3, 1, 7.4)              // poele_cheminee colle au mur gauche (1x3)
+  ops.item(5, 1.6, 10.3, 1.1, 0xff9a4a)                  // chaudron/ragout pres du foyer (chaleur)
+  ops.furn('penz_furn', 0, 9, 1, 2, 1.1, 5.4)           // plante au coin du feu (verdure, haut de la cheminee)
+
+  // === GRAND SALON COSY (centre-bas, autour du grand tapis) : canape (haut) + 2 fauteuils (cotes) ===
+  // canape long 3x2 en haut du tapis (regarde vers le bas, vers le coin du feu)
+  ops.furn('penz_furn', 1, 9, 3, 2, cxm - 1.5, 7.7)      // canape_long 3 places
+  // petite table basse au centre du tapis + clutter
+  ops.furn('penz_furn', 5, 2, 2, 2, cxm - 1, 9.5)        // table_ovale_basse
+  ops.item(7, cxm - 0.4, 9.75); ops.item(24, cxm + 0.4, 9.75) // vase + livre ouvert
+  // 2 fauteuils de PROFIL face a face, encadrant la table basse (conversation pit)
+  ops.furn('penz_furn', 11, 6, 2, 2, cxm - 2.4, 9.4, null, true)  // fauteuil profil GAUCHE (regarde a droite)
+  ops.furn('penz_furn', 11, 6, 2, 2, cxm + 1.9, 9.4)             // fauteuil profil DROITE (regarde a gauche)
+
+  // === ESCALIER (mur DROIT) vers les chambres de l'etage ===
+  ops.furn('penz_doors', 0, 5, 2, 5, COLS - 3, 2.2)      // escalier_front_rampe 2x5 colle au mur droit
+
+  // === TABLE COMMUNE (gauche-bas, decollee de la cheminee) avec chaises (repas) ===
+  const txc = 3.0, tyc = 8.4
+  ops.furn('penz_furn', 9, 0, 1, 2, txc - 0.85, tyc + 0.35, null, true) // chaise profil GAUCHE (miroir, vers la table)
+  ops.furn('penz_furn', 8, 0, 1, 2, txc + 0.5, tyc - 0.95)        // chaise FACE (haut, derriere)
+  ops.furn('penz_furn', 0, 2, 3, 2, txc, tyc)                     // table_longue_claire 3x2
+  ops.item(2, txc + 0.7, tyc + 0.25); ops.item(61, txc + 1.6, tyc + 0.25); ops.item(54, txc + 2.3, tyc + 0.25) // plat + pain + chope
+  ops.furn('penz_furn', 8, 0, 1, 2, txc + 0.5, tyc + 1.95)        // chaise FACE (bas, devant)
+
+  // === LAMPADAIRES + horloge (deco cosy) ===
+  ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 10.0)              // lampadaire bas-droite
+  ops.furn('penz_furn', 6, 7, 1, 3, COLS - 5.5, 9.7)            // 2e lampadaire (eclaire le salon, cote droit)
+  ops.furn('penz_furn', 4, 7, 2, 3, 1, 3.0)                      // horloge grand-pere (mur gauche haut)
+  // plantes (verdure cosy) : bas-droite + mi-droite sous l'escalier
+  ops.furn('penz_furn', 0, 9, 1, 2, COLS - 2.1, 7.6)            // plante mi-droite (sous l'escalier, remplit le vide)
+  ops.item(15, COLS - 1.6, 11.6, 1.5)                            // grande plante touffue coin bas-droite
+
+  // === PORTE + tapis de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : ambre chaleureux, foyer dominant ===
+  ops.glowT(cxm, 6.5, 250, 0xffba70, 0.12)                       // bain ambre general
+  ops.glowT(1.4, 8.9, 66, 0xff9a40, 0.5)                         // FEU de la cheminee (chaud vif)
+  ops.glowT(1.5, 10.3, 38, 0xffce5a, 0.3)                        // braises/chaudron au sol
+  ops.glowT(cxm, 9.6, 86, 0xffc070, 0.16)                        // lueur du salon
+  ops.glowT(COLS - 1.6, 10.2, 40, 0xffcf8a, 0.34)               // lampadaire bas-droite
+  ops.glowT(COLS - 5.1, 9.9, 38, 0xffcf8a, 0.30)               // 2e lampadaire (salon droite)
+  ops.glowT(aL + 1.5, 4.95, 30, 0xffd27a, 0.3); ops.glowT(aR - 0.5, 4.95, 30, 0xffd27a, 0.3) // bougies d'accueil
+  ops.glowT(cxm, 2.4, 120, 0xffce7a, 0.12)                       // halo sur les etageres d'accueil
 }
 
 const which = process.argv[2] || 'tavern_current'
