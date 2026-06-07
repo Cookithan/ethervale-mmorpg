@@ -957,9 +957,33 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.aggroed) {
       // poursuite du joueur
       const d = dist || 1
-      this.setVelocity((dx / d) * spd, (dy / d) * spd)
-      aimX = dx
-      aimY = dy
+      let vx = (dx / d) * spd
+      let vy = (dy / d) * spd
+      // ANTI-BLOCAGE (IA simple) : s'il N'AVANCE PLUS alors qu'il devrait s'approcher (collé à un arbre / au bord de
+      // la prairie), le mob LONGE l'obstacle (vélocité tangentielle) au lieu de faire du gauche-droite sur place.
+      // Il s'engage sur un côté ~0,8 s ; si toujours bloqué, il essaie l'autre côté.
+      if (time >= (this._stuckAt || 0)) {
+        this._stuckAt = time + 240
+        const moved = Math.hypot(this.x - (this._lx ?? this.x), this.y - (this._ly ?? this.y))
+        this._lx = this.x; this._ly = this.y
+        if (moved < 3 && dist > 22) {
+          if (!this._sideDir || time >= (this._sideEnd || 0)) {
+            this._sideToggle = this._sideToggle ? -this._sideToggle : (Phaser.Math.Between(0, 1) ? 1 : -1) // alterne le côté à chaque tentative
+            this._sideDir = this._sideToggle
+            this._sideEnd = time + 800
+          }
+        } else {
+          this._sideDir = 0 // de nouveau libre -> poursuite directe
+        }
+      }
+      if (this._sideDir && time < (this._sideEnd || 0)) {
+        const tx = -dy / d, ty = dx / d // tangente (perpendiculaire au joueur) = contournement
+        vx = (tx * this._sideDir * 0.9 + (dx / d) * 0.35) * spd
+        vy = (ty * this._sideDir * 0.9 + (dy / d) * 0.35) * spd
+      }
+      this.setVelocity(vx, vy)
+      aimX = vx
+      aimY = vy
     } else if (this.returning) {
       // a abandonné : retourne à son point de départ
       const hx = this.homeX - this.x

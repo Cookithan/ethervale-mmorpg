@@ -17,6 +17,7 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this)
     this.body.setCircle(4)
     this.setActive(false).setVisible(false)
+    this.body.debugShowBody = false // pool : pas de dessin debug tant qu'inactif (sinon hitbox "fantôme" au sol)
     this.dieAt = 0
     this.damage = 0
     this.target = null
@@ -33,6 +34,7 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
     this.target = target
     this.speed = speed
     this.enableBody(true, x, y, true, true)
+    this.body.debugShowBody = true // actif -> visible en debug
     const a = Math.atan2(ty - y, tx - x)
     if (projFx) {
       this.setTexture(projFx.tex)
@@ -61,6 +63,7 @@ export default class Projectile extends Phaser.Physics.Arcade.Sprite {
   /** Désactive le projectile et le remet dans le pool. */
   kill() {
     this.disableBody(true, true)
+    this.body.debugShowBody = false // mort -> ne plus dessiner sa hitbox en debug (plus de "hitbox fantôme" au sol)
   }
 
   update(time) {

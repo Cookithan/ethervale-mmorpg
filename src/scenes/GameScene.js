@@ -8,7 +8,7 @@ import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '..
 import { DEFAULT_CHARACTER, KNIGHT_CHARACTER, SPELL3_COST } from '../data/classes.js'
 import { makeSave, saveCharacter, getCharacterSave, lastPlayedSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
-import { woodPanel, woodButton } from '../ui/wood.js'
+import { FONT } from '../ui/font.js'
 
 const MONSTER_COUNT = 170 // base de population (répartie par surface de biome × mult ci-dessous)
 const MONSTER_GAP = 10 // distance mini entre deux monstres au spawn/respawn (en tuiles) — espacés, pas de paquets
@@ -3196,11 +3196,17 @@ export default class GameScene extends Phaser.Scene {
         this.add.image((tx + dx) * TILE + 8, (ty + dy) * TILE + 8, 'house', frame).setDepth(depth).setFlipX(!!b.flip)
       }
     }
-    // collision sur la BASE (2 rangées du bas) ; le toit déborde au-dessus (walk-behind)
+    // collision sur la BASE (2 rangées du bas) ; le toit déborde au-dessus (walk-behind).
+    // RECTANGLE BLEU PLEIN. TAVERNE : base remontée de 16 px (rangée du bas vide). Les autres : collider d'origine.
+    // (L'entrée est gérée par le carré VERT posé sur la porte DANS ce rectangle — cf. spawnVillage.)
     const wpx = b.w * TILE
     const collRows = Math.min(2, b.h)
     const top = ty + b.h - collRows
-    const rect = this.add.rectangle(tx * TILE + wpx / 2, (top + collRows / 2) * TILE, wpx - 2, collRows * TILE)
+    const lift = key === 'tavern' ? 16 : 0
+    const growTop = key === 'tavern' ? 6 : 0 // taverne : collider étendu de 6 px vers le HAUT
+    const ch = collRows * TILE - lift + growTop
+    const ccy = (top + collRows / 2) * TILE - lift / 2 - growTop / 2
+    const rect = this.add.rectangle(tx * TILE + wpx / 2, ccy, wpx - 2, ch)
     this.physics.add.existing(rect, true)
     this.obstacles.add(rect)
     // empreinte (+1 de marge) occupée : déco/monstres l'évitent
@@ -3237,7 +3243,7 @@ export default class GameScene extends Phaser.Scene {
       },
       // --- BÂTIMENTS DE SERVICE (entrées préparées via `enter` pour les intérieurs à venir) ---
       {
-        hx: cx + 5, hy: cy - 8, key: 'tavern', tex: 'npc_master', name: 'Brewen le tavernier', enter: 'tavern', place: 'Taverne', // NORD-EST du cercle
+        hx: cx + 5, hy: cy - 8, key: 'tavern', tex: 'npc_noble', name: 'Brewen le tavernier', enter: 'tavern', place: 'Taverne', // NORD-EST du cercle (Brewen = Noble, cohérent avec le barman intérieur)
         lines: [
           'Bienvenue à la taverne du Dernier Repos, aventurier !',
           'Pousse la porte quand tu veux : bientôt, j\'aurai chopes et ragoûts qui requinquent (bonus passagers).',
@@ -3258,7 +3264,7 @@ export default class GameScene extends Phaser.Scene {
         ],
       },
       {
-        hx: cx - 1, hy: cy + 7, key: 'house_orange', tex: 'npc_noble', name: 'Sieur Aldwin', place: 'Maison', // SUD du cercle (sprite distinct du cottage d'Elara)
+        hx: cx - 1, hy: cy + 7, key: 'house_orange', tex: 'npc_master', name: 'Sieur Aldwin', place: 'Maison', // SUD du cercle (npc_master : plus de Noble en doublon, réservé au barman)
         lines: ['Un noble de passage ? Non, j\'habite ici. Ce bourg grandit vite, n\'est-ce pas ?'],
       },
       {
@@ -3285,7 +3291,24 @@ export default class GameScene extends Phaser.Scene {
       v.ny = hy + b.h // une rangée sous la base de la maison réellement posée
       v.tx = hx; v.ty = hy // origine réellement posée (pour les panneaux/halo d'entrée)
       if (v.merchant) this.merchantHome = { nx: v.nx, ny: v.ny } // porte de la maison du marchand
-      if (v.enter) this.buildingEntrances.push({ id: v.enter, x: v.nx * TILE + 8, y: v.ny * TILE + 8 }) // DEVANT la porte (tuile marchable -> on peut s'y placer pour entrer)
+      if (v.enter) {
+        // CARRÉ INVISIBLE de porte (overlap du joueur -> on entre). Corps statique = invisible en jeu, dessiné en debug.
+        // Posé PILE au seuil = juste sous le BAS DU COLLIDER du bâtiment (= là où le joueur s'arrête), colonne de la porte.
+        // (Le collider de la taverne est remonté de 16 px -> on remonte aussi son carré d'autant.) Seulement taverne/apothicaire.
+        let zone = null
+        if (v.enter === 'tavern' || v.enter === 'apothecary') {
+          // carré VERT d'entrée = CONTOUR de l'ouverture de la PORTE, calé sur le BAS DU COLLIDER (= base VISIBLE
+          // du bâtiment ; tient compte de la rangée vide remontée pour la taverne). Couvre la tuile de la porte +
+          // 4 px sous le collider pour que le joueur collé à la porte le touche -> il entre.
+          // Corps DYNAMIQUE immobile => dessiné en VERT en debug (distinct du bleu des bâtiments), invisible en jeu.
+          const lift = v.key === 'tavern' ? 16 : 0
+          const colBottom = (hy + b.h) * TILE - lift
+          zone = this.add.rectangle(v.nx * TILE + 8, colBottom - 9, 16, 26) // couvre la porte EN HAUT et descend jusqu'au seuil EN BAS (colBottom+4) -> le joueur collé au bâtiment le touche => il entre
+          this.physics.add.existing(zone)
+          zone.body.setAllowGravity(false); zone.body.moves = false; zone.body.immovable = true
+        }
+        this.buildingEntrances.push({ id: v.enter, x: v.nx * TILE + 8, y: v.ny * TILE + 8, zone })
+      }
     }
     this.paintVillageGround() // place + chemins reliant les maisons (look "village")
     // (anciens "hameaux inhabités" du désert retirés : le désert se remplit d'arbres morts via scatterDesertProps)
@@ -3319,16 +3342,13 @@ export default class GameScene extends Phaser.Scene {
   /** Nom du LIEU (Forge, Marché, Taverne…) au-dessus de chaque bâtiment de service + halo de porte (enterables). */
   drawBuildingSigns() {
     for (const v of this.villagers) {
-      if (v.enter) { // halo doux clignotant sur la porte (signale qu'on pourra entrer)
-        const glow = this.add.ellipse(v.nx * TILE + 8, (v.ny - 1) * TILE + 10, 22, 11, 0xffe08a, 0.0).setDepth((v.ny - 1) * TILE + 4)
-        this.tweens.add({ targets: glow, fillAlpha: 0.38, duration: 950, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-      }
+      // (ancien « halo rond clignotant » sur la porte RETIRÉ : pris pour un obstacle, et inutile depuis l'entrée automatique)
       if (!v.place) continue
       // nom du lieu : texte lisible (crème + gros contour sombre), au-dessus du toit, sans panneau
       const b = BUILDINGS[v.key]
       const sx = (v.tx + b.w / 2) * TILE
       const sy = v.ty * TILE - 3
-      this.add.text(sx, sy, v.place, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#ffb22e', stroke: '#241608', strokeThickness: 4 })
+      this.add.text(sx, sy, v.place, { fontFamily: FONT, fontSize: '10px', fontStyle: 'bold', color: '#ffb22e', stroke: '#241608', strokeThickness: 4 })
         .setOrigin(0.5, 1).setDepth(9500).setResolution(3)
     }
   }
@@ -3498,7 +3518,7 @@ export default class GameScene extends Phaser.Scene {
     // indice "Parler (E)" affiché quand le héros est proche (au-dessus du nom)
     this.merchantHint = this.add
       .text(mx, my - 24, 'Parler (E)', {
-        fontFamily: 'monospace',
+        fontFamily: FONT,
         fontSize: '8px',
         color: '#ffffff',
         backgroundColor: '#000000aa',
@@ -3522,8 +3542,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.inInterior) { if (!this.uiBusy()) this.interiorInteract(); return } // dans un bâtiment : parler/sortir
     if (this.uiBusy()) return
     const p = this.player
-    // E = « Oui » si l'invite d'entrée est affichée
-    if (this._promptId) { const pid = this._promptId; this.hideEnterPrompt(); this.enterInterior(pid); return }
+    // (entrée des bâtiments = AUTOMATIQUE au contact de la porte, cf. update — plus d'invite ici)
     if (this.merchant && this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE) {
       this.interactWith(this.merchant)
       return
@@ -3556,7 +3575,7 @@ export default class GameScene extends Phaser.Scene {
 
     // étiquette de nom au-dessus — CACHÉE pour l'instant (on affiche les noms de LIEUX sur les bâtiments)
     const label = this.add
-      .text(x, y - 14, name, { fontFamily: 'monospace', fontSize: '7px', color: role === 'forge' ? '#ff9d3c' : '#ffe066', stroke: '#000000', strokeThickness: 3 })
+      .text(x, y - 14, name, { fontFamily: FONT, fontSize: '7px', color: role === 'forge' ? '#ff9d3c' : '#ffe066', stroke: '#000000', strokeThickness: 3 })
       .setOrigin(0.5, 1)
       .setDepth(60000)
       .setResolution(3)
@@ -3565,7 +3584,7 @@ export default class GameScene extends Phaser.Scene {
     // indice d'interaction (caché ; visible quand le héros est proche)
     const hintTxt = role === 'forge' ? 'Forger (E)' : 'Parler (E)'
     const hint = this.add
-      .text(x, y - 23, hintTxt, { fontFamily: 'monospace', fontSize: '8px', color: '#ffffff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } })
+      .text(x, y - 23, hintTxt, { fontFamily: FONT, fontSize: '8px', color: '#ffffff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } })
       .setOrigin(0.5, 1)
       .setDepth(60001)
       .setResolution(3)
@@ -3618,37 +3637,13 @@ export default class GameScene extends Phaser.Scene {
   // comptoir = service (1re tranche : dialogue ; potions/boissons-buffs à venir). On ressort par la porte du bas (E).
 
   interiorConfig(id) {
-    if (id === 'tavern') return { title: 'Taverne du Dernier Repos', npcTex: 'npc_master', npcName: 'Brewen', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a3a2c, wallTop: 0x5e241a, accent: 0xffb24a, lines: ['« Assieds-toi, l’ami ! Bientôt, des chopes et ragoûts qui requinquent. »'] }
+    if (id === 'tavern') return { title: 'Taverne du Dernier Repos', npcTex: 'npc_noble', npcName: 'Brewen', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a3a2c, wallTop: 0x5e241a, accent: 0xffb24a, lines: ['« Assieds-toi, l’ami ! Bientôt, des chopes et ragoûts qui requinquent. »'] }
     return { title: 'Échoppe d’Ylva', npcTex: 'npc_shaman', npcName: 'Ylva', floor: 0x5c5238, plank: 0x453d2b, wall: 0x2f6a3a, wallTop: 0x214c29, accent: 0x8ef0a0, lines: ['« Mes potions soignent, restaurent la mana et bravent le froid. (Bientôt en vente ici.) »'] }
   }
 
-  /** Invite « Entrer dans ... ? » (Oui/Non) affichée près d'une porte enterable. */
-  showEnterPrompt(id) {
-    if (this._promptId === id) return
-    this.hideEnterPrompt()
-    this._promptId = id
-    const name = { tavern: 'la Taverne', apothecary: "l'Apothicaire", inn: "l'Auberge", bank: 'la Banque' }[id] || 'le bâtiment'
-    const cw = this.scale.width
-    const y = this.scale.height * 0.5 // CENTRE de l'écran (modale distincte, plus à la place/taille du dialogue)
-    const objs = []
-    objs.push(woodPanel(this, cw / 2, y, 340, 100).setScrollFactor(0).setDepth(20000)) // panneau bois (nine-slice)
-    objs.push(this.add.text(cw / 2, y - 26, `Entrer dans ${name} ?`, { fontFamily: 'Georgia, serif', fontSize: '15px', fontStyle: 'bold', color: '#fff2d8', stroke: '#3a1d12', strokeThickness: 4 }).setScrollFactor(0).setOrigin(0.5).setDepth(20002))
-    const oui = woodButton(this, cw / 2 - 80, y + 22, 132, 40, 'Oui', () => { this.hideEnterPrompt(); this.enterInterior(id) }, { scrollFactor: 0, depth: 20001 })
-    const non = woodButton(this, cw / 2 + 80, y + 22, 132, 40, 'Non', () => { this._promptDismissed = id; this.hideEnterPrompt() }, { scrollFactor: 0, depth: 20001 })
-    objs.push(...oui.parts, ...non.parts)
-    this._promptObjs = objs
-  }
-
-  hideEnterPrompt() {
-    if (this._promptObjs) this._promptObjs.forEach((o) => o.destroy())
-    this._promptObjs = null
-    this._promptId = null
-  }
-
-  /** Entre dans l'intérieur d'un bâtiment (fondu + téléport hors-map). */
+  /** Entre dans l'intérieur d'un bâtiment (fondu + téléport hors-map). Déclenché AUTOMATIQUEMENT au contact de la porte. */
   enterInterior(id) {
     if (this.inInterior || this.uiBusy() || this.gameOver) return
-    this.hideEnterPrompt()
     this._villageReturn = { x: this.player.x, y: this.player.y }
     this.inInterior = id
     const cam = this.cameras.main
@@ -3703,11 +3698,12 @@ export default class GameScene extends Phaser.Scene {
     // FOND SOMBRE plein écran (couvre le « gris » hors-map) — scrollFactor 0
     objs.push(this.add.rectangle(0, 0, this.scale.width + 80, this.scale.height + 80, 0x0a0810, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(D - 100))
     // SOL en bois (planches Penzilla, tuile répétée) — taverne = planches + bois plus FONCÉ
-    const floorFrame = id === 'tavern' ? 92 : 28, floorTint = id === 'tavern' ? 0xb5895a : 0xb07a44
+    const floorFrame = id === 'tavern' ? 92 : 28, floorTint = id === 'tavern' ? 0xb5895a : 0x8f8270 // apothicaire = sol froid (laisse parler le violet)
     objs.push(this.add.tileSprite(ox + W / 2, oy + H / 2, W, H, 'penz_floors', floorFrame).setTint(floorTint).setDepth(D))
     // MURS pierre (tuile PLEINE 33/34 alternée — l'analyse pixel a montré que les rangées 4-5 sont 100% pleines) :
     // mur du fond sur 2 rangées + côtés + bas avec un trou de porte au centre
-    const wt = (cx, cy) => objs.push(this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, 'mw_walls', (cx + cy) % 2 ? 33 : 34).setTint(0xc89860).setDepth(D + 6)) // PIERRE CHAUDE brun-gris (teinte forte qui tue le bleu)
+    const wallTint = id === 'tavern' ? 0xc89860 : 0x9a8aa8 // taverne = pierre CHAUDE ; apothicaire = pierre FROIDE violacée
+    const wt = (cx, cy) => objs.push(this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, 'mw_walls', (cx + cy) % 2 ? 33 : 34).setTint(wallTint).setDepth(D + 6))
     for (let c = 0; c < cols; c++) { wt(c, 0); wt(c, 1) }
     for (let r = 2; r < rows; r++) { wt(0, r); wt(cols - 1, r) }
     for (let c = 1; c < cols - 1; c++) { if (c !== g0 && c !== g1) wt(c, rows - 1) }
@@ -3719,43 +3715,46 @@ export default class GameScene extends Phaser.Scene {
     sg.fillGradientStyle(0, 0, 0, 0, 0, 0.5, 0, 0.5); sg.fillRect(ix + iw - SD, iy, SD, ih)        // droite
     objs.push(sg)
     // LUMIÈRE chaude TAMISÉE d'ambiance (additif), cosy — pour les 2 pièces
-    objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W * 1.2, H * 1.25).setTint(0xffba70).setAlpha(0.2).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 2))
+    objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W * 1.2, H * 1.25).setTint(id === 'tavern' ? 0xffba70 : 0x9a70d0).setAlpha(id === 'tavern' ? 0.2 : 0.28).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 2)) // ambiance : chaude (taverne) / violette renforcée (apothicaire)
     // PORTE Mystic (2 tuiles) au bas
     objs.push(this.add.image(doorCx, oy + (rows - 1) * TILE + 8, 'mw_door').setDepth(D + 5))
     // === MOBILIER Penzilla (vraies tuiles 16x16) — pp() pose une pièce multi-tuiles (origine haut-gauche) ===
     const pp = (sc, sr, w, h, dx, dy, depth, flip) => { for (let tr = 0; tr < h; tr++) for (let tc = 0; tc < w; tc++) objs.push(this.add.image(dx + tc * TILE, dy + tr * TILE, 'penz_furn', (sr + tr) * 13 + (sc + tc)).setOrigin(0, 0).setFlipX(!!flip).setDepth(depth + tr)) }
     const furnSolids = [] // colliders de meubles (px) créés plus bas, une fois le helper wall() défini
     const solid = (dx, dy, wpx, hpx) => furnSolids.push([dx, dy, wpx, hpx])
-    const si = (frame, dx, dy, depth) => objs.push(this.add.image(dx, dy, 'penz_items', frame).setDepth(depth)) // chope/plat/bocal posé sur un meuble
+    const si = (frame, dx, dy, depth, scale, tint) => { const im = this.add.image(dx, dy, 'penz_items', frame).setDepth(depth); if (scale) im.setScale(scale); if (tint != null) im.setTint(tint); objs.push(im) } // objet posé (échelle + teinte optionnelles : fioles colorées de l'apothicaire)
     // helper portes/fenêtres (penz_doors = 18 colonnes) + clients assis
     const pd = (sc, sr, w, h, dx, dy, depth) => { for (let tr = 0; tr < h; tr++) for (let tc = 0; tc < w; tc++) objs.push(this.add.image(dx + tc * TILE, dy + tr * TILE, 'penz_doors', (sr + tr) * 18 + (sc + tc)).setOrigin(0, 0).setDepth(depth + tr)) }
     // (aucun client assis — choix utilisateur : pièces calmes, seul le PNJ de service)
-    // FENÊTRES sur le mur du fond (2 pièces) — rects exacts du catalogue Penzilla
-    const winL = id === 'tavern' ? 2 : 1, winR = id === 'tavern' ? cols - 4 : 9
-    pd(6, 3, 2, 2, ox + winL * TILE, oy, D + 7); pd(6, 3, 2, 2, ox + winR * TILE, oy, D + 7)
+    // FENÊTRES sur le mur du fond — TAVERNE seulement (l'apothicaire a un MUR DE FIOLES plein)
+    if (id === 'tavern') { pd(6, 3, 2, 2, ox + 2 * TILE, oy, D + 7); pd(6, 3, 2, 2, ox + (cols - 4) * TILE, oy, D + 7) }
     let npc // PNJ de service, placé derrière le comptoir de CHAQUE pièce
     if (id === 'tavern') {
       // === TAVERNE : BAR PLEINE LARGEUR au fond (mur de bouteilles + barman + comptoir-ligne infranchissable) + tables à chaises tournées vers la table ===
       const cxm = cols / 2
       // table OVALE + 3 chaises qui REGARDENT la table (haut=face, gauche=profil MIROIR, droite=profil)
       const oval = (tx, ty, items) => {
-        pp(8, 0, 1, 2, ox + (tx + 0.5) * TILE, oy + (ty - 1.05) * TILE, D + 9)
-        pp(9, 0, 1, 2, ox + (tx - 0.85) * TILE, oy + (ty + 0.35) * TILE, D + 12, true) // gauche : miroir -> regarde la table
-        pp(5, 2, 2, 2, ox + tx * TILE, oy + ty * TILE, D + 10)
+        pp(8, 0, 1, 2, ox + (tx + 0.5) * TILE, oy + (ty - 1.7) * TILE, D + 9)         // HAUT : chaise FACE (regarde la table), décollée (place pour s'asseoir)
+        pp(9, 0, 1, 2, ox + (tx - 1.05) * TILE, oy + (ty + 0.15) * TILE, D + 12)        // GAUCHE : profil (sens inversé)
+        pp(5, 2, 2, 2, ox + tx * TILE, oy + ty * TILE, D + 10)                          // TABLE ovale
         ;(items || []).forEach((it, i) => si(it, ox + (tx + 1 + (i - (items.length - 1) / 2) * 0.6) * TILE, oy + (ty + 0.55) * TILE, D + 14))
-        pp(9, 0, 1, 2, ox + (tx + 1.85) * TILE, oy + (ty + 0.35) * TILE, D + 12)
-        solid(ox + tx * TILE, oy + (ty + 0.3) * TILE, 2 * TILE, 1.5 * TILE)
+        pp(9, 0, 1, 2, ox + (tx + 2.05) * TILE, oy + (ty + 0.15) * TILE, D + 12, true)  // DROITE : profil MIROIR (sens inversé)
+        solid(ox + (tx + 0.3) * TILE, oy + (ty + 0.5) * TILE, 1.4 * TILE, 1.0 * TILE) // hitbox de table RÉDUITE
+        // petite hitbox sur l'assise de chaque chaise (haut / gauche / droite)
+        const chairHit = (cx, cy) => solid(ox + (cx + 0.25) * TILE, oy + (cy + 0.95) * TILE, 0.5 * TILE, 0.5 * TILE)
+        chairHit(tx + 0.5, ty - 1.7); chairHit(tx - 1.05, ty + 0.15); chairHit(tx + 2.05, ty + 0.15)
       }
-      // tapis sous les 2 tables
-      pp(10, 2, 3, 2, ox + 1.4 * TILE, oy + 8.9 * TILE, D + 2); pp(10, 2, 3, 2, ox + 12.0 * TILE, oy + 8.9 * TILE, D + 2)
+      // tapis sous les 2 tables (recentrés + descendus de 10 px avec les tables)
+      pp(10, 2, 3, 2, ox + 3.0 * TILE, oy + 8.625 * TILE, D + 2); pp(10, 2, 3, 2, ox + 10.0 * TILE, oy + 8.625 * TILE, D + 2)
       // MUR DE BOUTEILLES (3 étagères sombres collées au mur du fond)
       ;[3, 7, 11].forEach((c) => {
-        pp(6, 4, 3, 3, ox + c * TILE, oy + 1.6 * TILE, D + 8)
-        si(6, ox + (c + 0.5) * TILE, oy + 2.05 * TILE, D + 10); si(57, ox + (c + 1.1) * TILE, oy + 2.05 * TILE, D + 10); si(49, ox + (c + 1.7) * TILE, oy + 2.05 * TILE, D + 10)
-        si(58, ox + (c + 0.6) * TILE, oy + 3.05 * TILE, D + 10); si(56, ox + (c + 1.5) * TILE, oy + 3.05 * TILE, D + 10)
+        pp(6, 4, 3, 3, ox + c * TILE, oy + 1.6 * TILE - 20, D + 8) // armoires remontées de 20 px
+        solid(ox + c * TILE, oy + 1.6 * TILE - 20, 3 * TILE, 3 * TILE) // hitbox PROPRE à cette armoire
+        si(6, ox + (c + 0.5) * TILE, oy + 2.05 * TILE - 20, D + 10); si(57, ox + (c + 1.1) * TILE, oy + 2.05 * TILE - 20, D + 10); si(49, ox + (c + 1.7) * TILE, oy + 2.05 * TILE - 20, D + 10)
+        si(58, ox + (c + 0.6) * TILE, oy + 3.05 * TILE - 20, D + 10); si(56, ox + (c + 1.5) * TILE, oy + 3.05 * TILE - 20, D + 10)
       })
-      // BARMAN (Brewen) dans la bande derrière le comptoir
-      npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE, cfg.npcTex, 0).setDepth(D + 11)
+      // BARMAN (Brewen) dans la bande derrière le comptoir (remonté de 4 px)
+      npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE - 4, cfg.npcTex, 0).setDepth(D + 11)
       // COMPTOIR PLEINE LARGEUR (ligne) — 2 rangs ; INFRANCHISSABLE (on ne passe pas derrière)
       const bL = 1, bR = cols - 1
       for (const row of [5.0, 5.4]) {
@@ -3764,40 +3763,79 @@ export default class GameScene extends Phaser.Scene {
         pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13)
       }
       for (let c = 2; c < bR - 1; c += 2) si([54, 42, 49, 61, 54, 42][((c / 2) | 0) % 6], ox + (c + 0.5) * TILE, oy + 5.05 * TILE, D + 16) // chopes/plats sur le bar
-      // TABOURETS (boire au bar)
-      for (let i = 0; i < 6; i++) pp(12, 1, 1, 1, ox + (2.5 + i * 2) * TILE, oy + 6.6 * TILE, D + 12)
-      // LANTERNES + lueurs chaudes — AUCUN feu
+      // TABOURETS (boire au bar) + petite hitbox sur chacun
+      for (let i = 0; i < 6; i++) { pp(12, 1, 1, 1, ox + (2.5 + i * 2) * TILE, oy + 6.6 * TILE, D + 12); solid(ox + (2.7 + i * 2) * TILE, oy + 6.95 * TILE, 0.6 * TILE, 0.5 * TILE) }
+      // LANTERNES + lueurs chaudes — AUCUN feu (+ petite hitbox sur le pied de chaque lampe)
       pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.0 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 7.0 * TILE, D + 10)
+      solid(ox + 1.3 * TILE, oy + 8.4 * TILE - 5, 0.5 * TILE, 1.2 * TILE + 5); solid(ox + (cols - 1.7) * TILE, oy + 8.4 * TILE - 5, 0.5 * TILE, 1.2 * TILE + 5)
       objs.push(this.add.image(ox + 1.5 * TILE, oy + 7.4 * TILE, 'int_glow').setScale(1.5).setTint(0xffcf8a).setAlpha(0.3).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
       objs.push(this.add.image(ox + (cols - 1.5) * TILE, oy + 7.4 * TILE, 'int_glow').setScale(1.5).setTint(0xffcf8a).setAlpha(0.3).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
       objs.push(this.add.image(ox + cxm * TILE, oy + 2.6 * TILE, 'int_glow').setScale(2.2).setTint(0xffce7a).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
-      // 2 GRANDES TABLES OVALES (chaises face à la table)
-      oval(1.8, 9.4, [54, 26])
-      oval(12.4, 9.4, [49, 61])
-      // COLLISION : comptoir pleine largeur = on ne passe pas derrière le bar
-      solid(ox + bL * TILE, oy + 5.0 * TILE, (bR - bL) * TILE, 1.4 * TILE)
+      // 2 GRANDES TABLES OVALES (3 chaises bois tournées vers la table, aérées) — rentrées vers le centre (tour de table possible)
+      oval(3.5, 9.125, [54, 26])
+      oval(10.5, 9.125, [49, 61])
+      // COLLISION : comptoir pleine largeur = on ne passe pas derrière le bar (bord du HAUT descendu de 5 px, bas inchangé)
+      solid(ox + bL * TILE, oy + 5.0 * TILE, (bR - bL) * TILE, 1.4 * TILE - 8)
     } else {
-      // === APOTHICAIRE : comptoir + étagères de fioles + CHAUDRON qui mijote + caisses (≠ taverne) ===
-      pp(0, 0, 2, 2, ox + 6 * TILE, oy + 2 * TILE, D + 18) // comptoir = commode
-      npc = this.add.sprite(ox + 7 * TILE, oy + 1.7 * TILE, cfg.npcTex, 0).setDepth(D + 16)
-      pp(6, 4, 3, 3, ox + 1 * TILE, oy + 2 * TILE, D + 8) // grande étagère (fioles) gauche
-      pp(2, 4, 3, 3, ox + 10 * TILE, oy, D + 8) // étagère de fioles (droite, VRAIE bibliothèque — plus le « piano »)
-      for (let i = 0; i < 6; i++) si(57, ox + (1.4 + (i % 3) * 0.8) * TILE, oy + (2.2 + Math.floor(i / 3) * 0.95) * TILE, D + 10) // fioles
-      si(57, ox + 10.5 * TILE, oy + 0.5 * TILE, D + 10); si(57, ox + 11.6 * TILE, oy + 0.5 * TILE, D + 10); si(57, ox + 10.5 * TILE, oy + 1.5 * TILE, D + 10)
-      objs.push(this.add.image(ox + 7 * TILE, oy + 7 * TILE, 'penz_items', 37).setScale(2.4).setDepth(D + 10)) // CHAUDRON
-      objs.push(this.add.image(ox + 7 * TILE, oy + 6.3 * TILE, 'int_glow').setScale(1.5).setTint(0x9ef0a0).setAlpha(0.32).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 11)) // vapeur/lueur verte
-      pp(11, 0, 1, 2, ox + 10 * TILE, oy + 8 * TILE, D + 10); si(57, ox + 10.5 * TILE, oy + 8.2 * TILE, D + 12) // table d'appoint + bocal
-      pp(0, 9, 1, 2, ox + 1 * TILE, oy + 8 * TILE, D + 10) // plante
-      if (this.textures.exists('crate')) { objs.push(this.add.image(ox + 3 * TILE, oy + 9.6 * TILE, 'crate').setDepth(D + 12)); objs.push(this.add.image(ox + W - 3 * TILE, oy + 9.6 * TILE, 'crate').setDepth(D + 12)) }
-      solid(ox + 6 * TILE, oy + 2 * TILE, 2 * TILE, 2 * TILE); solid(ox + 1 * TILE, oy + 2 * TILE, 3 * TILE, 3 * TILE); solid(ox + 10 * TILE, oy + TILE, 3 * TILE, TILE)
-      solid(ox + 6.3 * TILE, oy + 6.8 * TILE, 1.5 * TILE, 1.4 * TILE); solid(ox + 10 * TILE, oy + 8.2 * TILE, TILE, TILE)
+      // === APOTHICAIRE : modèle TAVERNE — Ylva CENTRÉE derrière un GRAND comptoir + mur de fioles JOINTIF + chaudron en COIN ===
+      const cxm = cols / 2
+      const WARMFLASK = [0xff7050, 0xffb050]                                   // fioles chaudes (flask orange -> rouge/ambre)
+      const RICH = [0x8050d0, 0x40c0d0, 0x60d070, 0x5a6ae0, 0xc050c0]          // verre clair teinté = vrai violet/teal/vert/bleu
+      // tapis central (habille le milieu à la place du chaudron ; marchable)
+      pp(10, 2, 3, 2, ox + (cxm - 1.5) * TILE, oy + 7.9 * TILE, D + 1)
+      // MUR DE FIOLES : 4 étagères EXACTEMENT jointives (espacées de 3 = AUCUN overlap, plus de meuble cassé)
+      const shelfCols = [1.5, 4.5, 7.5, 10.5]
+      shelfCols.forEach((c) => { pp(6, 4, 3, 3, ox + c * TILE, oy + 1.6 * TILE - 20, D + 8); solid(ox + c * TILE, oy + 1.6 * TILE - 20, 3 * TILE, 3 * TILE) }) // armoire + hitbox PROPRE
+      shelfCols.forEach((c, sidx) => [2.25, 3.2].forEach((ry, ri) => {
+        const k = sidx * 2 + ri
+        si(6, ox + (c + 0.5) * TILE, oy + ry * TILE - 20, D + 10, 0.9, WARMFLASK[k % WARMFLASK.length])
+        si(40, ox + (c + 1.4) * TILE, oy + ry * TILE - 20, D + 10, 0.88, RICH[k % RICH.length])
+        si([56, 57, 58, 59][(sidx + ri) % 4], ox + (c + 2.35) * TILE, oy + ry * TILE - 20, D + 10, 0.88)
+      }))
+      // YLVA centrée derrière le comptoir (comme le barman)
+      npc = this.add.sprite(ox + cxm * TILE, oy + 5.1 * TILE, cfg.npcTex, 0).setDepth(D + 11)
+      // GRAND COMPTOIR PLEINE LARGEUR (2 rangs) — infranchissable
+      const bL = 1, bR = cols - 1
+      for (const row of [5.6, 6.0]) {
+        pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13)
+        for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13)
+        pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13)
+      }
+      // clutter d'alchimie SUR le comptoir (registre, bougie, fioles, urne)
+      si(24, ox + (cxm - 2.6) * TILE, oy + 5.65 * TILE, D + 16); si(26, ox + (cxm - 1.8) * TILE, oy + 5.55 * TILE, D + 16)
+      si(6, ox + (cxm + 0.4) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0xff7050); si(40, ox + (cxm + 1.1) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0x8050d0); si(40, ox + (cxm + 1.8) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0x40c0d0)
+      si(29, ox + (cxm + 2.7) * TILE, oy + 5.6 * TILE, D + 16, 0.95)
+      si(56, ox + (cxm + 3.5) * TILE, oy + 5.6 * TILE, D + 16, 0.9); si(6, ox + (cxm + 4.3) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0x60d070)
+      solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE) // comptoir infranchissable
+      // COIN PRÉPARATION (bas-gauche) : tapis + cabinet + MOINS d'objets (mortier + 1 fiole)
+      pp(8, 3, 2, 1, ox + 1.7 * TILE, oy + 9.55 * TILE, D + 6)          // tapis sous le cabinet
+      pp(0, 0, 2, 2, ox + 1.7 * TILE, oy + 7.9 * TILE, D + 12)          // commode = cabinet à ingrédients
+      si(29, ox + 2.4 * TILE, oy + 7.95 * TILE, D + 14, 0.9)            // mortier (urne)
+      si(6, ox + 3.2 * TILE, oy + 7.95 * TILE, D + 14, 0.85, 0x8050d0)  // fiole violette
+      solid(ox + 1.7 * TILE, oy + 7.9 * TILE, 2 * TILE, 2 * TILE)
+      // COIN HERBORISTE (bas-droite) : tapis + étagère basse
+      pp(8, 3, 2, 1, ox + (cols - 3.4) * TILE, oy + 9.8 * TILE, D + 6)  // tapis sous l'étagère
+      pp(3, 2, 2, 2, ox + (cols - 3.4) * TILE, oy + 8.1 * TILE, D + 10)
+      si(58, ox + (cols - 2.9) * TILE, oy + 8.35 * TILE, D + 12, 0.9); si(56, ox + (cols - 2.0) * TILE, oy + 8.35 * TILE, D + 12, 0.9)
+      si(6, ox + (cols - 2.9) * TILE, oy + 9.25 * TILE, D + 12, 0.9, 0x60d070); si(40, ox + (cols - 2.0) * TILE, oy + 9.25 * TILE, D + 12, 0.9, 0x8050d0)
+      solid(ox + (cols - 3.4) * TILE, oy + 8.1 * TILE, 2 * TILE, 2 * TILE)
+      // HERBES en pot (coins bas)
+      si(15, ox + 1.5 * TILE, oy + 10.1 * TILE, D + 12, 1.4); si(14, ox + (cols - 1.5) * TILE, oy + 10.1 * TILE, D + 12, 1.3)
+      // LUMIÈRES violet alchimiste (ADD)
+      const aglow = (x, y, s, t, a, dep) => objs.push(this.add.image(ox + x * TILE, oy + y * TILE, 'int_glow').setScale(s).setTint(t).setAlpha(a).setBlendMode(Phaser.BlendModes.ADD).setDepth(dep == null ? D + 11 : dep))
+      aglow(cxm, 8.7, 2.8, 0xb070ff, 0.16)                 // lueur violette au sol du centre
+      aglow(2.6, 8.0, 1.6, 0xb070ff, 0.30)                 // halo violet sur le cabinet (gauche)
+      aglow(cols - 2.6, 8.6, 1.6, 0xb070ff, 0.28)          // halo violet sur l'étagère herboriste (droite)
+      aglow(2.5, 6.1, 1.4, 0xcfa8ff, 0.30); aglow(cols - 2.5, 6.1, 1.4, 0xcfa8ff, 0.30) // lueurs aux bouts du comptoir
+      aglow(cxm, 2.6, 2.6, 0xb070ff, 0.22) // halo sur le mur de fioles
     }
     if (this.anims.exists(`${cfg.npcTex}-idle-down`)) npc.anims.play(`${cfg.npcTex}-idle-down`, true)
     objs.push(npc)
     // tapis devant la porte de sortie (vraie tuile Penzilla, plus de rectangle dessiné)
     pp(8, 3, 2, 1, doorCx - TILE, oy + (rows - 1.6) * TILE, D + 1)
     // titre
-    objs.push(this.add.text(ox + W / 2, oy + TILE * 0.6, cfg.title, { fontFamily: 'Georgia, serif', fontSize: '11px', color: '#ffe9b8', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(D + 50))
+    // TITRE de la salle : affiché dans l'UIScene (HUD, zoom 1) -> net et bien dimensionné, pas déformé par le zoom de la caméra de jeu
+    this.scene.get('UIScene')?.showInteriorTitle?.(cfg.title)
     // COLLIDERS invisibles (murs + comptoir)
     const wall = (x, y, w, h) => {
       const rr = this.add.rectangle(x + w / 2, y + h / 2, w, h).setVisible(false)
@@ -3811,20 +3849,34 @@ export default class GameScene extends Phaser.Scene {
     wall(ox, oy + H - TILE, g0 * TILE, TILE)
     wall(ox + (g1 + 1) * TILE, oy + H - TILE, W - (g1 + 1) * TILE, TILE)
     for (const s of furnSolids) wall(s[0], s[1], s[2], s[3]) // collisions des meubles (comptoir, tables, étagères, cheminée…)
-    // indices (Parler / Sortir)
-    const hint = this.add.text(npc.x, npc.y - 15, 'Parler (E)', { fontFamily: 'monospace', fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false)
-    const exitHint = this.add.text(doorCx, oy + (rows - 1) * TILE - 6, 'Sortir (E)', { fontFamily: 'monospace', fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false)
-    objs.push(hint, exitHint)
+    // indice « Parler (E) » au-dessus du PNJ (la SORTIE est automatique en marchant sur la porte -> pas d'indice « Sortir »)
+    const hint = this.add.text(npc.x, npc.y - 15, 'Parler (E)', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false).setResolution(3)
+    objs.push(hint)
     this._interior = {
-      id, cfg, objs, colliders, npc, hint, exitHint,
+      id, cfg, objs, colliders, npc, hint,
       entry: { x: doorCx, y: oy + (rows - 2.2) * TILE },
       exit: { x: doorCx, y: oy + (rows - 1) * TILE + 8 },
+    }
+    if (id === 'tavern' || id === 'apothecary') { // tenancier qui s'affaire : va-et-vient ALÉATOIRE armoire (fond) <-> comptoir (devant)
+      // hitbox du tenancier (corps dynamique immobile qui le SUIT) -> invisible en jeu, visible en debug
+      const bhb = this.add.rectangle(npc.x, npc.y + 3, 11, 9).setVisible(false)
+      this.physics.add.existing(bhb); bhb.body.setAllowGravity(false); bhb.body.moves = false; bhb.body.immovable = true
+      objs.push(bhb); colliders.push(this.physics.add.collider(this.player, bhb))
+      const tav = id === 'tavern' // géométrie propre à chaque salle (étagères + comptoir)
+      this._interior.bw = {
+        sprite: npc, hitbox: bhb, texture: cfg.npcTex, facing: 'down', pauseUntil: 0, zone: 'comptoir', phase: 'toX', speed: 26, tx: npc.x,
+        midY: oy + (tav ? 4.1 : 4.6) * TILE, // Y de la bande dégagée pour le déplacement horizontal
+        armoireXs: (tav ? [4.5, 8.5, 12.5] : [3.0, 6.0, 9.0, 12.0]).map((c) => ox + c * TILE), // centres des étagères
+        frontXmin: ox + 3 * TILE, frontXmax: ox + (tav ? 13 : 12) * TILE,
+      }
+      this.pickBarmanTarget(this._interior.bw)
     }
   }
 
   /** Détruit la salle d'intérieur (objets + colliders). */
   destroyInterior() {
     if (!this._interior) return
+    this.scene.get('UIScene')?.hideInteriorTitle?.() // retire le titre du HUD
     for (const c of this._interior.colliders) this.physics.world.removeCollider(c)
     for (const o of this._interior.objs) { try { o.destroy() } catch (e) { /* déjà détruit */ } }
     this._interior = null
@@ -3858,19 +3910,62 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Boucle d'update quand on est dans un intérieur (monde extérieur gelé). */
-  updateInterior(time) {
+  updateInterior(time, delta) {
     const p = this.player
     p.update(time)
     p.setDepth(7030)
     this.cameras.main.centerOn(p.x, p.y)
+    // mobs GELÉS tant qu'on est à l'intérieur : leur IA ne tourne plus mais la physique Arcade, si : sans ça,
+    // un mob qui te poursuivait dérive (vitesse résiduelle) jusque dans le village pendant ton absence.
+    this.monsters?.getChildren().forEach((m) => { if (m.body) m.body.velocity.set(0, 0) })
     const it = this._interior
     if (!it) return
+    if (it.bw) { this.updateBarman(it.bw, time, (delta || 16) / 1000); it.hint.setPosition(it.npc.x, it.npc.y - 15) } // barman qui s'affaire + indice qui le suit
     // SORTIE AUTO en marchant sur la porte (sinon on traverse dans le vide noir hors-map)
     if (Math.abs(p.x - it.exit.x) < TILE && p.y >= it.exit.y - 10) { this.exitInterior(); return }
     const dn = this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52
-    const de = this.dist(p.x, p.y, it.exit.x, it.exit.y) <= 22
     it.hint.setVisible(dn)
-    it.exitHint.setVisible(de && !dn)
+  }
+
+  /** Nouvelle COLONNE cible du barman : devant une armoire au hasard, ou un endroit aléatoire du comptoir. */
+  pickBarmanTarget(bw) {
+    bw.tx = bw.zone === 'armoire'
+      ? bw.armoireXs[Math.floor(Math.random() * bw.armoireXs.length)]
+      : bw.frontXmin + Math.random() * (bw.frontXmax - bw.frontXmin)
+  }
+
+  /** Barman qui « prépare des boissons » : va-et-vient ALÉATOIRE entre une armoire (fond) et un endroit du comptoir
+   *  (devant), avec pauses. Déplacement par lerp (sprite sans corps), anims de marche directionnelles. */
+  updateBarman(bw, time, dt) {
+    const s = bw.sprite
+    if (bw.hitbox) bw.hitbox.body.reset(s.x, s.y + 3) // la hitbox suit le barman
+    if (time < bw.pauseUntil) { s.anims.play(`${bw.texture}-idle-${bw.facing}`, true); return }
+    const step = bw.speed * dt
+    if (bw.phase === 'toX') { // 1) se placer horizontalement (dans la bande dégagée) sous le spot visé
+      const dyMid = bw.midY - s.y, dx = bw.tx - s.x
+      let moving = false
+      if (Math.abs(dyMid) > 1) { s.y += Math.sign(dyMid) * Math.min(Math.abs(dyMid), step); bw.facing = dyMid < 0 ? 'up' : 'down'; moving = true }
+      if (Math.abs(dx) >= 2) { s.x += Math.sign(dx) * Math.min(Math.abs(dx), step); bw.facing = dx < 0 ? 'left' : 'right'; moving = true }
+      if (!moving) bw.phase = 'toWall'
+      s.anims.play(`${bw.texture}-${moving ? 'walk' : 'idle'}-${bw.facing}`, true)
+      return
+    }
+    // 2) 'toWall' : avance vers le meuble (haut=armoire / bas=comptoir) jusqu'à ce que SA HITBOX touche la hitbox du meuble
+    const dir = bw.zone === 'armoire' ? -1 : 1
+    const ny = s.y + dir * step
+    const hb = bw.hitbox.body // la hitbox du barman suit à (s.x, s.y + 3)
+    if (this.physics.overlapRect(s.x - hb.width / 2, ny + 3 - hb.height / 2, hb.width, hb.height, false, true).length > 0) { // sa hitbox touche une hitbox solide
+      bw.facing = dir < 0 ? 'up' : 'down'
+      s.anims.play(`${bw.texture}-idle-${bw.facing}`, true)
+      bw.pauseUntil = time + 700 + Math.random() * 2000 // « préparation »
+      bw.zone = bw.zone === 'armoire' ? 'comptoir' : 'armoire' // alterne armoire <-> comptoir
+      bw.phase = 'toX'
+      this.pickBarmanTarget(bw)
+      return
+    }
+    s.y = ny
+    bw.facing = dir < 0 ? 'up' : 'down'
+    s.anims.play(`${bw.texture}-walk-${bw.facing}`, true)
   }
 
   /** E dans un intérieur : parle au PNJ si proche, sinon sort si on est sur la porte. */
@@ -4019,6 +4114,7 @@ export default class GameScene extends Phaser.Scene {
         this.wanderEntity(npc._w, time, dt)
         npc.x = s.x // synchronise la position de référence (clic / portée de dialogue)
         npc.y = s.y
+        if (npc.hitbox) npc.hitbox.body.reset(s.x, s.y + 3) // la hitbox (dynamique) suit le baladeur
         npc.label.setPosition(s.x, s.y - 14)
         npc.hint.setPosition(s.x, s.y - 23)
         npc.hint.setVisible(near <= HINT_RANGE)
@@ -4156,9 +4252,10 @@ export default class GameScene extends Phaser.Scene {
     this.npcs = []
     for (const v of this.villagers || []) {
       if (v.merchant) continue // la maison du marchand n'a pas de villageois bavard (le marchand s'y tient)
-      const n = this.addNpc(v.nx, v.ny, v.tex, v.name, v.lines, v.role ?? 'talk')
-      // PNJ d'un bâtiment ENTERABLE -> TRAVERSABLE : on peut le franchir pour atteindre la porte (sinon il bloque)
-      if (n && v.enter && n.sprite.body) n.sprite.body.checkCollision.none = true
+      // PNJ d'un bâtiment enterable : DÉCALÉ d'1 tuile à CÔTÉ de la porte → on peut PARLER (près du PNJ) OU
+      // ENTRER (en marchant sur la porte), jamais les deux en même temps. La tuile de porte (v.nx,v.ny) reste libre.
+      const ntx = v.enter ? v.nx + 1 : v.nx
+      this.addNpc(ntx, v.ny, v.tex, v.name, v.lines, v.role ?? 'talk')
     }
     // PNJ baladeurs de la prairie : cliquables / "Parler (E)" comme les autres, MAIS ils errent
     // (corps physique désactivé -> pas de mur fantôme là où le sprite n'est plus ; on les traverse).
@@ -4172,6 +4269,13 @@ export default class GameScene extends Phaser.Scene {
       if (n.sprite.body) this.physics.world.disable(n.sprite)
       n._w = this.makeWander(n.sprite, n.texture, n.sprite.x, n.sprite.y, 64, 24 + Math.random() * 12)
       n._w.biomeLock = 'prairie' // ne sortent jamais de la prairie
+      // HITBOX qui SUIT le baladeur (corps statique repositionné chaque frame dans updateNpcs) -> le joueur ne
+      // traverse plus les PNJ qui bougent. Invisible en jeu, visible en debug. (Séparée du sprite pour ne pas gêner l'errance.)
+      const hb = this.add.rectangle(n.sprite.x, n.sprite.y + 3, 11, 10).setVisible(false)
+      this.physics.add.existing(hb) // DYNAMIQUE (pas statique) -> ignoré par l'overlapRect(static) de l'errance => le PNJ se déplace toujours
+      hb.body.setAllowGravity(false); hb.body.immovable = true; hb.body.moves = false
+      this.physics.add.collider(this.player, hb)
+      n.hitbox = hb
     }
   }
 
@@ -4760,7 +4864,7 @@ export default class GameScene extends Phaser.Scene {
     const yOff = 24
     const bg = this.add.rectangle(p.x, p.y - yOff, W + 2, 6, 0x000000, 0.65).setDepth(99998)
     const bar = this.add.rectangle(p.x - W / 2, p.y - yOff, 0, 4, color).setOrigin(0, 0.5).setDepth(99999)
-    const lbl = this.add.text(p.x, p.y - yOff - 7, label, { fontFamily: 'monospace', fontSize: '8px', color: '#ffd27a', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(99999).setResolution(3)
+    const lbl = this.add.text(p.x, p.y - yOff - 7, label, { fontFamily: FONT, fontSize: '8px', color: '#ffd27a', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(99999).setResolution(3)
     // ANIMATION DE CANALISATION : aura magique qui pulse au sol + anneau + arme brandie qui tourne
     const aura = this.add.circle(p.x, p.y + 4, 15, color, 0.22).setDepth(p.y - 2)
     const ring = this.add.circle(p.x, p.y + 4, 17, color, 0).setStrokeStyle(2, color, 0.85).setDepth(p.y - 2)
@@ -5613,7 +5717,7 @@ export default class GameScene extends Phaser.Scene {
   floatingText(x, y, text, color, opts = {}) {
     const t = this.add
       .text(x, y - 8, text, {
-        fontFamily: 'monospace',
+        fontFamily: FONT,
         fontSize: `${opts.size ?? 9}px`,
         fontStyle: opts.size ? 'bold' : 'normal',
         color,
@@ -5637,7 +5741,7 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     const t = this.add
       .text(p.x, p.y - 18, 'NIVEAU ' + p.level + ' !', {
-        fontFamily: 'monospace',
+        fontFamily: FONT,
         fontSize: '10px',
         color: '#ffe066',
         stroke: '#000000',
@@ -5666,17 +5770,23 @@ export default class GameScene extends Phaser.Scene {
       return
     }
     if (this.gameOver) return
-    if (this.inInterior) { this.updateInterior(time); return } // dans un bâtiment : monde extérieur gelé
+    if (this.inInterior) { this.updateInterior(time, delta); return } // dans un bâtiment : monde extérieur gelé
     this.player.update(time)
     const p = this.player
     p.setDepth(p.y)
-    // INVITE D'ENTRÉE (Oui/Non) près d'une porte enterable (taverne/apothicaire)
+    // ENTRÉE AUTOMATIQUE au CONTACT de la porte (taverne/apothicaire) — aucun message ni bouton.
+    // _promptDismissed (posé à la sortie) évite la ré-entrée immédiate : il faut s'éloigner puis revenir.
+    // ENTRÉE : le joueur touche le CARRÉ INVISIBLE de la porte (overlap AABB) -> il entre. Aucun message.
+    // _promptDismissed (posé à la sortie) évite la ré-entrée immédiate : il faut sortir du carré puis y revenir.
     let nearDoor = null
+    const pb = p.body
     for (const e of this.buildingEntrances || []) {
-      if ((e.id === 'tavern' || e.id === 'apothecary') && this.dist(p.x, p.y, e.x, e.y) <= 26) { nearDoor = e; break }
+      if ((e.id !== 'tavern' && e.id !== 'apothecary') || !e.zone) continue
+      const zb = e.zone.body
+      if (pb.x + pb.width > zb.x && pb.x < zb.x + zb.width && pb.y + pb.height > zb.y && pb.y < zb.y + zb.height) { nearDoor = e; break }
     }
-    if (nearDoor && !this.uiBusy()) { if (this._promptDismissed !== nearDoor.id) this.showEnterPrompt(nearDoor.id) }
-    else { this._promptDismissed = null; if (this._promptId) this.hideEnterPrompt() }
+    if (nearDoor && !this.uiBusy() && !this.inInterior) { if (this._promptDismissed !== nearDoor.id) this.enterInterior(nearDoor.id) }
+    else if (!nearDoor) { this._promptDismissed = null }
     this.updateHeldWeapon() // arme tenue en main (cachée pendant l'attaque, revient après)
     this.updateBoat() // barque sous le héros quand il navigue (A3)
     this.updateQuicksand(time) // sables mouvants du désert : aspiration + dégâts (après player.update)

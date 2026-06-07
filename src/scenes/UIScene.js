@@ -1810,6 +1810,24 @@ export default class UIScene extends Phaser.Scene {
     this.dialogueObjects = []
   }
 
+  /** Titre de la salle d'intérieur (taverne/apothicaire) : affiché EN HAUT AU CENTRE dans le HUD (UIScene = zoom 1)
+   *  -> net et bien dimensionné, contrairement à un texte du monde déformé par le zoom de la caméra de jeu. */
+  showInteriorTitle(text) {
+    this.hideInteriorTitle()
+    const x = this.scale.width / 2, y = 36
+    const t = this.add.text(x, y, text, {
+      fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: '#ffe9b8', stroke: '#2a1408', strokeThickness: 6,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(9001).setResolution(2)
+    // fond pilule sombre derrière le texte -> lisibilité (contraste sur le décor clair)
+    const bg = this.add.rectangle(x, y + t.height / 2, t.width + 30, t.height + 14, 0x1a0f06, 0.6)
+      .setScrollFactor(0).setDepth(9000)
+    this._interiorTitle = [bg, t]
+  }
+
+  hideInteriorTitle() {
+    if (this._interiorTitle) { this._interiorTitle.forEach((o) => o.destroy()); this._interiorTitle = null }
+  }
+
   // ---------- helpers ----------
 
   pointerOverInventory(x, y) {

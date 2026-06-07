@@ -559,6 +559,552 @@ designs.debug_iso = () => {
   ops.furn('penz_furn', 6, 7, 1, 3, 13, 4.2)  // lampe @ gx13 (droite)
 }
 
+designs.apoth_A = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 28)
+  const FT = 0x8f8270 // sol neutre/froid -> laisse le violet dominer
+  const WALL = 0x9a8aa8 // mur froid/violace
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  // palette fioles
+  const VIO = 0xb070ff, MAG = 0xe060c0, TEAL = 0x60d0d0, AMB = 0xffb060, GRN = 0x70e090, RED = 0xff6060
+  ops.floor(FLOOR, FT)
+  ops.wallRing(WALL, g0, g1)
+  ops.wallShadow(11, 0.5)
+
+  // === MUR DE FIOLES : 4 grandes etageres sombres COLLEES cote a cote au mur du fond (cols ~2..13) ===
+  // leger chevauchement (pas 3.0) pour fermer les jointures = look maximaliste bourre
+  const shelfCols = [2, 4.85, 7.7, 10.55]
+  shelfCols.forEach((c) => ops.furn('penz_furn', 6, 4, 3, 3, c, 1.5)) // bibliotheque_sombre 3x3
+  // fioles + bocaux sur CHAQUE rayon de CHAQUE etagere (3 rangs visibles : ~1.95 / ~2.85 / ~3.75)
+  const rowsY = [1.95, 2.85, 3.75]
+  const fioleTints = [VIO, MAG, TEAL, MAG, VIO, AMB, TEAL, VIO, MAG, GRN]
+  shelfCols.forEach((c, si) => {
+    rowsY.forEach((ry, ri) => {
+      // 3 contenants par rayon : 2 fioles tintees + 1 bocal d'ingredient
+      const t0 = fioleTints[(si * 3 + ri * 2) % fioleTints.length]
+      const t1 = fioleTints[(si * 3 + ri * 2 + 1) % fioleTints.length]
+      ops.item(6, c + 0.55, ry, 1, t0)                       // fiole gauche
+      ops.item(6, c + 1.5, ry, 1, t1)                        // fiole centre
+      ops.item([56, 57, 58, 59][(si + ri) % 4], c + 2.35, ry) // bocal d'ingredient droite
+    })
+  })
+
+  // === LAMPADAIRES sur les murs lateraux ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 5.6); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 5.6)
+
+  // === PLANTES dans les coins bas (suggere les herbes), bien dans la zone jouable ===
+  ops.furn('penz_furn', 0, 9, 1, 2, 1, 8.1); ops.furn('penz_furn', 0, 9, 1, 2, COLS - 2, 8.1)
+
+  // === PETIT COMPTOIR EN L (bas-GAUCHE) : commode 2x2 + 1-2 tuiles bar_long ; Ylva derriere (place ~ligne 6.5) ===
+  // tapis ovale violet sous le comptoir
+  ops.furn('penz_furn', 8, 3, 2, 1, 1.6, 7.4)               // tapis_ovale_violet
+  ops.furn('penz_furn', 0, 0, 2, 2, 1.5, 7.5)               // commode (corps du comptoir)
+  ops.furn('penz_furn', 8, 14, 2, 1, 3.5, 8.5)              // bar_long (retour du L, vers la droite)
+  // clutter d'alchimie sur le comptoir
+  ops.item(24, 2.0, 7.55)                                    // livre ouvert
+  ops.item(26, 2.7, 7.45)                                    // bougie allumee
+  ops.item(49, 3.4, 7.55, 1, VIO)                            // calice (potion violette servie)
+  ops.item(6, 4.3, 8.45, 1, MAG); ops.item(6, 5.0, 8.45, 1, TEAL) // fioles sur le retour du bar
+
+  // === CHAUDRON qui mijote (centre-bas) avec grosse vapeur violette ===
+  const cauX = cxm + 0.5, cauY = 7.6
+  ops.item(37, cauX, cauY, 2.4, 0x9a70d0)                    // chaudron plein, gros
+
+  // === PORTE + tapis de seuil ovale violet ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : violet alchimiste dominant ===
+  ops.glowT(cxm, 5.2, 230, 0x9a70d0, 0.13)                  // ambiance violette globale
+  ops.glowT(cauX, cauY - 0.7, 56, 0xb070ff, 0.5)            // VAPEUR du chaudron (violet vif)
+  ops.glowT(cauX, cauY - 1.3, 40, 0x70e090, 0.22)           // soupcon de vert qui s'echappe
+  ops.glowT(1.5, 6.0, 44, 0xcfa8ff, 0.30); ops.glowT(COLS - 1.5, 6.0, 44, 0xcfa8ff, 0.30) // lampadaires (teinte violacee)
+  ops.glowT(cxm, 2.4, 120, 0xb070ff, 0.10)                  // halo sur le mur de fioles
+}
+
+designs.apoth_B = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 28)
+  const FT = 0x8f8270            // sol neutre/froid (laisse parler le violet)
+  const WALL = 0x9a8aa8          // mur pierre froide/violacee
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1
+  ops.floor(FLOOR, FT)
+  ops.wallRing(WALL, g0, g1)
+  ops.wallShadow(11, 0.5)
+
+  // === FENETRES (mur du fond, ecartees pour laisser la place au mur de fioles entre elles) ===
+  ops.furn('penz_doors', 6, 3, 2, 2, 1.5, 0)         // fenetre gauche
+  ops.furn('penz_doors', 6, 3, 2, 2, COLS - 3.5, 0)  // fenetre droite
+
+  // === MUR DE FIOLES (2 grandes bibliotheques sombres collees au mur, ENTRE les fenetres) ===
+  // violet/magenta DOMINANTS + qq teal/ambre/vert. NB le flacon (frame6) a un liquide ORANGE :
+  // MULTIPLY garde le canal rouge -> il faut des teintes a FAIBLE rouge pour vraiment virer au violet.
+  const VIO = 0x8048e0, MAG = 0xd040b0, TEAL = 0x40c8c8, AMBR = 0xffb050, VERT = 0x60d080
+  const FIOLE = [VIO, MAG, VIO, TEAL, MAG, VIO, AMBR, MAG,
+                 VIO, VERT, MAG, VIO, TEAL, VIO, MAG, AMBR]
+  const shelfFioles = (gx) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, gx, 1.6)        // bibliotheque sombre 3x3 sous le haut de mur
+    // rayon haut (y ~2.15) et rayon bas (y ~3.1), 4 fioles serrees par rayon -> mur de fioles dense
+    for (let i = 0; i < 4; i++) {
+      ops.item(6, gx + 0.45 + i * 0.7, 2.15, 1.0, FIOLE[(gx * 2 + i) % FIOLE.length])
+      ops.item(6, gx + 0.45 + i * 0.7, 3.1, 1.0, FIOLE[(gx * 2 + i + 4) % FIOLE.length])
+    }
+  }
+  shelfFioles(4.5)   // etagere gauche-centre
+  shelfFioles(7.5)   // etagere droite-centre
+  // bocaux d'ingredients sur le rebord SUPERIEUR (au-dessus, sous le haut de mur)
+  ops.item(58, 4.95, 1.7, 0.85); ops.item(56, 6.6, 1.7, 0.85)
+  ops.item(57, 7.95, 1.7, 0.85); ops.item(59, 9.6, 1.7, 0.85)
+
+  // === COIN D'ETUDE (bas-droite) : etabli = table longue claire 3x2 ===
+  ops.furn('penz_furn', 0, 2, 3, 2, 10.5, 7.2)        // etabli (cols 10.5-13.5)
+  ops.item(25, 10.9, 7.25, 0.9)                        // livre ferme
+  ops.item(24, 11.6, 7.3, 0.9)                         // livre ouvert
+  ops.item(0, 12.2, 7.15, 0.85)                        // plume
+  ops.item(3, 12.7, 7.2, 0.9)                          // pot a pinceaux violet
+  ops.item(26, 11.0, 7.85, 0.9)                        // bougie allumee (chaleur ponctuelle)
+  ops.furn('penz_furn', 8, 0, 1, 2, 11.4, 8.6)        // chaise face (place de travail)
+  ops.furn('penz_furn', 0, 9, 1, 2, 12.4, 9.5)        // plante en pot (herbes, coin droit, rentree)
+
+  // === PETIT COMPTOIR (bas-gauche) : commode = base du comptoir ; place Ylva DERRIERE (au-dessus) ===
+  ops.furn('penz_furn', 0, 0, 2, 2, 1.6, 7.0)         // commode (comptoir) cols 1.6-3.6
+  ops.item(49, 2.0, 7.05, 0.9)                         // calice (potion servie)
+  ops.item(6, 2.6, 7.05, 0.9, 0x8048e0)               // fiole violette posee
+  ops.item(29, 3.2, 7.0, 0.9)                          // urne bordeaux
+  // (Ylva se tiendra ~ ligne 6.2, derriere/au-dessus du comptoir, dans le jeu — place laissee libre)
+
+  // === CHAUDRON (coin bas-gauche, pres du comptoir) + urnes bordeaux ===
+  ops.item(37, 2.3, 9.5, 2.4, 0x9a70d0)               // gros chaudron alchimique violace
+  ops.item(29, 1.0, 9.0, 0.95)                         // urne bordeaux a gauche
+  ops.item(29, 3.6, 9.4, 0.9)                          // urne bordeaux a droite
+  ops.item(14, 4.1, 10.2, 0.95)                        // petite plante (herbes), degagee du chaudron
+
+  // === LAMPADAIRE d'ambiance (cote droit, pres de l'etude) ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 13.4, 3.6)
+
+  // === PORTE + tapis ovale violet de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) EN DERNIER : violet feutre + chaleurs ponctuelles ===
+  ops.glowT(7.5, 5.5, 200, 0x9a70d0, 0.12)            // ambiance violette globale
+  ops.glowT(2.3, 9.0, 42, 0x9a70d0, 0.42)            // vapeur qui mijote au-dessus du chaudron
+  ops.glowT(2.3, 8.8, 26, 0x70e090, 0.18)            // pointe verte (mixture)
+  ops.glowT(11.0, 7.7, 30, 0xffcf8a, 0.34)           // bougie de l'etabli (chaude)
+  ops.glowT(13.4, 3.9, 34, 0xb070ff, 0.26)           // halo du lampadaire (violet)
+  ops.glowT(6.0, 2.5, 60, 0xb070ff, 0.16)            // lueur sur le mur de fioles
+}
+
+designs.apoth_C = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 28)
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  // palette fioles : violet domine + qq accents (teal/ambre/vert/magenta)
+  const PURP = 0xb070ff, MAG = 0xe060c0, TEAL = 0x60d0d0, AMBR = 0xffb060, GRN = 0x70e090
+  // helper : range de fioles alignees sur un rayon d'etagere (y), de x0 a x1, couleurs cyclees
+  const shelfVials = (y, x0, x1, cols) => {
+    const n = cols.length
+    for (let i = 0; i < n; i++) ops.item(6, x0 + (x1 - x0) * (n === 1 ? 0.5 : i / (n - 1)), y, 0.85, cols[i])
+  }
+
+  ops.floor(FLOOR, 0x817690)                 // sol pierre FROID/violace (laisse parler le violet)
+  ops.wallRing(0x9a8aa8, g0, g1)             // murs froids/violaces
+  ops.wallShadow(11, 0.55)                    // relief : ombre du sol contre les murs
+
+  // --- TAPIS sous l'atelier (chaudron + table), avant les meubles ---
+  ops.furn('penz_furn', 10, 2, 3, 3, cxm - 3.2, 4.5, 0x9a7ab0)  // tapis losanges teinte violet sous l'atelier (chaudron + table)
+
+  // === MUR DE FIOLES : 2 grandes etageres sombres collees au mur du fond ===
+  // etagere gauche (cols 2-4) et etagere droite (cols 8-10) ; centre du mur garde 2 fenetres
+  ;[2, 8].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 1.5)            // bibliotheque_sombre 3x3
+    shelfVials(2.05, c + 0.4, c + 2.6, [PURP, MAG, TEAL, AMBR])   // rayon haut
+    shelfVials(3.05, c + 0.4, c + 2.6, [GRN, PURP, MAG, PURP])    // rayon bas (1 verte = accent)
+  })
+  // bocaux d'ingredients en haut des etageres (clutter alchimie)
+  ops.item(58, 2.5, 1.55); ops.item(57, 4.3, 1.55)       // bocal vert / orange (gauche)
+  ops.item(59, 8.5, 1.55); ops.item(56, 10.3, 1.55)      // bocal brun / clair (droite)
+  // FENETRES au centre du mur du fond (entre les 2 etageres)
+  ops.furn('penz_doors', 6, 3, 2, 2, cxm - 1, 0, 0xb0a0c0)
+
+  // === HERBES SUSPENDUES (suggerees) : plantes en hauteur, rang ~2 pres du mur ===
+  ops.item(15, 6.2, 2.2, 1.1, 0x9fd07a)   // plante automne tintee verte (herbe sechee, gauche fenetre)
+  ops.item(14, 8.8, 2.2, 1.1)             // petite plante (droite fenetre)
+  ops.item(7, 5.2, 2.25)                  // vase a tige (herbe)
+  ops.item(7, 9.8, 2.25)
+
+  // === PETIT COMPTOIR sur le COTE DROIT (PAS pleine largeur) — Ylva se tient derriere (place ~1 tuile a droite) ===
+  ops.furn('penz_furn', 0, 0, 2, 2, 11.5, 6.6)            // commode_tiroirs = base du comptoir
+  ops.item(24, 11.9, 6.65)                                // livre ouvert (registre)
+  ops.item(0, 12.5, 6.55)                                 // plume
+  ops.item(49, 13.0, 6.7, 1, PURP)                        // calice violet servi
+  ops.item(26, 11.7, 6.55)                                // bougie allumee
+
+  // === TABLE D'ALCHIMIE CENTRALE (table_ovale_basse) couverte de fioles tintees + calices ===
+  const tx = cxm - 1, ty = 5.6
+  ops.furn('penz_furn', 5, 2, 2, 2, tx, ty)              // table ovale basse (2x2)
+  // fioles + calices alignes sur le plateau (y ~ ty+0.15)
+  ops.item(6, tx + 0.35, ty + 0.15, 0.95, PURP)
+  ops.item(6, tx + 0.75, ty + 0.15, 0.95, MAG)
+  ops.item(49, tx + 1.15, ty + 0.2, 0.95, GRN)          // calice vert servi (accent)
+  ops.item(6, tx + 1.55, ty + 0.15, 0.95, TEAL)
+  ops.item(24, tx + 0.95, ty + 0.55)                    // livre ouvert (recette) devant
+  ops.item(3, tx + 0.2, ty + 0.5)                       // pot a pinceaux/plumes (violet)
+
+  // === CHAUDRON juste A COTE de la table (cote gauche), il mijote ===
+  const chX = tx - 1.2, chY = 6.1
+  ops.item(37, chX, chY, 2.4, 0x9a70d0)                  // gros chaudron tinte violet
+
+  // === LAMPADAIRES d'ambiance (murs lateraux) ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.4); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 7.4)
+  // plantes en pot dans les coins bas (herbes au sol)
+  ops.furn('penz_furn', 0, 9, 1, 2, 1.1, 9.6, 0xa8d090)
+
+  // === PORTE + tapis ovale violet de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)   // tapis ovale violet (col8 row3 2x1)
+
+  // === LUMIERES (ADD) EN DERNIER : violet dominant + accent VERT sous/au-dessus du chaudron ===
+  ops.glowT(cxm, 5.4, 200, 0x9a70d0, 0.13)                    // bain violet general
+  ops.glowT(chX, chY - 0.55, 46, 0x70e090, 0.42)             // VAPEUR verte qui mijote (au-dessus du chaudron)
+  ops.glowT(chX, chY + 0.2, 30, 0x60e070, 0.30)              // lueur verte SOUS le chaudron
+  ops.glowT(tx + 0.95, ty + 0.2, 40, 0xb070ff, 0.26)        // halo violet sur la table d'alchimie
+  ops.glowT(2.5, 7.6, 40, 0xc6a8ff, 0.28); ops.glowT(COLS - 2.5, 7.6, 40, 0xc6a8ff, 0.28) // lampadaires
+  ops.glowT(3.5, 2.4, 40, 0xb88aff, 0.16); ops.glowT(9.5, 2.4, 40, 0xb88aff, 0.16)       // halos sur le mur de fioles
+}
+
+designs.apoth_D = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 28)
+  const FT = 0x7e7890          // sol pierre froid/violace (ambiance alchimiste, plus desature)
+  const WT = 0x9a8aa8          // mur froid/violace
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+
+  // helper : remplit une etagere (bibliotheque_sombre 3x3) de FIOLES colorees alignees sur 2 rayons
+  const VIO = [0xb070ff, 0xe060c0, 0x60d0d0, 0xffb060, 0xff6060, 0x70e090]
+  const fillShelf = (gx, gy, pal) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, gx, gy)
+    // rayon haut (~ +0.6) et rayon bas (~ +1.6), 3 fioles par rayon
+    for (let i = 0; i < 3; i++) ops.item(6, gx + 0.5 + i, gy + 0.6, 0.9, pal[i % pal.length])
+    for (let i = 0; i < 3; i++) ops.item(6, gx + 0.5 + i, gy + 1.6, 0.9, pal[(i + 3) % pal.length])
+  }
+  // helper : etagere laterale BASSE (bibliotheque_basse 2x2) avec bocaux/fioles
+  const sideShelf = (gx, gy, pal) => {
+    ops.furn('penz_furn', 3, 2, 2, 2, gx, gy)
+    ops.item(56, gx + 0.5, gy + 0.55, 0.85); ops.item(58, gx + 1.4, gy + 0.55, 0.85)
+    ops.item(6, gx + 0.5, gy + 1.5, 0.85, pal[0]); ops.item(6, gx + 1.4, gy + 1.5, 0.85, pal[1])
+  }
+
+  ops.floor(FLOOR, FT)
+  ops.wallRing(WT, g0, g1)
+  ops.wallShadow(11, 0.5)
+
+  // === MUR DE FIOLES CENTRAL (signature) collee au mur du fond, encadree par 2 fenetres ===
+  fillShelf(cxm - 1.5, 1.5, VIO)                                   // grande etagere a fioles, centree
+  ops.furn('penz_doors', 6, 3, 2, 2, cxm - 4.5, 0); ops.furn('penz_doors', 6, 3, 2, 2, cxm + 2.5, 0) // 2 fenetres symetriques
+
+  // === 2 COLONNES D'ETAGERES LATERALES symetriques (bibliotheque) ===
+  sideShelf(1, 2.2, [0xb070ff, 0x60d0d0])                          // gauche
+  sideShelf(COLS - 3, 2.2, [0xe060c0, 0xffb060])                   // droite
+  sideShelf(1, 4.6, [0x70e090, 0xff6060])                          // gauche bas
+  sideShelf(COLS - 3, 4.6, [0x60d0d0, 0xb070ff])                   // droite bas
+
+  // === COMPTOIR (PETIT) bas-centre-GAUCHE — 2 commodes ; place Ylva DERRIERE (au-dessus, vers gy6) ===
+  ops.furn('penz_furn', 0, 0, 2, 2, 3, 7.4)                        // commode (2x2)
+  ops.furn('penz_furn', 3, 0, 1, 2, 5, 7.4)                        // buffet (1x2) -> comptoir 3 large
+  ops.item(24, 3.5, 7.45, 0.9); ops.item(49, 4.4, 7.45, 0.9, 0xb070ff); ops.item(26, 5.4, 7.45)  // livre + calice potion + bougie
+
+  // === CHAUDRON qui mijote bas-DROITE ===
+  ops.item(37, 11.0, 8.0, 2.4, 0x9a70d0)                           // gros chaudron tinte violet
+
+  // === PLANTES EN POT symetriques (suggestion d'herbes), coins bas, hors des etageres ===
+  // (l'item plante = sprite propre/fiable ; le furn plante_pot rendait casse sur cette planche)
+  ops.item(15, 1.7, 8.8, 1.6); ops.item(15, COLS - 1.7, 8.8, 1.6)   // plantes touffues (herbes) en bas-G/D
+  ops.item(14, 1.7, 7.4, 1.2); ops.item(14, COLS - 1.7, 7.4, 1.2)   // petites pousses au-dessus, herboristerie
+
+  // PORTE + tapis ovale violet de seuil
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERE VIOLETTE uniforme (ADD) en dernier ===
+  ops.glowT(cxm, 5.2, 220, 0x9a70d0, 0.15)                         // bain violet d'ambiance
+  ops.glowT(cxm, 2.6, 60, 0xb070ff, 0.22)                          // halo sur le mur de fioles
+  ops.glowT(11.0, 7.0, 50, 0x80e0a0, 0.38)                         // VAPEUR verte du chaudron (au-dessus)
+  ops.glowT(11.0, 7.9, 30, 0x9a70d0, 0.22)                         // lueur violette sous le chaudron
+  ops.glowT(2.0, 3.5, 42, 0xb070ff, 0.18); ops.glowT(COLS - 2.0, 3.5, 42, 0xb070ff, 0.18) // etageres laterales
+}
+
+// APOTHICAIRE FINAL — base A (mur de fioles plein) peaufinee : reflets violets/teal (verre clair teinte),
+// plantes en pot fiables (items 14/15), chaudron pose sur tapis + ingredients autour, coin herboriste bas-droite.
+designs.apoth_final = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 28)
+  const FT = 0x8f8270   // sol neutre/froid -> laisse le violet dominer
+  const WALL = 0x9a8aa8 // mur pierre froide/violacee
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  // fioles CHAUDES = flask frame6 (liquide orange -> reste rouge/ambre meme tinte) ; POPS FROIDS = verre/calice CLAIR teinte (vrai violet/teal/vert/bleu)
+  const WARMFLASK = [0xff7050, 0xffb050]                                   // rouge, ambre
+  const RICH = [0x8050d0, 0x40c0d0, 0x60d070, 0x5a6ae0, 0xc050c0]          // violet, teal, vert, bleu, magenta
+  ops.floor(FLOOR, FT)
+  ops.wallRing(WALL, g0, g1)
+  ops.wallShadow(11, 0.5)
+
+  // === MUR DE FIOLES : 4 grandes etageres sombres COLLEES cote a cote au mur du fond ===
+  const shelfCols = [2, 4.85, 7.7, 10.55]
+  shelfCols.forEach((c) => ops.furn('penz_furn', 6, 4, 3, 3, c, 1.5)) // bibliotheque_sombre 3x3
+  const rowsY = [2.05, 2.9, 3.75]
+  shelfCols.forEach((c, si) => {
+    rowsY.forEach((ry, ri) => {
+      const k = si * 3 + ri
+      ops.item(6, c + 0.5, ry, 0.95, WARMFLASK[k % WARMFLASK.length])             // fiole chaude (rouge/ambre)
+      ops.item(40, c + 1.35, ry, 0.92, RICH[k % RICH.length])                     // verre droit CLAIR teinte FROID = vrai violet/teal/vert/bleu (forme fiole)
+      ops.item([56, 57, 58, 59][(si + ri) % 4], c + 2.35, ry, 0.92)              // bocal d'ingredient
+    })
+  })
+
+  // === LAMPADAIRES murs lateraux ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 5.4); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 5.4)
+
+  // === PETIT COMPTOIR EN L (bas-GAUCHE) ; place laissee pour Ylva derriere (~gy 6.4) ===
+  ops.furn('penz_furn', 8, 3, 2, 1, 1.6, 7.35)             // tapis ovale violet sous le comptoir
+  ops.furn('penz_furn', 0, 0, 2, 2, 1.5, 7.4)             // commode (corps du comptoir)
+  ops.furn('penz_furn', 8, 14, 2, 1, 3.5, 8.45)           // bar_long (retour du L vers la droite)
+  ops.item(24, 2.0, 7.45)                                  // livre ouvert (registre)
+  ops.item(26, 2.7, 7.35)                                  // bougie allumee
+  ops.item(48, 3.4, 7.45, 1, 0x8050d0)                   // calice violet servi
+  ops.item(40, 4.3, 8.4, 1, 0x40c0d0); ops.item(6, 5.0, 8.4, 1, 0xff7050) // fioles sur le retour
+
+  // === CHAUDRON central pose sur un tapis + ingredients autour (plus seul) ===
+  const cauX = cxm, cauY = 7.3
+  ops.furn('penz_furn', 8, 3, 2, 1, cauX - 1, cauY + 0.6) // petit tapis ovale violet sous le chaudron
+  ops.item(37, cauX, cauY, 2.4, 0x9a70d0)                  // gros chaudron tinte violet
+  ops.item(29, cauX - 1.4, cauY + 0.45, 0.95)            // urne bordeaux gauche
+  ops.item(29, cauX + 1.4, cauY + 0.45, 0.9)             // urne bordeaux droite
+
+  // === COIN HERBORISTE bas-DROITE (equilibre la salle) : etagere basse + bocaux + fioles ===
+  ops.furn('penz_furn', 3, 2, 2, 2, COLS - 3.2, 7.2)      // bibliotheque_basse 2x2 (ingredients)
+  ops.item(58, COLS - 2.7, 7.45, 0.9); ops.item(56, COLS - 1.8, 7.45, 0.9)
+  ops.item(6, COLS - 2.7, 8.35, 0.9, 0x60d070); ops.item(40, COLS - 1.8, 8.35, 0.9, 0x8050d0)
+
+  // === HERBES en pot (items fiables 14/15) dans les coins bas ===
+  ops.item(15, 1.5, 9.7, 1.5)                             // herbe touffue bas-gauche
+  ops.item(14, COLS - 1.5, 9.6, 1.3)                      // pousse bas-droite
+
+  // === PORTE + tapis ovale violet de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUMIERES (ADD) en dernier : violet alchimiste ===
+  ops.glowT(cxm, 5.2, 235, 0x9a70d0, 0.13)                // bain violet global
+  ops.glowT(cauX, cauY - 0.7, 58, 0xb070ff, 0.5)         // vapeur du chaudron (violet vif)
+  ops.glowT(cauX, cauY - 1.3, 40, 0x70e090, 0.22)       // soupcon de vert qui s'echappe
+  ops.glowT(1.5, 6.0, 44, 0xcfa8ff, 0.30); ops.glowT(COLS - 1.5, 6.0, 44, 0xcfa8ff, 0.30) // lampadaires
+  ops.glowT(cxm, 2.4, 130, 0xb070ff, 0.12)              // halo sur le mur de fioles
+}
+
+// APOTHICAIRE v2 — modele TAVERNE : Ylva CENTREE derriere un GRAND comptoir pleine largeur,
+// mur de fioles EXACTEMENT jointif (pas d'overlap = plus de meuble casse), chaudron deplace en coin, centre degage.
+designs.apoth_v2 = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 28)
+  const FT = 0x8f8270, WALL = 0x9a8aa8
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  const WARMFLASK = [0xff7050, 0xffb050]
+  const RICH = [0x8050d0, 0x40c0d0, 0x60d070, 0x5a6ae0, 0xc050c0]
+  ops.floor(FLOOR, FT)
+  ops.wallRing(WALL, g0, g1)
+  ops.wallShadow(11, 0.5)
+  // tapis central (habille le milieu a la place du chaudron ; marchable)
+  ops.furn('penz_furn', 10, 2, 3, 2, cxm - 1.5, 7.9)
+  // === MUR DE FIOLES : 4 etageres EXACTEMENT adjacentes (espacees de 3 = bords jointifs, AUCUN overlap) ===
+  const shelfCols = [1.5, 4.5, 7.5, 10.5]
+  shelfCols.forEach((c) => ops.furn('penz_furn', 6, 4, 3, 3, c, 1.6))
+  shelfCols.forEach((c, si) => [2.25, 3.2].forEach((ry, ri) => {
+    const k = si * 2 + ri
+    ops.item(6, c + 0.5, ry, 0.9, WARMFLASK[k % WARMFLASK.length])
+    ops.item(40, c + 1.4, ry, 0.88, RICH[k % RICH.length])
+    ops.item([56, 57, 58, 59][(si + ri) % 4], c + 2.35, ry, 0.88)
+  }))
+  // (YLVA centree ~ ligne 5.1, posee dans le jeu)
+  // === GRAND COMPTOIR PLEINE LARGEUR (2 rangs) — infranchissable, on ne passe pas derriere ===
+  const bL = 1, bR = COLS - 1
+  for (const row of [5.6, 6.0]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  // clutter d'alchimie SUR le comptoir (registre, bougie, fioles, mortier/urne)
+  ops.item(24, cxm - 2.6, 5.65); ops.item(26, cxm - 1.8, 5.55)
+  ops.item(6, cxm + 0.4, 5.6, 0.9, 0xff7050); ops.item(40, cxm + 1.1, 5.6, 0.9, 0x8050d0); ops.item(40, cxm + 1.8, 5.6, 0.9, 0x40c0d0)
+  ops.item(29, cxm + 2.7, 5.6, 0.95)
+  ops.item(56, cxm + 3.5, 5.6, 0.9); ops.item(6, cxm + 4.3, 5.6, 0.9, 0x60d070) // bocal + fiole (droite du comptoir)
+  // === COIN PREPARATION (bas-GAUCHE) : cabinet + tapis dessous + MOINS d'objets (mortier + 1 fiole) ===
+  ops.furn('penz_furn', 8, 3, 2, 1, 1.7, 9.55)           // tapis sous le cabinet
+  ops.furn('penz_furn', 0, 0, 2, 2, 1.7, 7.9)            // commode = cabinet a ingredients
+  ops.item(29, 2.4, 7.95, 0.9)                            // mortier (urne)
+  ops.item(6, 3.2, 7.95, 0.85, 0x8050d0)                 // fiole violette
+  // === COIN HERBORISTE (bas-DROITE) : tapis dessous + etagere basse + bocaux/fioles ===
+  ops.furn('penz_furn', 8, 3, 2, 1, COLS - 3.4, 9.8)     // tapis sous l'etagere
+  ops.furn('penz_furn', 3, 2, 2, 2, COLS - 3.4, 8.1)
+  ops.item(58, COLS - 2.9, 8.35, 0.9); ops.item(56, COLS - 2.0, 8.35, 0.9)
+  ops.item(6, COLS - 2.9, 9.25, 0.9, 0x60d070); ops.item(40, COLS - 2.0, 9.25, 0.9, 0x8050d0)
+  // === HERBES en pot (coins bas) ===
+  ops.item(15, 1.5, 10.1, 1.4); ops.item(14, COLS - 1.5, 10.1, 1.3)
+  // === PORTE + tapis de seuil ===
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // === LUMIERES violet (RENFORCEES) ===
+  ops.glowT(cxm, 6.2, 250, 0x9a70d0, 0.20)                 // bain violet general (plus fort)
+  ops.glowT(cxm, 8.7, 90, 0xb070ff, 0.18)                  // lueur violette au sol du centre
+  ops.glowT(2.6, 8.0, 44, 0xb070ff, 0.30)                  // halo violet sur le cabinet (gauche)
+  ops.glowT(COLS - 2.6, 8.6, 44, 0xb070ff, 0.28)           // halo violet sur l'etagere herboriste (droite)
+  ops.glowT(2.5, 6.1, 42, 0xcfa8ff, 0.30); ops.glowT(COLS - 2.5, 6.1, 42, 0xcfa8ff, 0.30)         // lueurs aux bouts du comptoir
+  ops.glowT(cxm, 2.6, 140, 0xb070ff, 0.22)                // halo violet sur le mur de fioles
+}
+
+// table ovale + 4 chaises qui REGARDENT toutes la table (haut=FACE, bas=DOS, gauche=PROFIL miroir, droite=PROFIL)
+// dessin : chaise HAUT avant la table (derriere), chaise BAS apres la table (devant)
+function ovalSeatA(tx, ty, items) {
+  ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty - 0.5, null, false)   // HAUT : FACE (regarde vers le bas = table) — derriere
+  ops.furn('penz_furn', 9, 0, 1, 2, tx - 0.75, ty + 0.3, null, true)   // GAUCHE : PROFIL miroir (regarde a droite = table)
+  ops.furn('penz_furn', 9, 0, 1, 2, tx + 1.75, ty + 0.3, null, false)  // DROITE : PROFIL (regarde a gauche = table)
+  ops.furn('penz_furn', 5, 2, 2, 2, tx, ty)                            // TABLE ovale 2x2
+  ;(items || []).forEach((it, i) => ops.item(it, tx + 1 + (i - (items.length - 1) / 2) * 0.55, ty + 0.85))
+  ops.furn('penz_furn', 7, 0, 1, 2, tx + 0.5, ty + 1.1, null, false)   // BAS : DOS (regarde vers le haut = table) — devant
+}
+
+// TAVERNE tav_seat_A — base tavern_v9 (bar pleine largeur + tapis + lanternes + lumieres + porte) ;
+// SEUL CHANGEMENT : 2 tables ovales a 4 chaises (haut=FACE bas=DOS gauche=PROFIL flip droite=PROFIL),
+// tables RENTREES vers le centre (couloir >=1 tuile tout autour, tour de table possible), place pour s'asseoir.
+designs.tav_seat_A = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  // tapis sous les 2 tables (rentrees vers le centre)
+  ops.furn('penz_furn', 10, 2, 3, 2, 2.5, 8.6); ops.furn('penz_furn', 10, 2, 3, 2, 11.6, 8.6)
+  ops.wallRing(0xc89860, g0, g1)
+  ops.wallShadow(11, 0.5)
+  ops.furn('penz_doors', 6, 3, 2, 2, 2, 0); ops.furn('penz_doors', 6, 3, 2, 2, COLS - 4, 0) // fenetres mur du fond
+  // === MUR DE BOUTEILLES (3 etageres sombres collees au mur) ===
+  ;[3, 7, 11].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 1.6)
+    ops.item(6, c + 0.5, 2.05); ops.item(57, c + 1.1, 2.05); ops.item(49, c + 1.7, 2.05)
+    ops.item(58, c + 0.6, 3.05); ops.item(56, c + 1.5, 3.05)
+  })
+  // === COMPTOIR PLEINE LARGEUR (ligne) — 2 rangs ; on ne peut PAS passer derriere ===
+  const bL = 1, bR = COLS - 1
+  for (const row of [5.0, 5.4]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  for (let c = 2; c < bR - 1; c += 2) ops.item([54, 42, 49, 61, 54, 42][((c / 2) | 0) % 6], c + 0.5, 5.05) // chopes/plats sur le bar
+  for (let i = 0; i < 6; i++) ops.furn('penz_furn', 12, 1, 1, 1, 2.5 + i * 2, 6.6) // tabourets (boire au bar)
+  // === LANTERNES ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.0); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 7.0)
+  // === 2 GRANDES TABLES OVALES A 4 CHAISES (rentrees vers le centre) ===
+  ovalSeatA(3.3, 8.1, [54, 26])
+  ovalSeatA(11.7, 8.1, [49, 61])
+  // PORTE + tapis
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // LUMIERES
+  ops.glowT(cxm, 5.0, 235, 0xffba70, 0.10)
+  ops.glowT(1.5, 7.4, 44, 0xffcf8a, 0.32); ops.glowT(COLS - 1.5, 7.4, 44, 0xffcf8a, 0.32)
+  ops.glowT(cxm, 2.6, 72, 0xffce7a, 0.15)
+}
+
+// TAVERNE tav_seat_B — 2 grandes tables ovales AEREES (3 chaises chacune : haut FACE, gauche PROFIL flip, droite PROFIL),
+// grand espacement, lanes de circulation larges, tables bien decollees des murs/comptoir. Priorite au CONFORT du tour de table.
+designs.tav_seat_B = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  // tapis sous les 2 tables (avant meubles) — recentres sous chaque table aeree
+  ops.furn('penz_furn', 10, 2, 3, 2, 3.0, 8.0); ops.furn('penz_furn', 10, 2, 3, 2, 10.0, 8.0)
+  ops.wallRing(0xc89860, g0, g1)
+  ops.wallShadow(11, 0.5)
+  ops.furn('penz_doors', 6, 3, 2, 2, 2, 0); ops.furn('penz_doors', 6, 3, 2, 2, COLS - 4, 0) // fenetres mur du fond
+  // === MUR DE BOUTEILLES (3 etageres sombres collees au mur) ===
+  ;[3, 7, 11].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 1.6)
+    ops.item(6, c + 0.5, 2.05); ops.item(57, c + 1.1, 2.05); ops.item(49, c + 1.7, 2.05)
+    ops.item(58, c + 0.6, 3.05); ops.item(56, c + 1.5, 3.05)
+  })
+  // (barman Brewen : pose dans le jeu vers la ligne 4.8, derriere le comptoir)
+  // === COMPTOIR PLEINE LARGEUR (ligne) — 2 rangs ; on ne peut PAS passer derriere ===
+  const bL = 1, bR = COLS - 1
+  for (const row of [5.0, 5.4]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  for (let c = 2; c < bR - 1; c += 2) ops.item([54, 42, 49, 61, 54, 42][((c / 2) | 0) % 6], c + 0.5, 5.05) // chopes/plats sur le bar
+  for (let i = 0; i < 6; i++) ops.furn('penz_furn', 12, 1, 1, 1, 2.5 + i * 2, 6.6) // tabourets (boire au bar)
+  // === LANTERNES ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.0); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 7.0)
+  // === 2 GRANDES TABLES OVALES AEREES (3 chaises : haut FACE, gauche PROFIL flip, droite PROFIL) ===
+  // table 2x2 @ (tx,ty). Chaises decollees ~0.5 tuile (place pour s'asseoir) ; couloir >=1 tuile autour (tour de table).
+  const ovalB = (tx, ty, items) => {
+    ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty - 1.7)               // HAUT : chaise FACE (regarde vers le bas = la table) ~0.3 tuck
+    ops.furn('penz_furn', 9, 0, 1, 2, tx - 1.05, ty + 0.15, null, true) // GAUCHE : profil MIROIR (regarde a droite = la table)
+    ops.furn('penz_furn', 5, 2, 2, 2, tx, ty)                           // table ovale 2x2
+    ;(items || []).forEach((it, i) => ops.item(it, tx + 1 + (i - (items.length - 1) / 2) * 0.6, ty + 0.55))
+    ops.furn('penz_furn', 9, 0, 1, 2, tx + 2.05, ty + 0.15)            // DROITE : profil (regarde a gauche = la table)
+  }
+  ovalB(3.5, 8.5, [54, 26])   // table gauche (centre col ~4.5) — decollee du mur/lampe
+  ovalB(10.5, 8.5, [49, 61])  // table droite (centre col ~11.5) — symetrique
+  // PORTE + tapis
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // LUMIERES
+  ops.glowT(cxm, 5.0, 235, 0xffba70, 0.10)
+  ops.glowT(1.5, 7.4, 44, 0xffcf8a, 0.32); ops.glowT(COLS - 1.5, 7.4, 44, 0xffcf8a, 0.32)
+  ops.glowT(cxm, 2.6, 72, 0xffce7a, 0.15)
+}
+
+designs.tav_seat_C = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  ops.furn('penz_furn', 10, 2, 3, 2, 3.0, 8.9); ops.furn('penz_furn', 10, 2, 3, 2, 11.0, 8.9) // tapis sous les tables (recentres)
+  ops.wallRing(0xc89860, g0, g1)
+  ops.wallShadow(11, 0.5)
+  ops.furn('penz_doors', 6, 3, 2, 2, 2, 0); ops.furn('penz_doors', 6, 3, 2, 2, COLS - 4, 0) // fenetres mur du fond
+  // === MUR DE BOUTEILLES (3 etageres sombres collees au mur) ===
+  ;[3, 7, 11].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 1.6)
+    ops.item(6, c + 0.5, 2.05); ops.item(57, c + 1.1, 2.05); ops.item(49, c + 1.7, 2.05)
+    ops.item(58, c + 0.6, 3.05); ops.item(56, c + 1.5, 3.05)
+  })
+  // === COMPTOIR PLEINE LARGEUR (ligne) — 2 rangs ; on ne peut PAS passer derriere ===
+  const bL = 1, bR = COLS - 1
+  for (const row of [5.0, 5.4]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)
+    for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row)
+    ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row)
+  }
+  for (let c = 2; c < bR - 1; c += 2) ops.item([54, 42, 49, 61, 54, 42][((c / 2) | 0) % 6], c + 0.5, 5.05) // chopes/plats sur le bar
+  for (let i = 0; i < 6; i++) ops.furn('penz_furn', 12, 1, 1, 1, 2.5 + i * 2, 6.6) // tabourets (boire au bar)
+  // === LANTERNES ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.0); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 7.0)
+  // === 2 GRANDES TABLES OVALES — banquette HAUT (FACE) + BAS (DOS) seulement ===
+  // helper LOCAL : table 2x2 a (tx,ty) ; chaise FACE au-dessus (regarde le bas = la table),
+  // chaise DOS en-dessous (regarde le haut = la table). ~1/2 tuile pour s'asseoir, tour complet libre.
+  const seatTopBot = (tx, ty, items) => {
+    ops.furn('penz_furn', 8, 0, 1, 2, tx + 0.5, ty - 0.95)               // HAUT : chaise FACE (assise vers le bas), tuckee sous le plateau
+    ops.furn('penz_furn', 5, 2, 2, 2, tx, ty)                            // table ovale 2x2
+    ;(items || []).forEach((it, i) => ops.item(it, tx + 1 + (i - (items.length - 1) / 2) * 0.6, ty + 0.55))
+    ops.furn('penz_furn', 7, 0, 1, 2, tx + 0.5, ty + 0.95)              // BAS : chaise DOS (assise vers le haut), tuckee + couloir sous la table
+  }
+  seatTopBot(3.5, 8.5, [54, 26])    // table gauche (centre col ~4.5)
+  seatTopBot(11.5, 8.5, [49, 61])   // table droite (centre col ~12.5)
+  // PORTE + tapis
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // LUMIERES
+  ops.glowT(cxm, 5.0, 235, 0xffba70, 0.10)
+  ops.glowT(1.5, 7.4, 44, 0xffcf8a, 0.32); ops.glowT(COLS - 1.5, 7.4, 44, 0xffcf8a, 0.32)
+  ops.glowT(cxm, 2.6, 72, 0xffce7a, 0.15)
+}
+
 const which = process.argv[2] || 'tavern_current'
 const out = process.argv[3] || '_room.png'
 const S = process.argv[4] != null ? +process.argv[4] : 4

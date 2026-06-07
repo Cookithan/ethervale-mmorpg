@@ -19,7 +19,7 @@ const config = {
   physics: {
     default: 'arcade',
     arcade: {
-      debug: false, // passera à true en Étape 5 pour visualiser les collisions
+      debug: false, // mettre à true pour visualiser les colliders (boîtes) — utile pour régler les hitbox
     },
   },
   scene: [BootScene, MenuScene, SelectScene, IntroScene, CharacterScene, GameScene, UIScene],
