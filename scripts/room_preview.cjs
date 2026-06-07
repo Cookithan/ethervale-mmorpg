@@ -1956,6 +1956,147 @@ designs.recep_v2 = () => {
   ops.glowT(11.5, 1.5, 60, 0xffd9a0, 0.24)              // halo porte du dortoir (haut-droite)
 }
 
+// RECEPTION encadree, ANGLE L (14x10) : comptoir en L (banc horizontal fond-gauche cols 1-9 + RETOUR vertical col 9
+// qui ferme l'alcove de Mira) ; passage cols 10-12 -> PORTE haut-droite (cols 11-12). Le joueur parle a Mira PAR-DESSUS le banc.
+designs.recep_enc_L = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  ops.furn('penz_furn', 10, 2, 3, 2, 3, 7.4)             // tapis d'accueil (devant le banc, cote joueur)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // ETAGERES garnies au fond (derriere Mira), cols 1-6 ; laisse le HAUT-DROITE libre pour la porte du dortoir
+  ;[1, 4].forEach((c) => { ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4); ops.item(57, c + 0.5, 0.85); ops.item(49, c + 1.3, 0.85); ops.item(24, c + 0.6, 1.85); ops.item(58, c + 1.6, 1.85) })
+  // === COMPTOIR EN L ===
+  // BANC HORIZONTAL (fond-gauche) cols 1-9, 2 rangs (epais = infranchissable). Descendu (row 5) pour laisser une alcove profonde a Mira.
+  const bL = 1, bR = 9
+  for (const row of [5.0, 5.4]) {
+    ops.furn('penz_furn', 8, 14, 1, 1, bL, row)            // embout gauche
+    for (let c = bL + 1; c < bR; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row) // corps
+    ops.furn('penz_furn', 11, 14, 1, 1, bR, row)           // embout droit (coin du L)
+  }
+  // RETOUR VERTICAL (jambe du L) : banc tourne 90°, col 9, du mur du fond (row 2) jusqu'au banc -> ferme l'alcove a droite
+  for (let r = 2; r <= 5; r++) ops.tileRot('penz_furn', 9, 14, 9, r, 1)
+  // clutter sur le plateau du banc horizontal
+  ops.item(24, 2, 5.0); ops.item(26, 3.5, 4.95); ops.item(54, 6, 5.0); ops.item(63, 8, 5.0) // registre/bougie/chope
+  // === MIRA (enfermee dans l'alcove cols 1-8, rows 3-4 : mur gauche + etageres au fond + banc devant + retour a droite) ===
+  ops.furn('penz_furn', 8, 3, 2, 1, 3.5, 4.2)  // petit tapis sous Mira (sa station d'accueil)
+  ops.item(0, 4.5, 4.0, 1.3)                    // MARQUEUR place de Mira (pas de sprite PNJ au compositeur)
+  // === PORTE du DORTOIR : EN HAUT A DROITE (mur du fond), cols 11-12 ; atteinte par le passage de droite ===
+  ops.doorf(1, 11.5, 0.6)
+  // === DECO du passage / accueil ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 12, 6.4)             // lampadaire (cote droit du passage)
+  ops.item(15, 1.5, ROWS - 1.5, 1.4)                    // plante (coin bas-gauche)
+  ops.item(15, 12.5, 3.4, 1.3)                          // plante (passage)
+  // === PORTE village (bas) ===
+  ops.doorf(1, doorCx + 0.5, ROWS - 0.6)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4) // tapis de seuil
+  // === LUMIERES ===
+  ops.glowT(cxm, 6, 200, 0xffba70, 0.12)
+  ops.glowT(2, 2, 90, 0xffce7a, 0.16)                   // halo etageres/Mira
+  ops.glowT(11.5, 1.5, 60, 0xffd9a0, 0.24)             // halo porte dortoir (haut-droite)
+}
+
+// RECEPTION recep_enc_U (14x10) : COMPTOIR EN U (banc horizontal + 2 retours verticaux gauche+droite)
+//   -> Mira ENFERMEE dans un box guichet. Passage OUVERT a droite du U -> PORTE en HAUT-DROITE (dortoir).
+designs.recep_enc_U = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2 // 14 -> g0=6,g1=7,doorCx=7
+  ops.floor(FLOOR, FT)
+  // tapis d'accueil DEVANT le guichet (avant les meubles)
+  ops.furn('penz_furn', 10, 2, 3, 2, 2.0, 7.0)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+
+  // === ETAGERES (fond, derriere Mira) : 2 bibliotheques sombres 3x3 collees au mur, cols 1-6 ===
+  ;[1, 4].forEach((c) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 0.4)
+    ops.item(57, c + 0.5, 0.85); ops.item(49, c + 1.3, 0.85); ops.item(24, c + 0.6, 1.85); ops.item(58, c + 1.6, 1.85)
+  })
+
+  // === COMPTOIR EN U (le box de Mira) ===
+  //  - RETOUR vertical GAUCHE : col 1, rows 3-4 (banc tourne 90°)
+  //  - RETOUR vertical DROIT  : col 7, rows 3-4 (banc tourne 90°)
+  //  - BANC HORIZONTAL (front) : cols 1-7, row 5 (embout G / corps / embout D)
+  const uL = 1, uR = 7, uTop = 3, uFront = 5
+  // jambes verticales (du haut uTop jusqu'au banc horizontal exclu)
+  for (let r = uTop; r < uFront; r++) {
+    ops.tileRot('penz_furn', 9, 14, uL, r, 1)   // retour gauche (banc 90°)
+    ops.tileRot('penz_furn', 9, 14, uR, r, 1)   // retour droit  (banc 90°)
+  }
+  // banc horizontal (front du guichet) : embout G, corps, embout D
+  ops.furn('penz_furn', 8, 14, 1, 1, uL, uFront)
+  for (let c = uL + 1; c < uR; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, uFront)
+  ops.furn('penz_furn', 11, 14, 1, 1, uR, uFront)
+  // clutter d'accueil sur le banc front (registre de quetes / clochette / chope)
+  ops.item(24, uL + 1.5, uFront + 0.05); ops.item(26, cxm - 3.5, uFront - 0.05); ops.item(54, uR - 1, uFront + 0.05)
+
+  // === MIRA (enfermee dans le box) : pas de sprite au compositeur -> marqueur ===
+  const miraX = 4, miraY = 4
+  ops.item(0, miraX, miraY, 1.2) // <- MARQUEUR de Mira (place en TUILES [4,4]); en jeu = PNJ Mira
+
+  // === PORTE du DORTOIR : EN HAUT A DROITE (mur du fond, cols 11-12), atteignable par le PASSAGE DROIT ===
+  ops.doorf(1, 11.5, 1.4) // porte Sprout FERMEE (frame 1), origine CENTRE
+
+  // === DECO LEGERE : lampadaire mur gauche + plante coin + tapis (deja pose) ===
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 6.4)    // lampadaire (mur gauche, sous le retour gauche)
+  ops.furn('penz_furn', 10, 2, 3, 2, 9.2, 4.1) // petit tapis dans le passage droit (vers la porte)
+  ops.item(15, 8.6, 6.6, 1.4)                  // plante (balise l'entree du passage droit, bas)
+
+  // === PORTE (village) en bas + tapis de seuil ===
+  ops.doorf(1, doorCx + 0.5, ROWS - 0.6)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+
+  // === LUEURS AMBREES ===
+  ops.glowT(cxm, 5, 200, 0xffba70, 0.12)
+  ops.glowT(miraX, 2.4, 80, 0xffce7a, 0.16)    // halo sur l'accueil (Mira/etageres)
+  ops.glowT(1.6, 6.6, 42, 0xffcf8a, 0.30)      // lampadaire gauche
+  ops.glowT(11.5, 1.6, 54, 0xffd9a0, 0.22)     // halo porte du dortoir (haut-droite)
+}
+
+// RECEPTION enc_D (14x10) : ALCOVE COMPACTE de Mira a GAUCHE (etageres au fond + banc en L qui l'enferme),
+// grand passage degage a DROITE menant a la porte HAUT-DROITE. Ambiance hall d'auberge.
+designs.recep_enc_D = () => {
+  const FLOOR = (process.argv[5] != null ? +process.argv[5] : 92)
+  const FT = 0xb5895a, WT = 0x5a3520
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(FLOOR, FT)
+  // tapis d'accueil dans le passage (avant les meubles)
+  ops.furn('penz_furn', 10, 2, 3, 2, 7.5, 6.2)
+  ops.woodWallRing(92, WT, g0, g1, 1)
+  ops.wallShadow(11, 0.5)
+  // === ALCOVE DE MIRA (gauche) ===
+  // 1) ETAGERES au fond (derriere Mira), collees au mur du haut, cols 1-3 (rangs 0-2)
+  ops.furn('penz_furn', 6, 4, 3, 3, 1, 0.4)
+  ops.item(57, 1.5, 0.85); ops.item(49, 2.3, 0.85); ops.item(24, 1.6, 1.85); ops.item(58, 2.4, 1.85)
+  // 2) BANC-COMPTOIR en U/L qui ENFERME Mira : front horizontal (cols 1-3) + retour vertical (col 3, rang 3)
+  //    front horizontal (rang 4) : embout gauche(8) + corps(9) + embout droit(11)
+  ops.furn('penz_furn', 8, 14, 1, 1, 1, 4)
+  ops.furn('penz_furn', 9, 14, 1, 1, 2, 4)
+  ops.furn('penz_furn', 11, 14, 1, 1, 3, 4)
+  //    retour vertical (col 3, rang 3) : banc tourne 90° -> ferme le cote DROIT de l'alcove
+  ops.tileRot('penz_furn', 9, 14, 3, 3, 1)
+  // clutter sur le comptoir (registre + chope)
+  ops.item(2, 1.6, 4.0); ops.item(54, 2.5, 4.0) // feuille de papier (registre) + chope
+  // 3) MIRA (enfermee) — marqueur (pas de sprite au compositeur) ; elle se tient col 2, rang 3
+  ops.item(0, 2.0, 3.0, 1.3) // <<< MIRA ICI (plume marqueur, dans la poche close)
+  // === PASSAGE DROITE (degage) vers la porte haut-droite ===
+  // lampadaire pour baliser le passage (cote droit, contre le mur)
+  ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 6.0)
+  ops.item(15, 9.5, 2.4, 1.4) // plante d'accueil (cote gauche de la porte du dortoir, ne bloque pas l'approche)
+  // PORTE du DORTOIR : mw_door EN HAUT A DROITE (mur du fond, cols 11-12)
+  ops.whole('mw_door', 11.5, 0.5)
+  // PORTE village (bas)
+  ops.whole('mw_door', doorCx + 0.5, ROWS - 0.5)
+  ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+  // LUMIERES
+  ops.glowT(2.5, 2.2, 80, 0xffce7a, 0.18)   // alcove Mira chaude
+  ops.glowT(9, 6, 150, 0xffba70, 0.12)      // passage
+  ops.glowT(11.5, 1.5, 60, 0xffd9a0, 0.24)  // halo porte dortoir (haut-droite)
+}
+
 const which = process.argv[2] || 'tavern_current'
 const out = process.argv[3] || '_room.png'
 const S = process.argv[4] != null ? +process.argv[4] : 4

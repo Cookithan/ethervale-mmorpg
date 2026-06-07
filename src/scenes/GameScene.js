@@ -3638,27 +3638,40 @@ export default class GameScene extends Phaser.Scene {
 
   interiorConfig(id) {
     if (id === 'tavern') return { title: 'Taverne du Dernier Repos', npcTex: 'npc_noble', npcName: 'Brewen', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a3a2c, wallTop: 0x5e241a, accent: 0xffb24a, lines: ['« Assieds-toi, l’ami ! Bientôt, des chopes et ragoûts qui requinquent. »'] }
-    if (id === 'inn') return { title: 'Auberge du Voyageur', npcTex: 'npc_woman', npcName: 'Mira', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a6a3c, wallTop: 0x5e3a1a, accent: 0xffc46a, lines: ['« Bienvenue à l’auberge, voyageur ! Repose-toi près du feu, une chambre chaude t’attend à l’étage. »'] }
+    if (id === 'inn') return { title: 'Auberge du Voyageur', npcTex: 'npc_woman', npcName: 'Mira', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a6a3c, wallTop: 0x5e3a1a, accent: 0xffc46a, lines: ['« Bienvenue, voyageur ! Une tâche pour toi ? Et le dortoir est par la porte de droite pour te reposer. »'] }
+    if (id === 'dorm') return { title: 'Dortoir', npcTex: null, npcName: null, floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a6a3c, wallTop: 0x5e3a1a, accent: 0xffc46a, lines: [] }
     return { title: 'Échoppe d’Ylva', npcTex: 'npc_shaman', npcName: 'Ylva', floor: 0x5c5238, plank: 0x453d2b, wall: 0x2f6a3a, wallTop: 0x214c29, accent: 0x8ef0a0, lines: ['« Mes potions soignent, restaurent la mana et bravent le froid. (Bientôt en vente ici.) »'] }
   }
 
-  /** Entre dans l'intérieur d'un bâtiment (fondu + téléport hors-map). Déclenché AUTOMATIQUEMENT au contact de la porte. */
+  /** Entre dans l'intérieur d'un bâtiment depuis le VILLAGE (fondu + téléport hors-map). Déclenché AU contact de la porte. */
   enterInterior(id) {
     if (this.inInterior || this.uiBusy() || this.gameOver) return
     this._villageReturn = { x: this.player.x, y: this.player.y }
+    this._savedZoom = this.cameras.main.zoom // pour restaurer le zoom du village à la sortie
+    this.goInterior(id, {})
+  }
+
+  /** Fondu vers un intérieur — depuis le village OU depuis un autre intérieur (porte intérieure auberge->dortoir).
+   *  opts.spawn = clé du point d'arrivée dans _interior (sinon entry) ; opts.exitTo = id de l'intérieur où la SORTIE ramène (sinon village). */
+  goInterior(id, opts = {}) {
+    if (this._exiting || this._transitioning) return // garde : empêche la re-bascule à chaque frame (sinon boucle de fondu = "porte qui bug")
+    this._transitioning = true
     this.inInterior = id
     const cam = this.cameras.main
     Audio.sfx('ui_accept', { detune: -100 })
     cam.fadeOut(200, 6, 5, 10)
     cam.once('camerafadeoutcomplete', () => {
+      if (this._interior) this.destroyInterior()
       this.buildInterior(id)
+      this._interior.exitTo = opts.exitTo || null
+      this._doorBusy = false; this._transitioning = false // verrous relâchés après bascule
       const p = this.player
       p.setCollideWorldBounds(false) // hors-map -> ne plus clamper à la map (les murs de la salle confinent)
-      p.setPosition(this._interior.entry.x, this._interior.entry.y).setVelocity(0, 0)
+      const spot = (opts.spawn && this._interior[opts.spawn]) || this._interior.entry
+      p.setPosition(spot.x, spot.y).setVelocity(0, 0)
       p.moveTarget = null
       p.setDepth(7015)
-      cam.useBounds = false
-      cam.centerOn(p.x, p.y)
+      this.fitInteriorCamera() // caméra FIXE + zoomée sur la pièce (ne suit plus le joueur, moins de noir)
       this.fogGroup?.setVisible(false) // masque le monde extérieur
       this.nightOverlay?.setVisible(false)
       this.raylight?.setVisible(false)
@@ -3666,6 +3679,20 @@ export default class GameScene extends Phaser.Scene {
       this.rainEmitter?.stop()
       cam.fadeIn(220, 6, 5, 10)
     })
+  }
+
+  /** Caméra d'intérieur : FIXE (ne suit plus le joueur) + zoomée pour montrer toute la pièce (réduit le noir hors-map). */
+  fitInteriorCamera() {
+    if (!this._interior) return
+    const b = this._interior.bounds
+    const cam = this.cameras.main
+    cam.stopFollow()
+    cam.useBounds = false
+    // zoom NORMAL du village pour les petites pièces ; mais si la pièce dépasse l'écran (dortoir), dézoome juste assez pour la faire tenir EN ENTIER (perso toujours visible, pas de défilement)
+    const baseZoom = this._savedZoom || 3
+    const fit = Math.min(this.scale.width / b.w, this.scale.height / b.h)
+    cam.setZoom(Math.min(baseZoom, fit))
+    cam.centerOn(b.x + b.w / 2, b.y + b.h / 2) // centrée sur la pièce -> FIXE
   }
 
   /** Génère (une fois) un disque radial doux -> lumière chaude d'ambiance des intérieurs (blend ADD). */
@@ -3685,15 +3712,15 @@ export default class GameScene extends Phaser.Scene {
     const cfg = this.interiorConfig(id)
     const ox = -3200
     const oy = -3200
-    const cols = (id === 'tavern' || id === 'inn') ? 17 : 15 // taverne + auberge agrandies
-    const rows = (id === 'tavern' || id === 'inn') ? 13 : 12
+    const cols = id === 'tavern' ? 17 : id === 'inn' ? 14 : id === 'dorm' ? 17 : 15 // auberge = petite réception ; dortoir = grand (20 lits)
+    const rows = id === 'tavern' ? 13 : id === 'inn' ? 10 : id === 'dorm' ? 18 : 12
     const W = cols * TILE
     const H = rows * TILE
     const D = 7000
     const objs = []
     const colliders = []
     const g0 = Math.floor(cols / 2) - 1
-    const g1 = Math.floor(cols / 2)
+    const g1 = Math.floor(cols / 2) // trou de porte = 2 tuiles -> passage LARGE et confortable (le joueur ne reste plus coincé)
     const doorCx = ox + (g0 + 1) * TILE // centre du trou de porte (2 tuiles : g0 et g1)
     this.ensureInteriorGlow()
     // FOND SOMBRE plein écran (couvre le « gris » hors-map) — scrollFactor 0
@@ -3703,8 +3730,9 @@ export default class GameScene extends Phaser.Scene {
     objs.push(this.add.tileSprite(ox + W / 2, oy + H / 2, W, H, 'penz_floors', floorFrame).setTint(floorTint).setDepth(D))
     // MURS pierre (tuile PLEINE 33/34 alternée — l'analyse pixel a montré que les rangées 4-5 sont 100% pleines) :
     // mur du fond sur 2 rangées + côtés + bas avec un trou de porte au centre
-    const wallTint = id === 'apothecary' ? 0x9a8aa8 : 0xc89860 // apothicaire = pierre FROIDE violacée ; taverne + auberge = pierre CHAUDE
-    const wt = (cx, cy) => objs.push(this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, 'mw_walls', (cx + cy) % 2 ? 33 : 34).setTint(wallTint).setDepth(D + 6))
+    const wallTint = id === 'apothecary' ? 0x9a8aa8 : 0xc89860 // apothicaire = pierre FROIDE violacée ; taverne = pierre CHAUDE
+    const woodWall = id === 'inn' || id === 'dorm' // AUBERGE + DORTOIR = mur en PLANCHES BOIS VERTICALES (penz_floors tourné 90°) + teinte foncée -> distinct du sol
+    const wt = (cx, cy) => { const im = this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, woodWall ? 'penz_floors' : 'mw_walls', woodWall ? 92 : ((cx + cy) % 2 ? 33 : 34)).setTint(woodWall ? 0x5a3520 : wallTint).setDepth(D + 6); if (woodWall) im.setAngle(90); objs.push(im) }
     for (let c = 0; c < cols; c++) { wt(c, 0); wt(c, 1) }
     for (let r = 2; r < rows; r++) { wt(0, r); wt(cols - 1, r) }
     for (let c = 1; c < cols - 1; c++) { if (c !== g0 && c !== g1) wt(c, rows - 1) }
@@ -3717,8 +3745,8 @@ export default class GameScene extends Phaser.Scene {
     objs.push(sg)
     // LUMIÈRE chaude TAMISÉE d'ambiance (additif), cosy — pour les 2 pièces
     objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W * 1.2, H * 1.25).setTint(id === 'apothecary' ? 0x9a70d0 : 0xffba70).setAlpha(id === 'apothecary' ? 0.28 : 0.2).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 2)) // ambiance : chaude (taverne/auberge) / violette renforcée (apothicaire)
-    // PORTE Mystic (2 tuiles) au bas
-    objs.push(this.add.image(doorCx, oy + (rows - 1) * TILE + 8, 'mw_door').setDepth(D + 5))
+    // PORTE de sortie (Sprout ANIMÉE, fermée par défaut) au bas — hauteur d'origine, ÉLARGIE (2 tuiles)
+    const exitDoorSpr = this.add.sprite(doorCx, oy + (rows - 1) * TILE + 8, 'spr_door', 1).setScale(2, 1).setDepth(D + 5); objs.push(exitDoorSpr)
     // === MOBILIER Penzilla (vraies tuiles 16x16) — pp() pose une pièce multi-tuiles (origine haut-gauche) ===
     const pp = (sc, sr, w, h, dx, dy, depth, flip) => { for (let tr = 0; tr < h; tr++) for (let tc = 0; tc < w; tc++) objs.push(this.add.image(dx + tc * TILE, dy + tr * TILE, 'penz_furn', (sr + tr) * 13 + (sc + tc)).setOrigin(0, 0).setFlipX(!!flip).setDepth(depth + tr)) }
     const furnSolids = [] // colliders de meubles (px) créés plus bas, une fois le helper wall() défini
@@ -3778,70 +3806,49 @@ export default class GameScene extends Phaser.Scene {
       // COLLISION : comptoir pleine largeur = on ne passe pas derrière le bar (bord du HAUT descendu de 5 px, bas inchangé)
       solid(ox + bL * TILE, oy + 5.0 * TILE, (bR - bL) * TILE, 1.4 * TILE - 8)
     } else if (id === 'inn') {
-      // === AUBERGE : accueil au fond-gauche (Mira s'affaire) + escalier vers les chambres + coin du feu + table commune (bois chaleureux) ===
+      // === AUBERGE-RÉCEPTION FERMÉE : comptoir en L qui ENFERME Mira (inaccessible, on lui parle par-dessus) + PORTE Sprout animée EN HAUT À DROITE ===
+      const cxm = cols / 2
       const glow = (gx, gy, rpx, color, alpha) => objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, 'int_glow').setDisplaySize(rpx * 2, rpx * 2).setTint(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
-      // TAPIS (sous les meubles)
-      pp(10, 2, 3, 3, ox + 5.5 * TILE, oy + 6.0 * TILE, D + 2)        // grand tapis sous la table commune
-      pp(10, 2, 3, 2, ox + 12.2 * TILE, oy + 9.1 * TILE, D + 2)       // tapis du coin du feu
-      // FENÊTRES (mur du fond)
-      pd(6, 3, 2, 2, ox + 6.5 * TILE, oy, D + 7); pd(6, 3, 2, 2, ox + 11.3 * TILE, oy, D + 7)
-      // ACCUEIL (fond-gauche) : 2 étagères + clutter ; Mira s'affaire devant
-      pp(6, 4, 3, 3, ox + 1 * TILE, oy + 1.6 * TILE, D + 8)           // bibliothèque sombre (cols 1-4)
-      pp(2, 4, 3, 3, ox + 4 * TILE, oy + 1.6 * TILE, D + 8)           // bibliothèque claire (cols 4-7)
-      solid(ox + 1 * TILE, oy + 1.6 * TILE, 3 * TILE, 3 * TILE); solid(ox + 4 * TILE, oy + 1.6 * TILE, 3 * TILE, 3 * TILE) // hitbox des étagères (armoires de Mira)
-      si(25, ox + 1.6 * TILE, oy + 2.05 * TILE, D + 10); si(56, ox + 2.3 * TILE, oy + 2.05 * TILE, D + 10); si(57, ox + 3.0 * TILE, oy + 2.05 * TILE, D + 10)
-      si(24, ox + 1.6 * TILE, oy + 3.05 * TILE, D + 10); si(58, ox + 2.5 * TILE, oy + 3.05 * TILE, D + 10)
-      si(54, ox + 4.6 * TILE, oy + 2.05 * TILE, D + 10); si(49, ox + 5.3 * TILE, oy + 2.05 * TILE, D + 10); si(56, ox + 6.0 * TILE, oy + 2.05 * TILE, D + 10)
-      si(61, ox + 4.7 * TILE, oy + 3.05 * TILE, D + 10); si(57, ox + 5.6 * TILE, oy + 3.05 * TILE, D + 10)
-      // COMPTOIR d'accueil (cols 1-7, rang 5.6) — INFRANCHISSABLE
-      const aL = 1, aR = 7
-      pp(8, 14, 1, 1, ox + aL * TILE, oy + 5.6 * TILE, D + 13)
-      for (let c = aL + 1; c < aR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + 5.6 * TILE, D + 13)
-      pp(11, 14, 1, 1, ox + (aR - 1) * TILE, oy + 5.6 * TILE, D + 13)
-      si(24, ox + 1.6 * TILE, oy + 5.6 * TILE, D + 16); si(26, ox + 2.3 * TILE, oy + 5.5 * TILE, D + 16); si(49, ox + 4.3 * TILE, oy + 5.6 * TILE, D + 16); si(63, ox + 5.2 * TILE, oy + 5.55 * TILE, D + 16); si(54, ox + 6.0 * TILE, oy + 5.6 * TILE, D + 16)
-      solid(ox + 1 * TILE, oy + 5.6 * TILE, 6 * TILE, 1.0 * TILE)     // comptoir infranchissable
-      // MIRA derrière le comptoir (animée : cf. bw plus bas)
-      npc = this.add.sprite(ox + 3.5 * TILE, oy + 4.9 * TILE, cfg.npcTex, 0).setDepth(D + 11)
-      // ESCALIER (fond-droite) vers les chambres de l'étage
-      pd(0, 5, 2, 5, ox + 13.5 * TILE, oy + 1.5 * TILE, D + 8)
-      solid(ox + 13.5 * TILE, oy + 2.0 * TILE, 2 * TILE, 4.2 * TILE)  // escalier infranchissable
-      si(15, ox + 12.4 * TILE, oy + 5.6 * TILE, D + 12, 1.5)          // plante au pied de l'escalier
-      // CHEMINÉE (mur droit, bas) + coin du feu
-      pp(9, 7, 1, 3, ox + 15.0 * TILE, oy + 8.2 * TILE, D + 10)       // poêle-cheminée collé au mur droit
-      solid(ox + 15.0 * TILE, oy + 8.4 * TILE, 1 * TILE, 2.6 * TILE)  // cheminée
-      si(58, ox + 14.4 * TILE, oy + 11.2 * TILE, D + 12, 0.85)        // bocal au pied du foyer
-      pp(10, 0, 1, 2, ox + 12.6 * TILE, oy + 8.3 * TILE, D + 10)      // banc bois (face au feu)
-      pp(8, 9, 2, 2, ox + 12.9 * TILE, oy + 9.5 * TILE, D + 12)       // fauteuil
-      solid(ox + 13.1 * TILE, oy + 10.0 * TILE, 1.4 * TILE, 1.2 * TILE) // hitbox du fauteuil (réduite)
-      si(54, ox + 11.9 * TILE, oy + 9.9 * TILE, D + 14)               // chope près du fauteuil
-      // TABLE COMMUNE (centre) + 6 chaises
-      const itx = 5.5, ity = 6.8
-      pp(8, 0, 1, 2, ox + (itx + 0.5) * TILE, oy + (ity - 1.05) * TILE, D + 9)        // chaise face (haut)
-      pp(8, 0, 1, 2, ox + (itx + 1.7) * TILE, oy + (ity - 1.05) * TILE, D + 9)        // chaise face (haut)
-      pp(9, 0, 1, 2, ox + (itx - 0.85) * TILE, oy + (ity + 0.1) * TILE, D + 12, true) // chaise profil gauche
-      pp(0, 2, 3, 2, ox + itx * TILE, oy + ity * TILE, D + 10)                        // table longue claire
-      si(61, ox + (itx + 0.7) * TILE, oy + (ity + 0.25) * TILE, D + 14); si(54, ox + (itx + 1.5) * TILE, oy + (ity + 0.25) * TILE, D + 14); si(42, ox + (itx + 2.2) * TILE, oy + (ity + 0.25) * TILE, D + 14)
-      pp(9, 0, 1, 2, ox + (itx + 3.05) * TILE, oy + (ity + 0.1) * TILE, D + 12)       // chaise profil droite
-      pp(8, 0, 1, 2, ox + (itx + 0.5) * TILE, oy + (ity + 1.95) * TILE, D + 12)       // chaise face (bas)
-      pp(8, 0, 1, 2, ox + (itx + 1.7) * TILE, oy + (ity + 1.95) * TILE, D + 12)       // chaise face (bas)
-      solid(ox + (itx + 0.3) * TILE, oy + (ity + 0.5) * TILE, 2.4 * TILE, 1.0 * TILE) // table commune (hitbox réduite)
-      const chairHit = (cx, cy) => solid(ox + (cx + 0.25) * TILE, oy + (cy + 0.95) * TILE, 0.5 * TILE, 0.5 * TILE)
-      chairHit(itx + 0.5, ity - 1.05); chairHit(itx + 1.7, ity - 1.05); chairHit(itx - 0.85, ity + 0.1)
-      chairHit(itx + 3.05, ity + 0.1); chairHit(itx + 0.5, ity + 1.95); chairHit(itx + 1.7, ity + 1.95)
-      // DÉCO cosy
-      pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.6 * TILE, D + 10)          // lampadaire mur gauche
-      solid(ox + 1.3 * TILE, oy + 9.0 * TILE, 0.5 * TILE, 1.2 * TILE) // pied du lampadaire
-      si(15, ox + 1.5 * TILE, oy + 10.7 * TILE, D + 12, 1.5)          // plante coin bas-gauche
-      pp(4, 7, 2, 3, ox + 8.5 * TILE, oy + 1.6 * TILE, D + 8)         // horloge grand-père (mur du fond)
-      solid(ox + 8.5 * TILE, oy + 1.6 * TILE, 2 * TILE, 3 * TILE)     // horloge
-      si(15, ox + 9.6 * TILE, oy + 9.0 * TILE, D + 12, 1.3)           // plante d'appoint
-      // LUMIÈRES (ADD) — bois chaud + foyer
-      glow(15.3, 9.2, 72, 0xff9440, 0.42)   // FEU de la cheminée
-      glow(15.0, 8.4, 40, 0xffd070, 0.26)   // halo du foyer
-      glow(3.5, 5.4, 60, 0xffce7a, 0.22)    // comptoir d'accueil
-      glow(1.5, 8.0, 42, 0xffcf8a, 0.30)    // lampadaire gauche
-      glow(3.5, 2.4, 70, 0xffce7a, 0.14)    // étagères d'accueil
-      glow(14.5, 2.6, 46, 0xffd9a0, 0.16)   // escalier
+      pp(10, 2, 3, 2, ox + 3.0 * TILE, oy + 7.4 * TILE, D + 2)         // tapis d'accueil (devant le banc, côté joueur)
+      // ÉTAGÈRES garnies au fond (derrière Mira), cols 1-7 ; haut-droite libre pour la porte du dortoir
+      ;[1, 4].forEach((c) => { pp(6, 4, 3, 3, ox + c * TILE, oy + 0.4 * TILE, D + 8); solid(ox + c * TILE, oy + 0.4 * TILE, 3 * TILE, 3 * TILE); si(57, ox + (c + 0.5) * TILE, oy + 0.85 * TILE, D + 10); si(49, ox + (c + 1.3) * TILE, oy + 0.85 * TILE, D + 10); si(24, ox + (c + 0.6) * TILE, oy + 1.85 * TILE, D + 10); si(58, ox + (c + 1.6) * TILE, oy + 1.85 * TILE, D + 10) })
+      // COMPTOIR EN L : banc horizontal (cols 1-9, 2 rangs) + RETOUR vertical (col 9) -> alcôve de Mira scellée
+      const bL = 1, bR = 9
+      for (const row of [5.0, 5.4]) {
+        pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13)
+        for (let c = bL + 1; c < bR; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13)
+        pp(11, 14, 1, 1, ox + bR * TILE, oy + row * TILE, D + 13) // embout droit = coin du L
+      }
+      for (let r = 2; r <= 5; r++) objs.push(this.add.image(ox + 9 * TILE + 8, oy + r * TILE + 8, 'penz_furn', 14 * 13 + 9).setAngle(90).setDepth(D + 13)) // retour vertical (banc tourné 90°)
+      si(24, ox + 2 * TILE, oy + 5.0 * TILE, D + 16); si(26, ox + 3.5 * TILE, oy + 4.95 * TILE, D + 16); si(54, ox + 6 * TILE, oy + 5.0 * TILE, D + 16); si(63, ox + 8 * TILE, oy + 5.0 * TILE, D + 16)
+      solid(ox + bL * TILE, oy + 5.0 * TILE, 9 * TILE, 1.0 * TILE)     // banc horizontal infranchissable (cols 1-9)
+      solid(ox + 9 * TILE, oy + 2 * TILE, 1 * TILE, 3 * TILE)          // retour vertical (col 9, rows 2-5) -> ferme l'alcôve à droite
+      pp(8, 3, 2, 1, ox + 3.5 * TILE, oy + 4.2 * TILE, D + 2)          // petit tapis sous Mira
+      npc = this.add.sprite(ox + 4.5 * TILE, oy + 4.0 * TILE, cfg.npcTex, 0).setDepth(D + 11) // Mira ENFERMÉE dans l'alcôve
+      // PORTE du DORTOIR : Sprout ANIMÉE (fermée par défaut) EN HAUT À DROITE
+      this._dormDoorSpr = this.add.sprite(ox + 11.5 * TILE, oy + 0.6 * TILE + 15, 'spr_door', 1).setScale(2, 1).setDepth(D + 7); objs.push(this._dormDoorSpr) // élargie (2 tuiles), abaissée de 15px
+      objs.push(this.add.text(ox + 11.5 * TILE, oy + 2.7 * TILE, 'Dortoir', { fontFamily: FONT, fontSize: '8px', color: '#ffe1a8', stroke: '#3a2410', strokeThickness: 3 }).setOrigin(0.5).setDepth(D + 60).setResolution(3)) // panneau « Dortoir »
+      glow(11.5, 2.4, 60, 0xffd9a0, 0.24)                            // halo porte du dortoir
+      // DÉCO du passage / accueil
+      pp(6, 7, 1, 3, ox + 12 * TILE, oy + 6.4 * TILE, D + 10); solid(ox + 12.3 * TILE, oy + 7.8 * TILE, 0.5 * TILE, 1.2 * TILE) // lampadaire (passage droit)
+      si(15, ox + 1.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.4)   // plante (coin bas-gauche)
+      si(15, ox + 12.5 * TILE, oy + 3.4 * TILE, D + 12, 1.3)           // plante (passage)
+      glow(cxm, 6, 200, 0xffba70, 0.12); glow(2, 2, 90, 0xffce7a, 0.16)
+    } else if (id === 'dorm') {
+      // === GRAND DORTOIR : 20 lits (5x4) pour se reposer, allées praticables, porte de sortie -> réception ===
+      const cxm = cols / 2
+      const bed = (key, gx, gy) => { objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, key).setOrigin(0, 0).setDepth(D + 9)); solid(ox + (gx + 0.2) * TILE, oy + (gy + 0.6) * TILE, 1.6 * TILE, 2.2 * TILE) }
+      const colsX = [1.5, 4.5, 7.5, 10.5, 13.5], rowsY = [2.0, 6.0, 10.0, 14.0]
+      const COL = ['nin_bed_tan', 'nin_bed_red', 'nin_bed_blue', 'nin_bed_green']
+      rowsY.forEach((gy, r) => colsX.forEach((gx, c) => {
+        if (r === 3 && c === 2) return // pas de lit pile au-dessus de la porte de sortie (passage dégagé)
+        bed(COL[(r * 5 + c) % 4], gx, gy)
+        if (gy + 3 < rows - 1) pp(8, 3, 2, 1, ox + gx * TILE, oy + (gy + 3) * TILE, D + 2) // descente de lit
+      }))
+      // lanternes aux 4 coins
+      pp(6, 7, 1, 3, ox + 1 * TILE, oy + 2.2 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 2.2 * TILE, D + 10)
+      pp(6, 7, 1, 3, ox + 1 * TILE, oy + (rows - 4) * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + (rows - 4) * TILE, D + 10)
+      objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W, H).setTint(0xffba70).setAlpha(0.1).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
     } else {
       // === APOTHICAIRE : modèle TAVERNE — Ylva CENTRÉE derrière un GRAND comptoir + mur de fioles JOINTIF + chaudron en COIN ===
       const cxm = cols / 2
@@ -3895,8 +3902,7 @@ export default class GameScene extends Phaser.Scene {
       aglow(2.5, 6.1, 1.4, 0xcfa8ff, 0.30); aglow(cols - 2.5, 6.1, 1.4, 0xcfa8ff, 0.30) // lueurs aux bouts du comptoir
       aglow(cxm, 2.6, 2.6, 0xb070ff, 0.22) // halo sur le mur de fioles
     }
-    if (this.anims.exists(`${cfg.npcTex}-idle-down`)) npc.anims.play(`${cfg.npcTex}-idle-down`, true)
-    objs.push(npc)
+    if (npc) { if (this.anims.exists(`${cfg.npcTex}-idle-down`)) npc.anims.play(`${cfg.npcTex}-idle-down`, true); objs.push(npc) } // dortoir = pas de PNJ
     // tapis devant la porte de sortie (vraie tuile Penzilla, plus de rectangle dessiné)
     pp(8, 3, 2, 1, doorCx - TILE, oy + (rows - 1.6) * TILE, D + 1)
     // titre
@@ -3916,12 +3922,18 @@ export default class GameScene extends Phaser.Scene {
     wall(ox + (g1 + 1) * TILE, oy + H - TILE, W - (g1 + 1) * TILE, TILE)
     for (const s of furnSolids) wall(s[0], s[1], s[2], s[3]) // collisions des meubles (comptoir, tables, étagères, cheminée…)
     // indice « Parler (E) » au-dessus du PNJ (la SORTIE est automatique en marchant sur la porte -> pas d'indice « Sortir »)
-    const hint = this.add.text(npc.x, npc.y - 15, 'Parler (E)', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false).setResolution(3)
-    objs.push(hint)
+    const hint = npc ? this.add.text(npc.x, npc.y - 15, 'Parler (E)', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false).setResolution(3) : null
+    if (hint) objs.push(hint)
     this._interior = {
-      id, cfg, objs, colliders, npc, hint,
+      id, cfg, objs, colliders, npc, hint, exitDoorSprite: exitDoorSpr,
+      bounds: { x: ox, y: oy, w: W, h: H }, // pour fixer + zoomer la caméra sur la pièce
       entry: { x: doorCx, y: oy + (rows - 2.2) * TILE },
       exit: { x: doorCx, y: oy + (rows - 1) * TILE + 8 },
+    }
+    if (id === 'inn') { // porte intérieure vers le dortoir (EN HAUT À DROITE) : zone atteignable + porte animée + retour
+      this._interior.dormDoor = { x: ox + 11.5 * TILE, y: oy + 2.0 * TILE }    // case sous la porte du fond (sol libre, atteignable)
+      this._interior.dormReturn = { x: ox + 11.5 * TILE, y: oy + 3.3 * TILE }  // retour depuis le dortoir : plus bas, sans re-déclencher
+      this._interior.dormDoorSprite = this._dormDoorSpr                        // porte Sprout animée (ouvre/referme à la bascule)
     }
     if (id === 'tavern' || id === 'apothecary' || id === 'inn') { // tenancier qui s'affaire : va-et-vient ALÉATOIRE armoire (fond) <-> comptoir (devant)
       // hitbox du tenancier (corps dynamique immobile qui le SUIT) -> invisible en jeu, visible en debug
@@ -3931,7 +3943,7 @@ export default class GameScene extends Phaser.Scene {
       // géométrie propre à chaque salle (centres d'étagères / plage du comptoir / Y de la bande dégagée)
       const geo = id === 'tavern' ? { midY: 4.1, ax: [4.5, 8.5, 12.5], fxmin: 3, fxmax: 13 }
         : id === 'apothecary' ? { midY: 4.6, ax: [3.0, 6.0, 9.0, 12.0], fxmin: 3, fxmax: 12 }
-        : { midY: 4.9, ax: [2.5, 5.5], fxmin: 1.5, fxmax: 6 } // auberge (Mira)
+        : { midY: 4.0, ax: [2.5, 5.5], fxmin: 1.5, fxmax: 9 } // auberge-réception (Mira) : étagères (cols 1-7) <-> banc (cols 1-10)
       this._interior.bw = {
         sprite: npc, hitbox: bhb, texture: cfg.npcTex, facing: 'down', pauseUntil: 0, zone: 'comptoir', phase: 'toX', speed: 26, tx: npc.x,
         midY: oy + geo.midY * TILE,
@@ -3951,9 +3963,10 @@ export default class GameScene extends Phaser.Scene {
     this._interior = null
   }
 
-  /** Ressort de l'intérieur -> retour devant la porte du village. */
+  /** Ressort de l'intérieur -> retour à l'intérieur précédent (dortoir->réception) si exitTo, sinon au village. */
   exitInterior() {
     if (!this.inInterior || this._exiting) return
+    if (this._interior && this._interior.exitTo) { this.goInterior(this._interior.exitTo, { spawn: 'dormReturn' }); return } // dortoir -> réception
     this._exiting = true
     this._promptDismissed = this.inInterior // au retour devant la porte, l'invite « Entrer ? » ne repop pas tde suite
     const cam = this.cameras.main
@@ -3962,7 +3975,7 @@ export default class GameScene extends Phaser.Scene {
     cam.once('camerafadeoutcomplete', () => {
       this.destroyInterior()
       this.inInterior = null
-      this._exiting = false
+      this._exiting = false; this._doorBusy = false
       const p = this.player
       p.setCollideWorldBounds(true)
       const r = this._villageReturn || { x: this.cx * TILE, y: this.cy * TILE }
@@ -3970,6 +3983,7 @@ export default class GameScene extends Phaser.Scene {
       p.moveTarget = null
       p.setDepth(p.y)
       cam.useBounds = true
+      cam.setZoom(this._savedZoom || 3); cam.startFollow(this.player, true) // restaure la caméra du village (suivi + zoom)
       cam.centerOn(p.x, p.y)
       this.fogGroup?.setVisible(true)
       this.nightOverlay?.setVisible(true)
@@ -3983,17 +3997,30 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     p.update(time)
     p.setDepth(7030)
-    this.cameras.main.centerOn(p.x, p.y)
+    // caméra FIXE en intérieur (réglée par fitInteriorCamera) : on ne recentre plus sur le joueur
     // mobs GELÉS tant qu'on est à l'intérieur : leur IA ne tourne plus mais la physique Arcade, si : sans ça,
     // un mob qui te poursuivait dérive (vitesse résiduelle) jusque dans le village pendant ton absence.
     this.monsters?.getChildren().forEach((m) => { if (m.body) m.body.velocity.set(0, 0) })
     const it = this._interior
     if (!it) return
-    if (it.bw) { this.updateBarman(it.bw, time, (delta || 16) / 1000); it.hint.setPosition(it.npc.x, it.npc.y - 15) } // barman qui s'affaire + indice qui le suit
-    // SORTIE AUTO en marchant sur la porte (sinon on traverse dans le vide noir hors-map)
-    if (Math.abs(p.x - it.exit.x) < TILE && p.y >= it.exit.y - 10) { this.exitInterior(); return }
-    const dn = this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52
-    it.hint.setVisible(dn)
+    if (it.bw) { this.updateBarman(it.bw, time, (delta || 16) / 1000); if (it.hint) it.hint.setPosition(it.npc.x, it.npc.y - 15) } // tenancier qui s'affaire + indice qui le suit
+    // PORTE INTÉRIEURE (auberge -> dortoir) : marcher dessus -> la porte s'OUVRE puis se referme, puis on bascule
+    if (it.dormDoor && !this._doorBusy && Math.abs(p.x - it.dormDoor.x) < TILE * 0.9 && Math.abs(p.y - it.dormDoor.y) < TILE) {
+      this._doorBusy = true
+      Audio.sfx('ui_accept', { detune: -120 })
+      if (it.dormDoorSprite && this.anims.exists('door-cycle')) it.dormDoorSprite.play('door-cycle') // ouvre puis referme
+      this.time.delayedCall(230, () => this.goInterior('dorm', { exitTo: 'inn' })) // bascule quand la porte est ouverte
+      return
+    }
+    // SORTIE en marchant sur la porte du bas : elle s'OUVRE puis se referme, puis on sort
+    if (!this._doorBusy && Math.abs(p.x - it.exit.x) < TILE && p.y >= it.exit.y - 10) {
+      this._doorBusy = true
+      Audio.sfx('ui_cancel')
+      if (it.exitDoorSprite && this.anims.exists('door-cycle')) it.exitDoorSprite.play('door-cycle')
+      this.time.delayedCall(230, () => this.exitInterior())
+      return
+    }
+    if (it.npc && it.hint) { it.hint.setVisible(this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) } // indice « Parler » (pas dans le dortoir)
   }
 
   /** Nouvelle COLONNE cible du barman : devant une armoire au hasard, ou un endroit aléatoire du comptoir. */
@@ -4042,7 +4069,7 @@ export default class GameScene extends Phaser.Scene {
     const it = this._interior
     if (!it) return
     const p = this.player
-    if (this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) this.scene.get('UIScene')?.openDialogue(it.cfg.npcName, it.cfg.lines, it.cfg.npcTex)
+    if (it.npc && this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) this.scene.get('UIScene')?.openDialogue(it.cfg.npcName, it.cfg.lines, it.cfg.npcTex)
     else if (this.dist(p.x, p.y, it.exit.x, it.exit.y) <= 24) this.exitInterior()
   }
 

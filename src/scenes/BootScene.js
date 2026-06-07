@@ -104,6 +104,7 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('penz_doors', 'assets/tiles/penz_doors.png', { frameWidth: 16, frameHeight: 16 })
     this.load.spritesheet('penz_items', 'assets/tiles/penz_items.png', { frameWidth: 16, frameHeight: 16 })
     for (const c of ['tan', 'green', 'red', 'blue']) this.load.image('nin_bed_' + c, `assets/tiles/nin_bed_${c}.png`) // lits Ninja (32x48) pour l'auberge
+    this.load.spritesheet('spr_door', 'assets/tiles/spr_door.png', { frameWidth: 16, frameHeight: 16 }) // porte Sprout animée (4 frames : f1=fermée, f3=battant, f0/f2=ouverte)
     // UI « Theme Wood » (Ninja, CC0) : panneaux + boutons nine-slice (vraies textures)
     for (const k of ['ui_panel', 'ui_bg', 'btn_normal', 'btn_hover', 'btn_pressed', 'ui_cell', 'ui_tab', 'btn_yes', 'btn_no']) this.load.image(k, `assets/ui/${k}.png`)
     // bâtiments (maisons, igloos, portails...) : spritesheet 16x16, 33 colonnes
@@ -331,6 +332,8 @@ export default class BootScene extends Phaser.Scene {
     if (!this.anims.exists('wx-leaf')) this.anims.create({ key: 'wx-leaf', frames: this.anims.generateFrameNumbers('wx_leaf', { start: 0, end: 8 }), frameRate: 8, repeat: -1 })
     if (!this.anims.exists('wx-grass')) this.anims.create({ key: 'wx-grass', frames: this.anims.generateFrameNumbers('wx_grass', { start: 0, end: 5 }), frameRate: 16, repeat: 0 })
     if (!this.anims.exists('wx-snow')) this.anims.create({ key: 'wx-snow', frames: this.anims.generateFrameNumbers('wx_snow', { start: 0, end: 6 }), frameRate: 8, repeat: -1 })
+    // PORTE Sprout : cycle s'ouvre PUIS se referme (fermée 1 -> battant 3 -> ouverte 0 -> battant 3 -> fermée 1)
+    if (!this.anims.exists('door-cycle')) this.anims.create({ key: 'door-cycle', frames: this.anims.generateFrameNumbers('spr_door', { frames: [1, 3, 0, 0, 3, 1] }), frameRate: 12, repeat: 0 })
     if (!this.anims.exists('fx-energyball')) {
       this.anims.create({ key: 'fx-energyball', frames: this.anims.generateFrameNumbers('fx_energyball', { start: 0, end: 3 }), frameRate: 14, repeat: -1 })
     }
