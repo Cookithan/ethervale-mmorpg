@@ -53,7 +53,7 @@ export const CLASSES = {
   },
   tank: {
     key: 'tank', name: 'Tank', desc: 'Très lent, énormément de PV',
-    hp: 200, attack: 11, defense: 5, speedMul: 0.72, // ATQ 9->11 (buff) ; vitesse 0.6->0.72 (un peu plus mobile pour esquiver les dash)
+    hp: 200, attack: 11, defense: 5, speedMul: 0.78, // ATQ 9->11 ; vitesse 0.6->0.72->0.78 (assez mobile pour esquiver les AoE télégraphiées des boss)
     mana: 70,
     // Mur : énormément de PV ET défense qui monte (encaisse de mieux en mieux), dégâts faibles.
     hpPerLevel: 30, defPerLevel: 1, manaPerLevel: 0,

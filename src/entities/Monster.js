@@ -125,17 +125,17 @@ export const MONSTER_TYPES = {
   // Seigneur de flamme (Terres Maudites) : rig SANS walk (reste sur place, lent) -> playRig retombe sur idle
   giantflam: {
     key: 'boss_giantflam_idle', rig: 'giantflam', face: 'face_giantflam',
-    hp: 130, speed: 18, damage: 22, xp: 40, aggro: 120, scale: 2.2, body: { w: 24, h: 34 },
+    hp: 230, speed: 18, damage: 24, xp: 40, aggro: 120, scale: 2.2, body: { w: 24, h: 34 },
     tier: 'epic', loot: { gold: [8, 16] }, name: 'Seigneur de flamme',
     // DARGOTH (boss FINAL de l'île maudite) — 3 PHASES façon Ragnaros (rig sans walk -> sorts télégraphiés au sol).
     // P1 : souffle (cône) + mares de feu (flaques). P2@60 % : +nova de feu + 2 imbraises (adds flam). P3@30 % : +météore (slam) + boost.
     cone: { range: 175, halfAngle: 0.6, windup: 1200, active: 200, recover: 340, dmgMul: 1.5, cooldown: 2900, color: 0xff7a3a, fx: 'fx-flam' },
     voidzone: { range: 280, windup: 1150, recover: 320, count: 3, radius: 44, spread: 100, lifetime: 4600, tick: 650, dmgMul: 0.6, cooldown: 4800, anchorPlayer: true, color: 0xff7a3a, fx: 'fx-flam' },
     nova: { range: 160, radius: 78, windup: 1250, active: 160, recover: 320, dmgMul: 1.35, knock: 420, knockMs: 260, cooldown: 3800, color: 0xff7a3a, fx: 'fx-explosion' },
-    slam: { range: 230, windup: 1000, jumpDur: 480, hitRadius: 66, dmgMul: 1.6, cooldown: 3200, color: 0xff5030, fx: 'fx-explosion' },
+    slam: { range: 230, windup: 1050, jumpDur: 480, hitRadius: 60, dmgMul: 1.6, cooldown: 3200, color: 0xff5030, fx: 'fx-explosion' },
     phases: [
-      { atPct: 0.60, add: ['nova'], trans: true, summon: { type: 'flam', count: 2 } },
-      { atPct: 0.30, add: ['slam'], dmgMul: 1.3, cdMul: 0.78, trans: true },
+      { atPct: 0.65, add: ['nova'], trans: true, summon: { type: 'flam', count: 2 } },
+      { atPct: 0.35, add: ['slam'], dmgMul: 1.3, cdMul: 0.78, trans: true },
     ],
   },
 
@@ -147,7 +147,7 @@ export const MONSTER_TYPES = {
     charge: { range: 330, windup: 720, speed: 440, duration: 540, dmgMul: 1.7, cooldown: 2500, hitRadius: 32, color: 0xd49a4a, fx: 'fx-rock' },
     // KIT (ANCIEN) : bull-rush + stomp d'emblée ; écrasement (slam) débloqué à 40 % PV.
     nova: { range: 155, radius: 76, windup: 1150, active: 160, recover: 320, dmgMul: 1.35, knock: 410, knockMs: 250, cooldown: 3700, color: 0xd49a4a, fx: 'fx-explosion' },
-    slam: { range: 200, windup: 700, jumpDur: 460, hitRadius: 60, dmgMul: 1.5, cooldown: 3200, color: 0xd49a4a, fx: 'fx-rock' },
+    slam: { range: 200, windup: 780, jumpDur: 460, hitRadius: 56, dmgMul: 1.45, cooldown: 3500, color: 0xd49a4a, fx: 'fx-rock' },
     phases: [{ atPct: 0.40, add: ['slam'] }],
   },
   giantbamboo: {
@@ -211,7 +211,7 @@ export const MONSTER_TYPES = {
     hp: 80, speed: 22, damage: 16, xp: 36, aggro: 105, scale: 1.9, body: { w: 34, h: 26 },
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Gelée ancienne',
     // Gelée ancienne : saut-slam plus rapide, plus large et plus fort.
-    slam: { range: 240, windup: 580, jumpDur: 430, hitRadius: 68, dmgMul: 1.75, cooldown: 1950, color: 0x9fe8ff, fx: 'fx-water' },
+    slam: { range: 240, windup: 720, jumpDur: 460, hitRadius: 58, dmgMul: 1.5, cooldown: 2600, color: 0x9fe8ff, fx: 'fx-water' },
     // KIT (ANCIEN) : saut-slam + mares de gel d'emblée ; nova de givre à 40 %.
     voidzone: { range: 240, windup: 1000, recover: 320, count: 4, radius: 40, spread: 100, lifetime: 4400, tick: 600, dmgMul: 0.6, cooldown: 4200, anchorPlayer: true, color: 0x9fe8ff, fx: 'fx-ice-burst' },
     nova: { range: 155, radius: 76, windup: 1150, active: 160, recover: 300, dmgMul: 1.35, knock: 400, knockMs: 250, cooldown: 3600, color: 0x9fe8ff, fx: 'fx-ice-burst' },
@@ -257,8 +257,8 @@ export const MONSTER_TYPES = {
     hp: 86, speed: 24, damage: 17, xp: 36, aggro: 110, scale: 1.8, body: { w: 28, h: 40 },
     tier: 'epic', loot: { gold: [7, 15] }, name: 'Colosse de bambou ancien',
     // KIT WoW (ANCIEN = plus dur) : cône+slam d'emblée ; flaques à 60% ; nova à 35%. Valeurs majorées.
-    cone: { range: 185, halfAngle: 0.66, windup: 1150, active: 200, recover: 320, dmgMul: 1.6, cooldown: 2500, color: 0x6fae2e, knockback: 60, fx: 'fx-plant' },
-    slam: { range: 220, windup: 640, jumpDur: 430, hitRadius: 70, dmgMul: 1.65, cooldown: 2900, color: 0x6fae2e, fx: 'fx-rock' },
+    cone: { range: 180, halfAngle: 0.6, windup: 1200, active: 200, recover: 320, dmgMul: 1.5, cooldown: 2800, color: 0x6fae2e, knockback: 60, fx: 'fx-plant' },
+    slam: { range: 220, windup: 740, jumpDur: 460, hitRadius: 62, dmgMul: 1.5, cooldown: 3200, color: 0x6fae2e, fx: 'fx-rock' },
     voidzone: { range: 250, windup: 1100, recover: 300, count: 4, radius: 40, spread: 105, lifetime: 4600, tick: 600, dmgMul: 0.6, cooldown: 4000, anchorPlayer: true, color: 0x6fae2e, fx: 'fx-plant' },
     nova: { range: 160, radius: 76, windup: 1250, active: 160, recover: 300, dmgMul: 1.35, knock: 420, knockMs: 260, cooldown: 3600, color: 0x6fae2e },
     phases: [{ atPct: 0.60, add: ['voidzone'] }, { atPct: 0.35, add: ['nova'] }],
@@ -269,6 +269,11 @@ export const MONSTER_TYPES = {
     key: 'boss_dragon_head', dragon: true, raid: true, face: 'face_dragon',
     hp: 240, speed: 78, damage: 20, xp: 0, aggro: 100, scale: 1.3, body: { w: 20, h: 20 },
     tier: 'epic', loot: { gold: [0, 0] }, name: 'Dragon des Abysses',
+    // RAID : souffle d'orbes (barrage) + nova de givre à 55 % -> vrai combat de groupe (avant : simple éponge à PV).
+    // ⚠️ segmenté : pendant un sort, le dispatch coupe updateDragon -> les anneaux se figent brièvement (à vérifier en jeu).
+    barrage: { range: 360, windup: 700, recover: 420, shots: 6, gap: 0.30, projSpeed: 170, projDamage: 5, cooldown: 2400, color: 0x6fd0ff, fx: 'fx-fireball' },
+    nova: { range: 160, radius: 78, windup: 1250, active: 160, recover: 320, dmgMul: 1.3, knock: 460, knockMs: 280, cooldown: 4400, color: 0x6fd0ff, fx: 'fx-ice-burst' },
+    phases: [{ atPct: 0.55, dmgMul: 1.4, cdMul: 0.7, add: ['nova'] }],
   },
 }
 

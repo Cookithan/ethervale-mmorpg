@@ -162,6 +162,7 @@ const NIGHT_MAX_ALPHA = 0.8 // opacité du voile au plus profond de la nuit (nui
 const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMENT le cœur du VILLAGE ; tout autour (prairie incluse) reste dans la nuit
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
+const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -618,6 +619,7 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.addCapture('TAB') // empêche Tab de changer le focus du navigateur
       this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
       this.input.keyboard.on('keydown-X', () => { this._heldOn = !this._heldOn }) // X = afficher/masquer l'arme tenue en main en permanence
+      if (DEBUG_SPAWN_BOSS) this.input.keyboard.on('keydown-B', () => this.debugSpawnBoss(DEBUG_SPAWN_BOSS)) // TEST : B = invoque un boss à côté (à retirer)
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
@@ -2902,6 +2904,27 @@ export default class GameScene extends Phaser.Scene {
     return boss
   }
 
+  /** TEST (touche B) : fait apparaître un boss À CÔTÉ du joueur avec son arène centrée sur son point de spawn,
+   *  pour tester ses patterns n'importe où sans aller à son repaire. Il dort jusqu'à ce qu'on le frappe. À RETIRER. */
+  debugSpawnBoss(type = 'giantflam') {
+    if (this.inInterior || this.gameOver || this.activeArena) return // pas dans un intérieur / pendant une arène
+    const p = this.player
+    const x = p.x + 130, y = p.y
+    const def = MONSTER_TYPES[type]
+    if (!def) return
+    const boss = new Monster(this, x, y, type, { level: 6, boss: true, name: def.name })
+    boss.maxHp = 600; boss.hp = 600 // TEST : PV réduits -> on atteint vite les paliers de phase (60 %/30 %)
+    boss.bossBiome = 'cursed'; boss.bossIndex = 0
+    boss.homeX = x; boss.homeY = y
+    boss.arenaR = ARENA_RADIUS
+    boss.arenaCx = x; boss.arenaCy = y // arène centrée sur le boss invoqué
+    this.monsters.add(boss)
+    if (!boss.dragon) this.makeBossSolid(boss)
+    this.bosses.push(boss)
+    this.scene.get('UIScene')?.showToast?.(`TEST : ${def.name} invoqué — frappe-le pour le réveiller`, '#ff8a4a')
+    return boss
+  }
+
   /** Rend un boss SOLIDE : immovable (fixé APRÈS l'ajout au groupe, sinon Arcade peut le réinitialiser ->
    *  boss poussable) + collider joueur portant les dégâts de contact. Le collider est IGNORÉ quand le
    *  Guerrier dash (il traverse pour esquiver) OU quand le boss lui-même charge (il fonce DROIT à travers
@@ -3090,8 +3113,12 @@ export default class GameScene extends Phaser.Scene {
     const s = this.add.sprite(x, y, tex).setDepth(depth).setScale(scale).setRotation(rot).setAlpha(alpha)
     if (tint !== 0xffffff) s.setTint(tint)
     s.play(animKey)
-    if (life > 0) this.time.delayedCall(life, () => s.active && s.destroy()) // anims qui BOUCLENT (rune) : destruction temporisée (animationcomplete ne se déclenche jamais)
-    else s.once('animationcomplete', () => s.destroy()) // anims one-shot : détruit en fin d'anim
+    // anim qui BOUCLE (repeat -1, ex. fx-flam/fx-magic-circle) jouée en one-shot -> animationcomplete ne se
+    // déclenche JAMAIS -> on la détruit après `life` (si fourni) OU ~1 cycle d'anim (sinon elle tourne à l'infini).
+    const anim = this.anims.get(animKey)
+    const eff = life || (anim && anim.repeat === -1 ? (anim.duration || 600) : 0)
+    if (eff > 0) this.time.delayedCall(eff, () => s.active && s.destroy())
+    else s.once('animationcomplete', () => s.destroy())
     return s
   }
 
@@ -5131,11 +5158,11 @@ export default class GameScene extends Phaser.Scene {
     const ret = this.targetReticle
     if (!ret) return
     if (t) {
-      // anneau plat sous les pieds : largeur ~ celle de la cible (plafonnée), posé juste DERRIÈRE le sprite
-      const w = Phaser.Math.Clamp((t.displayWidth || 16) * 0.95, 16, 44)
+      // anneau plat sous les pieds : largeur ~ celle de la cible (plafond ÉLEVÉ pour bien cercler un BOSS), aux pieds
+      const w = Phaser.Math.Clamp((t.displayWidth || 16) * 0.95, 16, t.isBoss ? 110 : 44)
       const pulse = 1 + 0.08 * Math.sin(time / 200)
       ret.setScale((w / 24) * pulse)
-      ret.setPosition(t.x, t.y + (t.displayHeight || 16) * 0.3).setVisible(true).setDepth(t.y - 1)
+      ret.setPosition(t.x, t.y + (t.displayHeight || 16) * 0.42).setVisible(true).setDepth(t.y + 1)
     } else if (ret.visible) {
       ret.setVisible(false)
     }
