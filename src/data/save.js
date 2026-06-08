@@ -60,6 +60,8 @@ export function makeSave(player, character) {
     questsDone: player.questsDone,
     bankGold: player.bankGold, // coffre : or à l'abri de la mort
     bankItems: player.bankItems, // coffre : objets stockés (cases supplémentaires)
+    counterBag: player.counterBag, // sac rapatrié en attente sur le comptoir de l'apothicaire
+
     deathBag: player.deathBag, // sac de mort en attente de récupération (A1)
     deathsSinceRecovery: player.deathsSinceRecovery,
     respawnHome: player.respawnHome, // a dormi au dortoir -> respawn dans son lit à la mort

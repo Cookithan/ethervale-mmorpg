@@ -132,6 +132,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // BANQUE : coffre PERSISTANT à l'abri de la mort (le sac de mort ne prend que gold + sac, jamais le coffre).
     this.bankGold = 0 // or déposé en banque
     this.bankItems = [] // objets stockés au coffre (cases supplémentaires)
+    this.counterBag = null // sac de mort RAPATRIÉ par l'apothicaire, posé sur son comptoir, à prendre (E) — {gold, items}
     // SAC DE MORT (A1) : à la mort, or + sac tombent ici {gold, items, x, y} ; 1 seul à la fois.
     this.deathBag = null
     this.deathsSinceRecovery = 0 // (legacy, plus utilisé) — le sac se renouvelle à CHAQUE mort, plus de perte définitive
@@ -190,6 +191,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.bankGold = s.bankGold ?? 0 // coffre (or + objets à l'abri de la mort)
     this.bankItems = s.bankItems ?? []
     for (const it of this.bankItems) if (it) refreshItemDef(it) // rafraîchit icônes/noms depuis le catalogue actuel
+    this.counterBag = s.counterBag ?? null // sac rapatrié en attente sur le comptoir de l'apothicaire
+    if (this.counterBag?.items) for (const it of this.counterBag.items) if (it) refreshItemDef(it)
     this.deathBag = s.deathBag ?? null
     this.deathsSinceRecovery = s.deathsSinceRecovery ?? 0
     this.respawnHome = s.respawnHome ?? false // point de repos (dortoir) persistant

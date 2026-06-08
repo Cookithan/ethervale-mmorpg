@@ -4271,6 +4271,8 @@ export default class GameScene extends Phaser.Scene {
       entry: { x: doorCx, y: oy + (rows - 2.2) * TILE },
       exit: { x: doorCx, y: oy + (rows - 1) * TILE + 8 },
     }
+    this._counterBag = null // réf du sac posé sur le comptoir (réinitialisé à chaque entrée d'intérieur)
+    if (id === 'apothecary' && this.player.counterBag) this.spawnCounterBag() // sac rapatrié en attente -> reposé sur le comptoir de l'apothicaire
     if (interiorBeds.length) { // dortoir : lits où se reposer + point d'apparition à la mort (sur un lit près de la porte)
       this._interior.beds = interiorBeds
       this._interior._restArmed = false // on apparaît peut-être SUR un lit (respawn) -> pas de re-repos immédiat tant qu'on n'a pas bougé
@@ -4375,7 +4377,9 @@ export default class GameScene extends Phaser.Scene {
       return
     }
     // indice « Parler (E) » près du PNJ — SAUF à la taverne (le barman n'est pas accessible : on s'assoit pour l'appeler) ni au dortoir
-    if (it.npc && it.hint && it.id !== 'tavern') { it.hint.setVisible(this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) }
+    const bagNear = !!this._counterBag && this.dist(p.x, p.y, this._counterBag.x, this._counterBag.y) <= 44
+    if (it.npc && it.hint && it.id !== 'tavern') { it.hint.setVisible(!bagNear && this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) } // « Parler » masqué si le sac est à portée (E le prend)
+    if (this._counterBag) this._counterBag.hint.setVisible(bagNear) // prompt « Prendre (E) » du sac sur le comptoir
     if (it.npc && it.questGiver) { // marqueur ! (quête dispo) / ? (à rendre) au-dessus de Mira à la réception
       it.npc.name = it.cfg.npcName
       this.updateQuestMark(it.npc, it.npc)
@@ -4601,6 +4605,8 @@ export default class GameScene extends Phaser.Scene {
     const it = this._interior
     if (!it) return
     const p = this.player
+    // SAC sur le comptoir (rapatrié par l'apothicaire) : E à proximité -> le PRENDRE (prioritaire sur l'ouverture de la carte)
+    if (this._counterBag && this.dist(p.x, p.y, this._counterBag.x, this._counterBag.y) <= 44) { this.takeCounterBag(); return }
     if (it.id === 'tavern') { // E = s'asseoir près d'un siège / RAPPELER le serveur si déjà assis (pour se lever : bouger)
       if (it._seated) {
         if (it.bw && !it.bw.serving) this.callBarman(it, it._seated) // le serveur est reparti -> on le rappelle pour recommander
@@ -7047,17 +7053,63 @@ export default class GameScene extends Phaser.Scene {
     this.saveGame()
   }
 
-  /** SERVICE APOTHICAIRE : Ylva rapatrie le sac de mort (où qu'il soit) contre 1 NIVEAU (PV/mana/etc. réduits) + 50 or. */
+  /** SERVICE APOTHICAIRE : Ylva rapatrie le sac de mort (où qu'il soit) contre 1 NIVEAU (PV/mana/etc. réduits) + 50 or.
+   *  Le sac est POSÉ SUR LE COMPTOIR (récupérable par E par son seul propriétaire), pas ajouté direct à l'inventaire. */
   apothecaryRecoverBag() {
     const p = this.player
     const ui = this.scene.get('UIScene')
     if (!p.deathBag) { ui?.showToast?.('Aucun sac à rapatrier.', '#e0a866'); return false }
+    if (p.counterBag) { ui?.showToast?.('Prends d\'abord le sac sur le comptoir (E).', '#e0a866'); this.playDenied?.(); return false }
     if (p.level <= 1) { ui?.showToast?.('Niveau trop bas pour ce service (min. 2).', '#e0a866'); this.playDenied?.(); return false }
     if (p.gold < 50) { ui?.showToast?.('Il te faut 50 or pour ce service.', '#e0a866'); this.playDenied?.(); return false }
     p.gold -= 50
     p.deLevel() // -1 niveau (annule les gains : PV/mana/déf/atq)
-    this.recoverDeathBag() // rend le sac (or + objets) + sauvegarde
-    ui?.showToast?.('Ylva a rapatrié ton sac (−1 niveau, −50 or).', '#8ef0a0')
+    p.counterBag = { gold: p.deathBag.gold, items: p.deathBag.items } // Ylva pose le sac sur SON comptoir
+    p.deathBag = null
+    this.clearDeathBagSprite() // le sac du monde a été rapatrié
+    this.spawnCounterBag()
+    ui?.showToast?.('Ylva pose ton sac sur le comptoir — prends-le (E). (−1 niveau, −50 or)', '#8ef0a0')
+    this.saveGame()
     return true
+  }
+
+  /** Pose le sac rapatrié (player.counterBag) sur le comptoir de l'apothicaire, devant Ylva, avec un prompt « Prendre (E) ». */
+  spawnCounterBag() {
+    this.clearCounterBag()
+    const p = this.player, it = this._interior
+    if (!p.counterBag || !it || it.id !== 'apothecary' || !it.npcHome) return
+    const D = 7000
+    const x = it.npcHome.x, y = it.npcHome.y + 1.5 * TILE // sur le comptoir, devant Ylva (côté joueur)
+    const spr = this.add.image(x, y, 'moneybag').setDepth(D + 30)
+    spr.setScale(18 / Math.max(spr.width, spr.height))
+    this.tweens.add({ targets: spr, y: y - 3, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    const hint = this.add.text(x, y - 16, 'Prendre (E)', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false).setResolution(3)
+    this._counterBag = { x, y, sprite: spr, hint }
+    it.objs.push(spr, hint) // détruits avec l'intérieur (le contenu persiste dans player.counterBag tant que non pris)
+  }
+
+  clearCounterBag() {
+    const cb = this._counterBag
+    if (!cb) return
+    if (cb.sprite?.active) { this.tweens.killTweensOf(cb.sprite); cb.sprite.destroy() }
+    if (cb.hint?.active) cb.hint.destroy()
+    this._counterBag = null
+  }
+
+  /** Le héros prend le sac sur le comptoir (E à proximité) : contenu -> inventaire, le sac disparaît. */
+  takeCounterBag() {
+    const p = this.player, cb = p.counterBag
+    if (!cb) return
+    p.gold += cb.gold
+    for (const item of cb.items) p.inventory.push(item)
+    p.consolidateInventory(); p.invVersion++
+    p.counterBag = null
+    this.clearCounterBag()
+    const parts = []
+    if (cb.gold > 0) parts.push(`${cb.gold} or`)
+    if (cb.items.length) parts.push(`${cb.items.length} objet${cb.items.length > 1 ? 's' : ''}`)
+    this.scene.get('UIScene')?.showToast?.('Sac récupéré : ' + (parts.join(' + ') || 'rien'), '#7cfc9a')
+    Audio.sfx('sfx_loot', { vol: 0.6, detune: 0 })
+    this.saveGame()
   }
 }
