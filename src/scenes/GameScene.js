@@ -467,6 +467,7 @@ export default class GameScene extends Phaser.Scene {
     this.scatterSnowProps() // déco étoffée de la neige : sapins de neige variés (grille uniforme)
     this.scatterCursedProps() // SARGÈR : déco par sous-zone du miroir corrompu (Bois Blêmes / Nécropole / Cendre / Bourg Fantôme)
     this.spawnGhostRuins() // SARGÈR : ruine-miroir du village d'Ergas (annulus autour du gauntlet)
+    this.spawnSargerOutpost() // SARGÈR : avant-poste des survivants (hub ouest : feu + repos + forge + lore)
     this.physics.add.collider(this.player, this.obstacles)
     // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
     // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
@@ -3680,6 +3681,31 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
+  /** AVANT-POSTE DES SURVIVANTS (hub de Sargèr) au débarcadère OUEST : feu de camp VIVANT (seule lumière chaude
+   *  de l'île) + huttes + 3 survivants (Sœur Ondine = repos, Forgeron Brisé = forge, Dernier Veilleur = lore). */
+  spawnSargerOutpost() {
+    if (this.preview) return
+    const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy
+    const ox = ccx - 58, oy = ccy // débarcadère ouest (hors gauntlet, là où on accoste)
+    if (!this.isCursedIsland(ox, oy)) return
+    // FEU DE CAMP VIVANT (refuge) — calqué sur spawnVillageCampfire
+    const fx = ox * TILE + 8, fy = oy * TILE + 8, D = (oy + 1) * TILE
+    const glow = this.add.circle(fx, fy + 2, 22, 0xff8a2a, 0.16).setBlendMode(Phaser.BlendModes.ADD).setDepth(oy * TILE - 1)
+    this.tweens.add({ targets: glow, scale: 1.15, alpha: 0.26, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    this.add.image(fx, fy + 4, 'campfire').setOrigin(0.5, 0.85).setDepth(D)
+    this.add.sprite(fx, fy - 1, 'fire_anim').setOrigin(0.5, 0.8).setScale(0.85).setDepth(D + 1).play('fire-anim')
+    const col = this.add.rectangle(fx, fy + 4, 15, 11); this.physics.add.existing(col, true); this.obstacles.add(col)
+    this.occupied.add(this.key(ox, oy))
+    this.campfires ||= []; this.campfires.push({ x: fx, y: fy, radius: 48, until: Infinity }) // refuge de température
+    // huttes de survivants (igloos teintés) de part et d'autre du feu
+    this.placeBuilding(ox - 5, oy - 4, 'igloo', 0x7a6f64)
+    this.placeBuilding(ox + 3, oy - 4, 'igloo', 0x7a6f64)
+    // 3 SURVIVANTS autour du feu (textures de PNJ existantes)
+    this.addNpc(ox - 3, oy + 2, 'npc_monk', 'Sœur Ondine', ['Repose-toi, voyageur — la nuit de Sargèr est longue.', 'Tant que ce feu brûle, les âmes damnées ne nous prennent pas.'], 'rest')
+    this.addNpc(ox + 4, oy + 2, 'npc_hunter', 'Forgeron Brisé', ['Mon enclume a survécu à la chute du bourg. Donne ton arme, je la remets d\'aplomb.'], 'forge')
+    this.addNpc(ox, oy + 4, 'npc_master', 'Dernier Veilleur', ['Ces ruines, là-bas... c\'était notre bourg. Avant que Dargoth ne tombe du ciel.', 'Abats ses trois Gardiens, et le sceau du Seigneur Maudit cédera. Venge-nous.'], 'talk')
+  }
+
   spawnVillageCampfire() {
     const x = this.cx * TILE + 8
     const y = this.cy * TILE + 8
@@ -4008,7 +4034,18 @@ export default class GameScene extends Phaser.Scene {
     if (this.handleQuestInteraction(t)) return // offre/rendu de quête -> court-circuite l'interaction normale
     if (t === this.merchant) ui.openShop()
     else if (t.role === 'forge') ui.openForge()
+    else if (t.role === 'rest') this.restAtOutpost(t) // avant-poste de Sargèr : repos (soin + sauvegarde)
     else ui.openDialogue(t.name, t.lines, t.texture)
+  }
+
+  /** Service REPOS de l'avant-poste de Sargèr : soin complet (PV+mana) + sauvegarde (refuge sur l'île maudite). */
+  restAtOutpost() {
+    const p = this.player
+    p.hp = p.maxHp
+    p.mana = p.maxMana
+    this.saveGame()
+    this.scene.get('UIScene')?.showToast?.('Tu reprends des forces auprès du feu des survivants.', '#7cfc9a')
+    Audio.sfx?.('sfx_loot', { vol: 0.4, detune: -200 })
   }
 
   // ===================== INTÉRIEURS (taverne / apothicaire) =====================
