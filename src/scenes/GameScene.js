@@ -163,7 +163,7 @@ const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMEN
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
-const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque offerte + touche G = téléport Sargèr + gate niveau désactivé (test end-game).
+const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque + touche G téléport Sargèr + gate désactivé (test end-game).
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -7082,11 +7082,11 @@ export default class GameScene extends Phaser.Scene {
       this.cursedVeil.setFillStyle(lerpHex(0x2a0d3a, CURSED_SUB_TINT[sub] ?? 0x2a0d3a, 0.22)) // cast de sous-zone (mauve/vert/glace/cendre)
       if (!this.cursedFog && this.cursedBounds) { // brouillard de sol créé à la 1re visite (1 TileSprite -> perf)
         const cb = this.cursedBounds
-        this.cursedFog = this.add.tileSprite(cb.minX * TILE, cb.minY * TILE, (cb.maxX - cb.minX) * TILE, (cb.maxY - cb.minY) * TILE, 'fog_clouds').setOrigin(0, 0).setDepth(-7).setAlpha(0)
+        this.cursedFog = this.add.tileSprite(cb.minX * TILE, cb.minY * TILE, (cb.maxX - cb.minX) * TILE, (cb.maxY - cb.minY) * TILE, 'fog_clouds').setOrigin(0, 0).setDepth(6000).setAlpha(0) // AU-DESSUS des sprites du monde (brume qui dérive sur la scène), sous le voile/HUD
       }
       if (this.cursedFog) {
         this.cursedFog.tilePositionX = (time ?? 0) * 0.004 // dérive lente
-        const fa = sub === 'frost' ? 0.2 : sub === 'ash' ? 0.07 : 0.12 // plus épais en Nécropole, ténu aux Dunes
+        const fa = sub === 'frost' ? 0.15 : sub === 'ash' ? 0.05 : 0.09 // brume au-dessus de la scène : discrète (ne masque pas la vue), + dense en Nécropole
         this.cursedFog.alpha += (fa - this.cursedFog.alpha) * 0.04
       }
     } else if (this.cursedFog && this.cursedFog.alpha > 0.002) {
