@@ -163,7 +163,7 @@ const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMEN
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
-const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque + touche G téléport Sargèr + gate désactivé (test end-game).
+const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque + G téléport Sargèr + gate désactivé.
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -466,6 +466,7 @@ export default class GameScene extends Phaser.Scene {
     this.scatterDesertProps() // déco étoffée du désert : palmiers nains + rochers de grès
     this.scatterSnowProps() // déco étoffée de la neige : sapins de neige variés (grille uniforme)
     this.scatterCursedProps() // SARGÈR : déco par sous-zone du miroir corrompu (Bois Blêmes / Nécropole / Cendre / Bourg Fantôme)
+    this.spawnGhostRuins() // SARGÈR : ruine-miroir du village d'Ergas (annulus autour du gauntlet)
     this.physics.add.collider(this.player, this.obstacles)
     // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
     // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
@@ -2350,8 +2351,9 @@ export default class GameScene extends Phaser.Scene {
    *  props solides/flore TEINTÉS par sous-zone (Bois Blêmes / Nécropole Gelée / Dunes de Cendre / Bourg Fantôme).
    *  Réutilise reserve()/onPath/onWater/nearBossLair (clairières d'arène préservées) + addTree(destructible). */
   scatterCursedProps() {
-    const cb = this.cursedBounds
-    if (!cb) return
+    if (this.preview) return
+    const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy // bbox de Sargèr depuis l'ellipse (pas besoin de cursedBounds)
+    const cb = { minX: Math.max(1, ccx - CURSED_ISLE.rx - 2), maxX: Math.min(MAP_W - 2, ccx + CURSED_ISLE.rx + 2), minY: Math.max(1, ccy - CURSED_ISLE.ry - 2), maxY: Math.min(MAP_H - 2, ccy + CURSED_ISLE.ry + 2) }
     this._ghostWisps = [] // points fixes (Bourg Fantôme) où pulsent des âmes (cf. updateCursedAmbiance)
     const solid = (tx, ty, frames, tint = 0xffffff) => { // collision (this.obstacles)
       if (this.nearSpawn(tx, ty, 4) || this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1) || this.nearBossLair(tx, ty)) return
@@ -3491,7 +3493,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Pose un bâtiment (bloc de tuiles 'house') à (tx,ty) si l'emplacement est libre. */
-  placeBuilding(tx, ty, key) {
+  placeBuilding(tx, ty, key, tint = null) {
     const b = BUILDINGS[key]
     // emplacement libre ? (pas chemin / eau / déjà occupé / hors map)
     for (let dx = 0; dx < b.w; dx++) {
@@ -3508,7 +3510,8 @@ export default class GameScene extends Phaser.Scene {
       for (let dx = 0; dx < b.w; dx++) {
         const srcDx = b.flip ? (b.w - 1 - dx) : dx // miroir horizontal optionnel (b.flip) -> colonne source inversée
         const frame = (b.row + dy) * HOUSE_COLS + (b.col + srcDx)
-        this.add.image((tx + dx) * TILE + 8, (ty + dy) * TILE + 8, 'house', frame).setDepth(depth).setFlipX(!!b.flip)
+        const im = this.add.image((tx + dx) * TILE + 8, (ty + dy) * TILE + 8, 'house', frame).setDepth(depth).setFlipX(!!b.flip)
+        if (tint) im.setTint(tint) // bâtiment CORROMPU (ruines de Sargèr) : teinte sombre
       }
     }
     // collision sur la BASE (2 rangées du bas) ; le toit déborde au-dessus (walk-behind).
@@ -3635,6 +3638,48 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Feu de camp animé au centre du village (bûches + flamme animée + halo chaud + collision). */
+  /** BOURG FANTÔME : ruine-miroir du village d'Ergas, dans l'ANNULUS autour du gauntlet (jamais dessus).
+   *  Bâtiments corrompus (teinte sombre) + gravats + cristaux de corruption -> storytelling sur le chemin vers Dargoth. */
+  spawnGhostRuins() {
+    if (this.preview) return
+    const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy
+    const inGauntlet = (tx, ty) => Math.hypot(tx - ccx, ty - ccy) < 58 // garde : Dargoth + 3 arènes de Gardiens
+    const okTile = (tx, ty) => this.isCursedIsland(tx, ty) && !this.isOcean(tx, ty) && !inGauntlet(tx, ty)
+    const ruin = (rx, ry, key, tint) => { // pose avec repli en spirale
+      for (let r = 0; r <= 9; r++) for (let a = 0; a < 8; a++) {
+        const tx = Math.round(rx + Math.cos((a / 8) * Math.PI * 2) * r), ty = Math.round(ry + Math.sin((a / 8) * Math.PI * 2) * r)
+        if (!okTile(tx, ty)) continue
+        const pos = this.placeBuilding(tx, ty, key, tint)
+        if (pos) { this.decorateRuin(pos.tx, pos.ty, key); return }
+      }
+    }
+    // ruines-miroir (mêmes clés que le village d'Ergas), arc ouest/sud (entre l'avant-poste et Dargoth)
+    ruin(ccx - 40, ccy + 8, 'house_long', 0x5a4a52) // Forge Corrompue (centre froid posé par decorateRuin)
+    ruin(ccx - 44, ccy - 14, 'tavern', 0x6e4250) // Taverne Engloutie
+    ruin(ccx - 30, ccy + 26, 'bank', 0x55506a)
+    ruin(ccx - 22, ccy - 30, 'cottage', 0x6a5c66)
+    ruin(ccx - 34, ccy - 26, 'house_orange', 0x6a5c66)
+    ruin(ccx - 14, ccy + 34, 'apothecary', 0x4f5e52)
+  }
+
+  /** Gravats + cristaux de corruption autour d'une ruine (+ forge froide pour la Forge Corrompue). */
+  decorateRuin(tx, ty, key) {
+    const b = BUILDINGS[key]
+    for (let i = 0; i < 3; i++) { // gravats au pied
+      const rx = tx + Phaser.Math.Between(-1, b.w), ry = ty + b.h + Phaser.Math.Between(-1, 1)
+      if (rx < 1 || ry < 1 || rx >= MAP_W - 1 || ry >= MAP_H - 1 || this.onWater(rx, ry, 1)) continue
+      const f = Phaser.Math.Between(0, 1) ? Phaser.Utils.Array.GetRandom(STUMPS) : Phaser.Utils.Array.GetRandom(ROCKS)
+      this.add.image(rx * TILE + 8, ry * TILE + 8, 'nature', f).setTint(0x6a5560).setDepth(ry * TILE + 8)
+    }
+    const cbx = (tx + b.w / 2) * TILE, cby = (ty + b.h) * TILE + 2
+    this.add.image(cbx, cby, 'nature', Phaser.Utils.Array.GetRandom(CRYSTALS)).setDepth(cby) // cristal de corruption à la base
+    if (key === 'house_long') { // FORGE CORROMPUE : foyer froid (braises éteintes) + lueur pourpre faible
+      const gl = this.add.circle(cbx, cby - 6, 16, 0x8a4ad0, 0.1).setBlendMode(Phaser.BlendModes.ADD).setDepth(cby - 1)
+      this.tweens.add({ targets: gl, alpha: 0.18, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      this.add.image(cbx, cby - 4, 'campfire').setOrigin(0.5, 0.85).setDepth(cby).setTint(0x6a5566) // bûches froides (sans flamme)
+    }
+  }
+
   spawnVillageCampfire() {
     const x = this.cx * TILE + 8
     const y = this.cy * TILE + 8
