@@ -92,7 +92,7 @@ export const QUESTS = {
   },
   q_boss_dargoth: {
     id: 'q_boss_dargoth', giver: 'Oona', type: 'kill', target: 'giantflam', targetName: 'Dargoth', count: 1,
-    title: 'Le Seigneur Maudit', desc: 'Il te faudra une barque pour franchir les flots jusqu\'à l\'île maudite. Là règne Dargoth. Affronte-le, et Ergas connaîtra l\'aube.',
+    title: 'Le Seigneur Maudit', desc: 'Procure-toi une barque, puis vogue PLEIN EST par-delà le grand détroit jusqu\'à SARGÈR, l\'île maudite (niveau 30 requis). Abats ses 3 Gardiens pour briser le sceau de Dargoth, puis terrasse le Seigneur Maudit — et Ergas connaîtra l\'aube.',
     reward: { xp: 1200, gold: 1000, item: 'potion_mana_big' },
   },
 }

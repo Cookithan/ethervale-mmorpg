@@ -2055,7 +2055,8 @@ export default class UIScene extends Phaser.Scene {
     // titre (nom de l'île cadrée) + FLÈCHE vers l'autre île (Sargèr est à l'EST d'Ergas)
     reg(this.add.text(cw / 2, topY - 24, this._mapOnSarger ? 'Sargèr — l’Île Maudite' : 'Ergas', { fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: this._mapOnSarger ? '#c79bff' : '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(303))
     const toRight = !this._mapOnSarger // depuis Ergas -> Sargèr à DROITE (est) ; depuis Sargèr -> Ergas à GAUCHE
-    reg(this.add.text(toRight ? leftX + mapPxW - 4 : leftX + 4, topY + 12, toRight ? 'Sargèr  ⟶' : '⟵  Ergas', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#c7a3ff', stroke: '#000', strokeThickness: 3 }).setOrigin(toRight ? 1 : 0, 0.5).setDepth(303))
+    const otherLabel = toRight ? '☠ Sargèr, l’île maudite (niv. 30)  ⟶' : '⟵  Ergas'
+    reg(this.add.text(toRight ? leftX + mapPxW - 4 : leftX + 4, topY + 12, otherLabel, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#c7a3ff', stroke: '#000', strokeThickness: 3 }).setOrigin(toRight ? 1 : 0, 0.5).setDepth(303))
     reg(this.add.text(cw / 2, topY + mapPxH + 20, 'M / Échap : fermer', { fontFamily: 'monospace', fontSize: '12px', color: '#bcd' }).setOrigin(0.5).setDepth(303))
     const legend = [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Maudit', COLOR.cursed], ['Océan', COLOR.ocean]]
     let lx = cw / 2 - (legend.length * 78) / 2

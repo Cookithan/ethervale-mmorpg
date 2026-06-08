@@ -163,7 +163,7 @@ const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMEN
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
-const DEBUG_GIVE_BOAT = true // TEST : donne la barque au lancement (pour atteindre Sargèr à l'est sans payer 3000 or). Repasser à false après test.
+const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque offerte au lancement + touche G = téléportation sur Sargèr + gate de niveau désactivé (pour tester l'end-game).
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -211,6 +211,7 @@ const BIOME_BOSSES = {
 // l'EST au-delà d'un large détroit d'océan. Biome `cursed` + les 4 boss maudits (gauntlet) dont Dargoth.
 // Entourée d'océan, AUCUN gué -> VERROUILLÉE sans barque (end-game). On n'en voit qu'un bout au dézoom d'accueil.
 const CURSED_ISLE = { ox: 300, oy: 65, rx: 96, ry: 82 } // [offset tuiles depuis le centre d'Ergas, demi-axes ellipse]
+const SARGER_MIN_LEVEL = 30 // niveau MINIMUM pour fouler Sargèr (une malédiction repousse les plus faibles dans le détroit)
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
 // DÉLAI entre deux quêtes (respiration) : la 1re est immédiate ; ensuite délai croissant, plafonné.
@@ -404,6 +405,12 @@ export default class GameScene extends Phaser.Scene {
     this.bossLockHint = this.add.text(this.scale.width / 2, this.scale.height - 118, '⌖  Tab : cibler le boss', {
       fontFamily: FONT, fontSize: '11px', color: '#cfe8ff', backgroundColor: '#0b0f17cc', padding: { x: 8, y: 4 }, stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(45000).setVisible(false)
+    // BOUSSOLE EN MER : flèche (haut-centre) qui pointe vers Sargèr quand on NAVIGUE (+ distance) -> on ne se perd plus.
+    this.seaCompass = this.add.container(this.scale.width / 2, 46).setScrollFactor(0).setDepth(45000).setVisible(false)
+    const cArrow = this.add.text(0, 0, '➤', { fontFamily: FONT, fontSize: '20px', color: '#c79bff', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5)
+    const cLabel = this.add.text(0, 15, 'Sargèr', { fontFamily: FONT, fontSize: '10px', color: '#cfe8ff', backgroundColor: '#0b0f17cc', padding: { x: 5, y: 2 }, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0)
+    this.seaCompass.add([cArrow, cLabel])
+    this.seaCompass._arrow = cArrow; this.seaCompass._label = cLabel
 
     // --- décors ---
     this.obstacles = this.physics.add.staticGroup()
@@ -437,6 +444,7 @@ export default class GameScene extends Phaser.Scene {
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
+    if (!this.preview) this.spawnSargerSignpost() // panneau « Sargèr ⟶ » à la côte EST d'Ergas (indice end-game)
     // (plus de spawnForest : il ne posait que des arbres verts Ninja en PRAIRIE -> la prairie est une zone SÛRE, sans arbres ;
     //  la forêt est peuplée par scatterForestTrees ci-dessous)
     this.spawnBiomeTrees()
@@ -630,6 +638,10 @@ export default class GameScene extends Phaser.Scene {
       this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
       this.input.keyboard.on('keydown-X', () => { this._heldOn = !this._heldOn }) // X = afficher/masquer l'arme tenue en main en permanence
       if (DEBUG_SPAWN_BOSS) this.input.keyboard.on('keydown-B', () => this.debugSpawnBoss(DEBUG_SPAWN_BOSS)) // TEST : B = invoque un boss à côté (à retirer)
+      if (DEBUG_GIVE_BOAT) this.input.keyboard.on('keydown-G', () => { // TEST : G = téléporte sur Sargèr (ouest de l'île, face au gauntlet)
+        this.player.setPosition((this.icx + CURSED_ISLE.ox - 50) * TILE + 8, (this.icy + CURSED_ISLE.oy) * TILE + 8)
+        this.scene.get('UIScene')?.showToast?.('TEST : téléporté sur Sargèr (Dargoth à l\'est)', '#c79bff')
+      })
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
@@ -3553,6 +3565,18 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Feu de camp animé au centre du village (bûches + flamme animée + halo chaud + collision). */
+  /** PANNEAU « Sargèr ⟶ » planté au RIVAGE EST d'Ergas (latitude du village) : indice de wayfinding vers l'end-game. */
+  spawnSargerSignpost() {
+    let tx = Math.round(this.cx)
+    const ty = Math.round(this.cy)
+    while (tx < MAP_W - 3 && !this.isOcean(tx + 1, ty)) tx++ // avance vers l'EST jusqu'au rivage
+    if (tx <= this.cx) return // sécurité (pas de côte trouvée)
+    const x = tx * TILE + 8, y = ty * TILE + 8, D = (ty + 1) * TILE
+    this.add.rectangle(x, y + 6, 3, 16, 0x5a3d22).setDepth(D) // poteau
+    this.add.rectangle(x, y - 5, 38, 16, 0x8a5a32).setStrokeStyle(1.5, 0x4a2f18).setDepth(D + 1) // panneau
+    this.add.text(x, y - 5, 'Sargèr\n⟶ levant', { fontFamily: FONT, fontSize: '7px', color: '#f2e4c8', align: 'center', lineSpacing: -1, stroke: '#3a2410', strokeThickness: 2 }).setOrigin(0.5).setDepth(D + 2).setResolution(3)
+  }
+
   spawnVillageCampfire() {
     const x = this.cx * TILE + 8
     const y = this.cy * TILE + 8
@@ -6446,6 +6470,37 @@ export default class GameScene extends Phaser.Scene {
       p.anims.play(`${p.heroKey}-idle-${p.facing}`, true)
     } else if (this.boatSprite.visible) {
       this.boatSprite.setVisible(false).setRotation(0).setFlipX(false)
+    }
+    this.enforceSargerGate(p)
+    this.updateSeaCompass()
+  }
+
+  /** BOUSSOLE EN MER : oriente la flèche vers Sargèr + distance, visible UNIQUEMENT en navigation (et pas déjà sur Sargèr). */
+  updateSeaCompass() {
+    const c = this.seaCompass, p = this.player
+    if (!c) return
+    const onSarger = p && this.isCursedIsland(Math.floor(p.x / TILE), Math.floor(p.y / TILE))
+    if (!p?.sailing || onSarger) { if (c.visible) c.setVisible(false); return }
+    const sx = (this.icx + CURSED_ISLE.ox) * TILE, sy = (this.icy + CURSED_ISLE.oy) * TILE
+    c._arrow.setRotation(Math.atan2(sy - p.y, sx - p.x))
+    c._label.setText(`Sargèr · ${Math.round(Math.hypot(sx - p.x, sy - p.y) / TILE)}`)
+    c.setVisible(true)
+  }
+
+  /** GATE DE NIVEAU : repousse un joueur < SARGER_MIN_LEVEL qui approche Sargèr (barrière maudite dans le détroit). */
+  enforceSargerGate(p) {
+    if (DEBUG_GIVE_BOAT) return // mode test : pas de gate (téléportation G libre)
+    if (!p || p.level >= SARGER_MIN_LEVEL) return
+    const barrierX = (this.icx + CURSED_ISLE.ox - CURSED_ISLE.rx - 12) * TILE // ~12 tuiles avant la côte ouest de Sargèr
+    const cyW = (this.icy + CURSED_ISLE.oy) * TILE, bandH = (CURSED_ISLE.ry + 28) * TILE // bande de latitude de l'île + marge
+    if (p.x > barrierX && Math.abs(p.y - cyW) < bandH) {
+      p.x = barrierX
+      if (p.body && p.body.velocity.x > -30) p.body.velocity.x = -50 // bloqué + léger recul vers l'ouest
+      const now = this.time.now
+      if (now >= (this._sargerGateMsgAt || 0)) {
+        this._sargerGateMsgAt = now + 2200
+        this.scene.get('UIScene')?.showToast?.(`Une malédiction te repousse — reviens niveau ${SARGER_MIN_LEVEL} pour fouler Sargèr.`, '#c79bff')
+      }
     }
   }
 
