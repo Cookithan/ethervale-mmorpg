@@ -3703,7 +3703,8 @@ export default class GameScene extends Phaser.Scene {
     this.add.sprite(fx, fy - 1, 'fire_anim').setOrigin(0.5, 0.8).setScale(0.85).setDepth(D + 1).play('fire-anim')
     const col = this.add.rectangle(fx, fy + 4, 15, 11); this.physics.add.existing(col, true); this.obstacles.add(col)
     this.occupied.add(this.key(ox, oy))
-    this.campfires ||= []; this.campfires.push({ x: fx, y: fy, radius: 48, until: Infinity }) // refuge de température
+    // NB : feu DÉCORATIF (anim propre via tween + fire_anim) -> PAS poussé dans this.campfires (updateCampfires
+    // attend des refs glow/flame/seed ; une entrée nue y planterait f.glow.setAlpha). Sargèr n'a pas de température.
     // huttes de survivants (igloos teintés) de part et d'autre du feu
     this.placeBuilding(ox - 5, oy - 4, 'igloo', 0x7a6f64)
     this.placeBuilding(ox + 3, oy - 4, 'igloo', 0x7a6f64)
