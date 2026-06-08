@@ -31,7 +31,7 @@ export default class MenuScene extends Phaser.Scene {
     // --- titre en haut (SANS bandeau : contour + ombre suffisent à le détacher du village) ---
     const titleSize = Math.round(Phaser.Math.Clamp(cw / 13, 26, 52))
     this.add
-      .text(cw / 2, Math.max(46, ch * 0.09), 'The Last Adventure', {
+      .text(cw / 2, Math.max(46, ch * 0.09), 'Island of Ergas', {
         fontFamily: 'Georgia, "Times New Roman", serif',
         fontSize: `${titleSize}px`,
         fontStyle: 'bold',

@@ -280,6 +280,13 @@ export default class BootScene extends Phaser.Scene {
     }
     this.load.spritesheet('fx_flam', 'assets/fx/flam.png', { frameWidth: 20, frameHeight: 30 }) // 10 frames (le héros brûle au chaud)
     this.load.spritesheet('fx_dust', 'assets/fx/dust.png', { frameWidth: 12, frameHeight: 12 }) // 4 frames (poussière de pas)
+    // FX d'attaques de boss (pack Ninja) — slashs/élémentaires/invocation, teintés par la couleur du boss
+    this.load.spritesheet('fx_plant', 'assets/fx/plant.png', { frameWidth: 30, frameHeight: 28 }) // 8 frames (lianes/ronces : cône & flaque forêt)
+    this.load.spritesheet('fx_clawdouble', 'assets/fx/clawdouble.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (double griffe : cône/charge raton)
+    this.load.spritesheet('fx_slash_circular', 'assets/fx/slash_circular.png', { frameWidth: 54, frameHeight: 55 }) // 7 frames (tranche circulaire : NOVA)
+    this.load.spritesheet('fx_rock', 'assets/fx/rock.png', { frameWidth: 30, frameHeight: 30 }) // 14 frames (débris de roche : slam/cône)
+    this.load.spritesheet('fx_water', 'assets/fx/water.png', { frameWidth: 40, frameHeight: 33 }) // 11 frames (gerbe d'eau : slam gelée/squid)
+    this.load.spritesheet('fx_circle_orange', 'assets/fx/circle_orange.png', { frameWidth: 32, frameHeight: 32 }) // 4 frames (anneau d'invocation : adds)
 
     // --- AUDIO (pack Ninja Adventure, CC0) ---
     // musiques de fond (boucle) par zone + combat de boss + menu
@@ -367,6 +374,13 @@ export default class BootScene extends Phaser.Scene {
     if (!this.anims.exists('fx-flam')) {
       this.anims.create({ key: 'fx-flam', frames: this.anims.generateFrameNumbers('fx_flam', { start: 0, end: 9 }), frameRate: 16, repeat: -1 }) // flamme qui boucle (héros qui brûle)
     }
+    // FX d'attaques de boss (one-shot, teintables) — pack Ninja
+    if (!this.anims.exists('fx-plant')) this.anims.create({ key: 'fx-plant', frames: this.anims.generateFrameNumbers('fx_plant', { start: 0, end: 7 }), frameRate: 22, repeat: 0 }) // lianes/ronces
+    if (!this.anims.exists('fx-clawdouble')) this.anims.create({ key: 'fx-clawdouble', frames: this.anims.generateFrameNumbers('fx_clawdouble', { start: 0, end: 3 }), frameRate: 22, repeat: 0 }) // double griffe
+    if (!this.anims.exists('fx-slash-circular')) this.anims.create({ key: 'fx-slash-circular', frames: this.anims.generateFrameNumbers('fx_slash_circular', { start: 0, end: 6 }), frameRate: 24, repeat: 0 }) // tranche circulaire (nova)
+    if (!this.anims.exists('fx-rock')) this.anims.create({ key: 'fx-rock', frames: this.anims.generateFrameNumbers('fx_rock', { start: 0, end: 13 }), frameRate: 24, repeat: 0 }) // débris de roche (slam/cône)
+    if (!this.anims.exists('fx-water')) this.anims.create({ key: 'fx-water', frames: this.anims.generateFrameNumbers('fx_water', { start: 0, end: 10 }), frameRate: 22, repeat: 0 }) // gerbe d'eau (slam/flaque)
+    if (!this.anims.exists('fx-circle-orange')) this.anims.create({ key: 'fx-circle-orange', frames: this.anims.generateFrameNumbers('fx_circle_orange', { start: 0, end: 3 }), frameRate: 10, repeat: 0 }) // anneau d'invocation (adds)
     this.createDecoAnimations()
   }
 

@@ -38,6 +38,8 @@ export default class UIScene extends Phaser.Scene {
     this.dialogueObjects = []
     this.forgeOpen = false
     this.forgeObjects = []
+    this.bankOpen = false // coffre (banque)
+    this.bankObjects = []
     this.forgeTab = 'craft' // onglet du panneau forge par défaut : 'craft' (fabriquer) | 'upgrade' (réparer/améliorer)
     this.craftCat = 'potion' // sous-catégorie de l'onglet Fabriquer : 'potion' | 'gear'
     this.pauseOpen = false
@@ -127,6 +129,7 @@ export default class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ESC', () => {
       if (this.dialogueOpen) this.closeDialogue()
       else if (this.forgeOpen) this.closeForge()
+      else if (this.bankOpen) this.closeBank()
       else if (this.charOpen) this.closeChar()
       else if (this.shopOpen) this.closeShop()
       else if (this.mapOpen) this.closeMap()
@@ -861,6 +864,97 @@ export default class UIScene extends Phaser.Scene {
   destroyShop() {
     this.shopObjects.forEach((o) => o.destroy())
     this.shopObjects = []
+  }
+
+  // ============ BANQUE (coffre : or + objets À L'ABRI de la mort) ============
+  openBank() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.forgeOpen) this.closeForge()
+    if (this.shopOpen) this.closeShop()
+    this.bankOpen = true
+    this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
+    this.buildBank()
+  }
+
+  closeBank() {
+    this.bankOpen = false
+    this.destroyBank()
+    this.hideTip()
+    Audio.sfx('ui_cancel', { detune: 0 })
+    this.game_.saveGame?.() // l'or/objets du coffre sont persistés
+    this.scene.resume('GameScene')
+  }
+
+  destroyBank() { this.bankObjects.forEach((o) => o.destroy()); this.bankObjects = [] }
+
+  buildBank() {
+    this.destroyBank()
+    const p = this.game_.player
+    const BANK_MAX = 12
+    const reg = (o) => { this.bankObjects.push(o); return o }
+    const after = () => { this.game_.saveGame?.(); this.buildBank() } // applique -> sauvegarde -> redessine
+    const cw = this.scale.width, ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.62).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeBank()))
+    const W = 472, H = 400, x0 = (cw - W) / 2, y0 = (ch - H) / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, 0x16203a, 0.99).setStrokeStyle(3, 0xffe08a).setInteractive())
+    // EN-TÊTE : Cornélius + titre
+    reg(this.add.rectangle(x0 + 6, y0 + 6, W - 12, 50, 0x223152, 1).setOrigin(0, 0))
+    reg(this.add.rectangle(x0 + 32, y0 + 31, 40, 40, 0x000000, 0.4).setStrokeStyle(2, 0xffe08a))
+    const port = reg(this.add.image(x0 + 32, y0 + 31, 'npc_inspector', 0)); port.setScale(34 / Math.max(port.width, port.height))
+    reg(this.add.text(x0 + 60, y0 + 13, 'Banque d\'Ergas', { fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold', color: '#ffe9b0' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + 60, y0 + 33, '« À l\'abri ici, même après une chute. »', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'italic', color: '#bcd0e8' }).setOrigin(0, 0))
+    // --- OR ---
+    let gy = y0 + 64
+    reg(this.add.text(x0 + 16, gy, `En main : ${p.gold} or`, { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#ffd84d' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + W - 16, gy, `Coffre : ${p.bankGold} or`, { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#ffe08a' }).setOrigin(1, 0))
+    const gbtn = (bx, by, label, onClick, enabled) => {
+      const w = 60
+      const bg = reg(this.add.rectangle(bx, by, w, 22, enabled ? 0x2c3c60 : 0x1b2230, 1).setOrigin(0, 0).setStrokeStyle(1, enabled ? 0x6f86b0 : 0x33405a))
+      reg(this.add.text(bx + w / 2, by + 11, label, { fontFamily: 'monospace', fontSize: '11px', color: enabled ? '#ffffff' : '#5d6b80' }).setOrigin(0.5))
+      if (enabled) { const z = reg(this.add.rectangle(bx, by, w, 22, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true })); z.on('pointerover', () => bg.setFillStyle(0x3d527e)); z.on('pointerout', () => bg.setFillStyle(0x2c3c60)); z.on('pointerdown', () => { Audio.sfx('ui_accept', { detune: 40 }); onClick(); after() }) }
+    }
+    gy += 20
+    reg(this.add.text(x0 + 16, gy + 11, 'Déposer', { fontFamily: 'monospace', fontSize: '11px', color: '#8fd6a0' }).setOrigin(0, 0.5))
+    gbtn(x0 + 80, gy, '100', () => { const a = Math.min(p.gold, 100); p.gold -= a; p.bankGold += a }, p.gold >= 100)
+    gbtn(x0 + 146, gy, '1000', () => { const a = Math.min(p.gold, 1000); p.gold -= a; p.bankGold += a }, p.gold >= 1000)
+    gbtn(x0 + 212, gy, 'Tout', () => { p.bankGold += p.gold; p.gold = 0 }, p.gold > 0)
+    gy += 28
+    reg(this.add.text(x0 + 16, gy + 11, 'Retirer', { fontFamily: 'monospace', fontSize: '11px', color: '#e6c074' }).setOrigin(0, 0.5))
+    gbtn(x0 + 80, gy, '100', () => { const a = Math.min(p.bankGold, 100); p.bankGold -= a; p.gold += a }, p.bankGold >= 100)
+    gbtn(x0 + 146, gy, '1000', () => { const a = Math.min(p.bankGold, 1000); p.bankGold -= a; p.gold += a }, p.bankGold >= 1000)
+    gbtn(x0 + 212, gy, 'Tout', () => { p.gold += p.bankGold; p.bankGold = 0 }, p.bankGold > 0)
+    // --- OBJETS (clic = déplacer entre sac et coffre) ---
+    reg(this.add.rectangle(x0 + 16, y0 + 162, W - 32, 1, 0xffe08a, 0.25).setOrigin(0, 0))
+    reg(this.add.text(x0 + 16, y0 + 170, `Coffre  (${p.bankItems.length}/${BANK_MAX})`, { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#ffe08a' }).setOrigin(0, 0))
+    const slot = (sx, sy, item, onClick) => {
+      reg(this.add.rectangle(sx, sy, 38, 38, 0x0e1626, 0.9).setOrigin(0, 0).setStrokeStyle(1, 0x3a4a66))
+      if (!item) return
+      reg(this.rarityBg(sx + 19, sy + 19, 30, item.rarity))
+      this.addItemIcon(reg, sx + 19, sy + 19, item, 26)
+      if ((item.qty || 1) > 1) reg(this.add.text(sx + 36, sy + 36, `${item.qty}`, { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: '#fff', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 1))
+      const z = reg(this.add.rectangle(sx, sy, 38, 38, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+      z.on('pointerover', () => this.showTip(item, sx + 19, sy))
+      z.on('pointerout', () => this.hideTip())
+      z.on('pointerdown', () => { this.hideTip(); onClick() })
+    }
+    for (let i = 0; i < BANK_MAX; i++) {
+      const sx = x0 + 16 + (i % 6) * 42, sy = y0 + 188 + Math.floor(i / 6) * 42, it = p.bankItems[i]
+      slot(sx, sy, it, () => { // RETIRER -> sac
+        if (!p.canAccept(it)) { this.showToast(`Sac plein (${p.invMax})`, '#e0a866'); this.playDenied(); return }
+        p.bankItems.splice(i, 1); p.addItem(it); Audio.sfx('ui_accept', { detune: 30 }); after()
+      })
+    }
+    reg(this.add.text(x0 + 16, y0 + 278, `Ton sac  (${p.inventory.length}/${p.invMax})`, { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#cfe0f0' }).setOrigin(0, 0))
+    for (let i = 0; i < p.invMax; i++) {
+      const sx = x0 + 16 + (i % 6) * 42, sy = y0 + 296, it = p.inventory[i]
+      slot(sx, sy, it, () => { // DÉPOSER -> coffre
+        if (p.bankItems.length >= BANK_MAX) { this.showToast('Coffre plein (12)', '#e0a866'); this.playDenied(); return }
+        const removed = p.inventory.splice(i, 1)[0]; p.invVersion++; p.bankItems.push(removed); Audio.sfx('ui_accept', { detune: 30 }); after()
+      })
+    }
+    reg(this.add.text(cw / 2, y0 + H - 13, 'Clic sur un objet = le déplacer  ·  Échap : fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5))
   }
 
   buyItem(item) {

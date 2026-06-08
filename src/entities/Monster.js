@@ -87,8 +87,15 @@ export const MONSTER_TYPES = {
     hp: 220, speed: 34, damage: 18, xp: 0, aggro: 95, scale: 1.7, body: { w: 26, h: 32 },
     tier: 'epic', loot: { gold: [0, 0] }, name: 'Tengu des Glaces',
     // RAID : déluge plus large + transfo à 50 % PV (dégâts de raid -> esquive obligatoire).
-    barrage: { range: 340, windup: 650, recover: 420, shots: 7, gap: 0.3, projSpeed: 160, projDamage: 5, cooldown: 2300 },
-    enrage: { hpPct: 0.5, dmgMul: 1.5, cdMul: 0.6, scale: 1.1, dur: 950 },
+    barrage: { range: 340, windup: 650, recover: 420, shots: 7, gap: 0.3, projSpeed: 160, projDamage: 5, cooldown: 2300, color: 0x9fd8ff, fx: 'fx-fireball' },
+    enrage: { hpPct: 0.5, dmgMul: 1.5, cdMul: 0.6, scale: 1.1, dur: 950, fx: 'fx-spirit', color: 0x9fd8ff },
+    // KIT WoW : barrage+nova d'emblée ; le sol se ferme (voidzone) à 70% ; FUREUR + vague d'adds (3 chauves-souris) à 50%.
+    nova: { range: 150, radius: 76, windup: 1250, active: 160, recover: 320, dmgMul: 1.3, knock: 470, knockMs: 280, cooldown: 4200, color: 0x7be0ff, fx: 'fx-ice-burst' },
+    voidzone: { range: 300, windup: 1100, recover: 320, count: 3, radius: 38, spread: 95, lifetime: 4200, tick: 600, dmgMul: 0.55, cooldown: 5200, anchorPlayer: true, color: 0x7be0ff, fx: 'fx-ice-burst' },
+    phases: [
+      { atPct: 0.70, add: ['voidzone'] },
+      { atPct: 0.50, dmgMul: 1.5, cdMul: 0.6, scale: 1.1, trans: true, summon: { type: 'bluebat', count: 3 } },
+    ],
   },
   samurai: {
     key: 'boss_samurai_idle', rig: 'samurai', raid: true, face: 'face_samurai',
@@ -97,7 +104,11 @@ export const MONSTER_TYPES = {
     // CHARGE TÉLÉGRAPHIÉE : zone au sol pendant `windup` ms (anim charge), puis dash à `speed` px/s
     // pendant `duration` ms le long de l'angle verrouillé ; touche dans `hitRadius` px de l'axe (×`dmgMul`).
     // Esquive : se décaler hors de l'axe pendant le windup (long + bande étroite -> dodge confortable).
-    charge: { range: 300, windup: 850, speed: 430, duration: 400, dmgMul: 1.7, cooldown: 2600, hitRadius: 28, color: 0x4aa3ff, chargeOriginY: 0.75 },
+    charge: { range: 340, windup: 720, speed: 430, duration: 520, dmgMul: 1.7, cooldown: 2600, hitRadius: 28, color: 0x4aa3ff, chargeOriginY: 0.75 },
+    // KIT WoW : charge+cône d'emblée ; nova de recul débloquée à 70% (pas d'enrage : rig sans anim Trans).
+    cone: { range: 165, halfAngle: 0.45, windup: 1150, active: 180, recover: 320, dmgMul: 1.5, cooldown: 2800, color: 0x4aa3ff, knockback: 60 },
+    nova: { range: 140, radius: 70, windup: 1250, active: 160, recover: 320, dmgMul: 1.3, knock: 360, knockMs: 250, cooldown: 4000, color: 0x4aa3ff },
+    phases: [{ atPct: 0.70, add: ['nova'] }],
   },
 
   // --- BOSS SOLO à sprite dédié (rig, mais PAS raid -> tuable seul) ---
@@ -106,7 +117,7 @@ export const MONSTER_TYPES = {
     hp: 70, speed: 28, damage: 15, xp: 32, aggro: 110, scale: 2.2, body: { w: 26, h: 34 },
     tier: 'epic', loot: { gold: [6, 12] }, name: 'Cyclope démon',
     // BULL-RUSH : ruée lourde et télégraphiée (pas de feuille charge -> garde l'idle). Mêlée sûre entre 2 ruées.
-    charge: { range: 280, windup: 950, speed: 400, duration: 420, dmgMul: 1.6, cooldown: 2800, hitRadius: 30, color: 0xc97b3a },
+    charge: { range: 320, windup: 760, speed: 400, duration: 540, dmgMul: 1.6, cooldown: 2800, hitRadius: 30, color: 0xc97b3a, fx: 'fx-rock' },
   },
   // Seigneur de flamme (Terres Maudites) : rig SANS walk (reste sur place, lent) -> playRig retombe sur idle
   giantflam: {
@@ -120,19 +131,24 @@ export const MONSTER_TYPES = {
     hp: 85, speed: 26, damage: 17, xp: 36, aggro: 115, scale: 2.2, body: { w: 26, h: 34 },
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Cyclope ancien',
     // Cyclope ancien : bull-rush plus rapide, plus large et plus fort.
-    charge: { range: 290, windup: 850, speed: 440, duration: 420, dmgMul: 1.7, cooldown: 2500, hitRadius: 32, color: 0xd49a4a },
+    charge: { range: 330, windup: 720, speed: 440, duration: 540, dmgMul: 1.7, cooldown: 2500, hitRadius: 32, color: 0xd49a4a, fx: 'fx-rock' },
   },
   giantbamboo: {
     key: 'boss_giantbamboo_idle', rig: 'giantbamboo', face: 'face_giantbamboo',
     hp: 80, speed: 24, damage: 16, xp: 34, aggro: 110, scale: 1.8, body: { w: 28, h: 40 },
     tier: 'epic', loot: { gold: [6, 13] }, name: 'Colosse de bambou',
+    // KIT WoW (golem lent) : balayage en cône d'emblée ; écrasement (slam) à 70% ; nova de recul à 40%.
+    cone: { range: 175, halfAngle: 0.62, windup: 1150, active: 200, recover: 360, dmgMul: 1.5, cooldown: 2900, color: 0x8fd24a, knockback: 0, fx: 'fx-plant' },
+    slam: { range: 210, windup: 720, jumpDur: 460, hitRadius: 62, dmgMul: 1.5, cooldown: 3400, color: 0x8fd24a, fx: 'fx-rock' },
+    nova: { range: 150, radius: 70, windup: 1250, active: 160, recover: 320, dmgMul: 1.2, knock: 380, knockMs: 240, cooldown: 4200, color: 0x8fd24a },
+    phases: [{ atPct: 0.70, add: ['slam'] }, { atPct: 0.40, add: ['nova'] }],
   },
   giantslime: {
     key: 'boss_giantslime_idle', rig: 'giantslime', face: 'face_giantslime',
     hp: 78, speed: 22, damage: 15, xp: 34, aggro: 105, scale: 1.8, body: { w: 34, h: 26 },
     tier: 'epic', loot: { gold: [6, 13] }, name: 'Gelée polaire',
     // SAUT-SLAM : bondit sur la position du joueur (cercle de danger télégraphié) puis écrase = AoE.
-    slam: { range: 230, windup: 650, jumpDur: 460, hitRadius: 62, dmgMul: 1.6, cooldown: 2200, color: 0x7be0c8 },
+    slam: { range: 230, windup: 650, jumpDur: 460, hitRadius: 62, dmgMul: 1.6, cooldown: 2200, color: 0x7be0c8, fx: 'fx-water' },
   },
   giantspirit: {
     key: 'boss_giantspirit_idle', rig: 'giantspirit', face: 'face_giantspirit',
@@ -143,22 +159,22 @@ export const MONSTER_TYPES = {
     key: 'boss_redsamurai_idle', rig: 'redsamurai', face: 'face_redsamurai',
     hp: 88, speed: 32, damage: 19, xp: 38, aggro: 95, scale: 1.5, body: { w: 40, h: 28 },
     tier: 'epic', loot: { gold: [8, 15] }, name: 'Samouraï Rouge',
-    charge: { range: 300, windup: 1000, speed: 430, duration: 400, dmgMul: 1.7, cooldown: 2800, hitRadius: 28, color: 0xff3030, chargeOriginY: 0.75 },
+    charge: { range: 340, windup: 780, speed: 430, duration: 520, dmgMul: 1.7, cooldown: 2800, hitRadius: 28, color: 0xff3030, chargeOriginY: 0.75 },
   },
   tengured: {
     key: 'boss_tengured_idle', rig: 'tengured', face: 'face_tengured',
     hp: 84, speed: 36, damage: 18, xp: 38, aggro: 95, scale: 1.7, body: { w: 26, h: 32 },
     tier: 'epic', loot: { gold: [8, 15] }, name: 'Tengu Rouge',
     // DÉLUGE : volée de boules de feu en éventail (anim Attack) ; TRANSFO à 50 % PV (anim Trans) -> enrage.
-    barrage: { range: 320, windup: 700, recover: 450, shots: 5, gap: 0.34, projSpeed: 150, projDamage: 6, cooldown: 2600 },
-    enrage: { hpPct: 0.5, dmgMul: 1.4, cdMul: 0.62, scale: 1.12, dur: 950 },
+    barrage: { range: 320, windup: 700, recover: 450, shots: 5, gap: 0.34, projSpeed: 150, projDamage: 6, cooldown: 2600, color: 0xff8a4a, fx: 'fx-fireball' },
+    enrage: { hpPct: 0.5, dmgMul: 1.4, cdMul: 0.62, scale: 1.12, dur: 950, fx: 'fx-flam', color: 0xff6a3a },
   },
   giantslime2: {
     key: 'boss_giantslime2_idle', rig: 'giantslime2', face: 'face_giantslime2',
     hp: 80, speed: 22, damage: 16, xp: 36, aggro: 105, scale: 1.9, body: { w: 34, h: 26 },
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Gelée ancienne',
     // Gelée ancienne : saut-slam plus rapide, plus large et plus fort.
-    slam: { range: 240, windup: 580, jumpDur: 430, hitRadius: 68, dmgMul: 1.75, cooldown: 1950, color: 0x9fe8ff },
+    slam: { range: 240, windup: 580, jumpDur: 430, hitRadius: 68, dmgMul: 1.75, cooldown: 1950, color: 0x9fe8ff, fx: 'fx-water' },
   },
 
   // --- BOSS CÔTIER À DISTANCE (tire des orbes que le joueur ESQUIVE ; mêlée faible -> garde tes distances ou approche) ---
@@ -175,18 +191,32 @@ export const MONSTER_TYPES = {
     key: 'boss_giantfrog_idle', rig: 'giantfrog', face: 'face_giantfrog',
     hp: 76, speed: 30, damage: 16, xp: 34, aggro: 110, scale: 2.0, body: { w: 26, h: 22 },
     tier: 'epic', loot: { gold: [6, 13] }, name: 'Crapaud colossal',
-    charge: { range: 280, windup: 950, speed: 420, duration: 380, dmgMul: 1.6, cooldown: 2900, hitRadius: 24, color: 0x7bd86a },
+    charge: { range: 320, windup: 760, speed: 420, duration: 500, dmgMul: 1.6, cooldown: 2900, hitRadius: 24, color: 0x7bd86a },
+    // KIT WoW : charge+flaques de poison d'emblée ; saut-slam débloqué à 40%.
+    voidzone: { range: 240, windup: 1100, recover: 320, count: 3, radius: 40, spread: 95, lifetime: 4200, tick: 600, dmgMul: 0.55, cooldown: 4600, anchorPlayer: true, color: 0x7bd86a, fx: 'fx-plant' },
+    slam: { range: 220, windup: 700, jumpDur: 470, hitRadius: 60, dmgMul: 1.5, cooldown: 3200, color: 0x7bd86a, fx: 'fx-water' },
+    phases: [{ atPct: 0.40, add: ['slam'] }],
   },
   giantracoon: {
     key: 'boss_giantracoon_idle', rig: 'giantracoon', face: 'face_giantracoon',
     hp: 82, speed: 34, damage: 17, xp: 36, aggro: 100, scale: 1.7, body: { w: 30, h: 30 },
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Raton géant',
-    charge: { range: 280, windup: 900, speed: 460, duration: 360, dmgMul: 1.5, cooldown: 2700, hitRadius: 24, color: 0xe0a24a },
+    charge: { range: 320, windup: 740, speed: 460, duration: 470, dmgMul: 1.5, cooldown: 2700, hitRadius: 24, color: 0xe0a24a, fx: 'fx-clawdouble' },
+    // KIT WoW : charge+nova de recul (tournoiement) d'emblée ; cône débloqué à 50%.
+    nova: { range: 150, radius: 70, windup: 1250, active: 160, recover: 300, dmgMul: 1.3, knock: 430, knockMs: 260, cooldown: 3400, color: 0xe0a24a, fx: 'fx-explosion' },
+    cone: { range: 170, halfAngle: 0.58, windup: 1150, active: 180, recover: 320, dmgMul: 1.4, cooldown: 3000, color: 0xe0a24a, knockback: 0, fx: 'fx-clawdouble' },
+    phases: [{ atPct: 0.50, add: ['cone'] }],
   },
   giantbamboo2: {
     key: 'boss_giantbamboo2_idle', rig: 'giantbamboo2', face: 'face_giantbamboo2',
     hp: 86, speed: 24, damage: 17, xp: 36, aggro: 110, scale: 1.8, body: { w: 28, h: 40 },
     tier: 'epic', loot: { gold: [7, 15] }, name: 'Colosse de bambou ancien',
+    // KIT WoW (ANCIEN = plus dur) : cône+slam d'emblée ; flaques à 60% ; nova à 35%. Valeurs majorées.
+    cone: { range: 185, halfAngle: 0.66, windup: 1150, active: 200, recover: 320, dmgMul: 1.6, cooldown: 2500, color: 0x6fae2e, knockback: 60, fx: 'fx-plant' },
+    slam: { range: 220, windup: 640, jumpDur: 430, hitRadius: 70, dmgMul: 1.65, cooldown: 2900, color: 0x6fae2e, fx: 'fx-rock' },
+    voidzone: { range: 250, windup: 1100, recover: 300, count: 4, radius: 40, spread: 105, lifetime: 4600, tick: 600, dmgMul: 0.6, cooldown: 4000, anchorPlayer: true, color: 0x6fae2e, fx: 'fx-plant' },
+    nova: { range: 160, radius: 76, windup: 1250, active: 160, recover: 300, dmgMul: 1.35, knock: 420, knockMs: 260, cooldown: 3600, color: 0x6fae2e },
+    phases: [{ atPct: 0.60, add: ['voidzone'] }, { atPct: 0.35, add: ['nova'] }],
   },
 
   // --- BOSS DE RAID SEGMENTÉ (tête + chaîne de corps qui ondule) ---
@@ -203,7 +233,7 @@ const HIT_AGGRO_GRACE = 5000 // tant qu'un mob a été FRAPPÉ il y a moins de �
 const HOME_RADIUS = 16 // considéré "rentré" sous cette distance de son spawn (px)
 const PATROL_RADIUS = 80 // rayon autour duquel un BOSS rôde/garde son repaire avant d'être provoqué (px)
 const BOSS_GUARD_LEASH = 220 // tant que le combat n'a PAS commencé, le boss ne poursuit pas au-delà (revient au repaire)
-const BOSS_WAKE_DELAY = 1000 // au réveil (1re attaque reçue), le boss patiente avant de mordre/charger -> laisse le temps de réagir
+const BOSS_WAKE_DELAY = 2000 // au réveil (1re attaque reçue), le boss patiente 2 s avant TOUTE attaque -> on a le temps de se replacer (anti one-shot d'ouverture)
 const SPEED_SCALE = 0.62 // ralentit TOUS les monstres (joueur=65) -> kitables en courant
 const NAMEPLATE_RANGE = 120 // distance (px) à laquelle on voit le niveau au-dessus du monstre
 // SCALING DES MOBS par niveau de ZONE (1→6 selon la distance) : PV ×2/niv (murs de zone nets),
@@ -306,6 +336,26 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.attackAngle = 0 // direction verrouillée de la charge (posée au début du télégraphe)
     this.charging = false // en plein dash (dégâts majorés au contact)
     this.chargeHitDone = false // un seul gros coup par dash
+    // ===== SYSTÈME DE PHASES + CAPACITÉS TÉLÉGRAPHIÉES (WoW-like) =====
+    this.attackOwner = null // capacité qui POSSÈDE le cycle d'attaque en cours (attackPhase partagé entre briques)
+    this._transApplied = false
+    this.phaseIndex = 0 // nb de paliers de phase FRANCHIS
+    this.phaseCdMul = 1 // cumul des cdMul des paliers franchis (raccourcit les cooldowns en fin de combat)
+    this.phases = this._buildPhases(def) // paliers triés (def.phases OU migration de def.enrage)
+    this._pendingScale = null // grossissement différé appliqué en fin de gel Trans
+    // capacités DÉBLOQUÉES : on seed le kit de DÉPART = capacités de la def NON verrouillées par un palier (add:[...])
+    this.phaseAbilities = new Set()
+    {
+      const gated = new Set()
+      for (const ph of this.phases) if (Array.isArray(ph.add)) for (const k of ph.add) gated.add(k)
+      for (const k of ['charge', 'slam', 'barrage', 'cone', 'voidzone', 'nova', 'adds']) if (def[k] && !gated.has(k)) this.phaseAbilities.add(k)
+    }
+    this.coneNextAt = 0; this.coneAngle = 0; this.coneHitDone = false // cône frontal
+    this.novaNextAt = 0; this.novaHitDone = false // nova de recul
+    this.voidNextAt = 0; this.voidSpots = null // flaques persistantes
+    this.addsNextAt = 0 // invocation d'adds
+    this.attackGraceUntil = 0 // répit d'ouverture posé par wake() (anti one-shot au réveil)
+    this.summonedBy = null; this.isAdd = false // marqueurs d'add (sbire invoqué par un boss)
     // ATTAQUE SPÉCIALE DES MOBS normaux (def.mobAtk : lunge/shoot/zone) — moteur léger, distinct des boss
     this.mobPhase = 'idle' // idle | telegraph | dash | recover
     this.mobUntil = 0
@@ -409,6 +459,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.engage()
     this.nextBiteAt = now + BOSS_WAKE_DELAY
     this.nextAttackAt = now + BOSS_WAKE_DELAY
+    this.attackGraceUntil = now + BOSS_WAKE_DELAY // répit d'ouverture : AUCUNE capacité (cône/nova/flaques/adds inclus) ne démarre avant
   }
 
   /** RALENTI (Blizzard du Mage) : réduit la vitesse de nav de `factor` pendant `durationMs`. (Contrôle ->
@@ -473,6 +524,61 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.sleepText.setVisible(true)
   }
 
+  /** Normalise les paliers de phase : def.phases (copie triée) OU migration de def.enrage en 1 palier trans
+   *  (rétro-compat tengu) OU [] (boss sans palier). Trié par seuil de PV DÉCROISSANT. */
+  _buildPhases(def) {
+    let list
+    if (Array.isArray(def.phases) && def.phases.length) list = def.phases.map((p) => ({ ...p }))
+    else if (def.enrage) { const e = def.enrage; list = [{ atPct: e.hpPct ?? 0.5, dmgMul: e.dmgMul ?? 1.4, cdMul: e.cdMul ?? 1, scale: e.scale ?? null, trans: true }] }
+    else list = []
+    return list.sort((a, b) => (b.atPct ?? 0) - (a.atPct ?? 0))
+  }
+
+  /** Franchit les paliers de phase passés sous leur seuil de PV (généralise l'enrage 50%) : déverrouille des
+   *  capacités, boost dégâts/cadence/taille, joue Trans (gel), invoque des adds. Renvoie true SEULEMENT pendant
+   *  le gel de transformation -> l'appelant saute la frame. */
+  updatePhases(time) {
+    if (time < this.transUntil) { this.setVelocity(0, 0); return true } // gel Trans en cours
+    if (this._pendingScale && !this._transApplied) { // applique le grossissement différé en fin de gel
+      this._transApplied = true
+      this.setScale(Math.abs(this.scaleX) * this._pendingScale, this.scaleY * this._pendingScale)
+      this._pendingScale = null; this.rigState = null
+    }
+    if (this.phaseIndex >= this.phases.length) return false
+    const ph = this.phases[this.phaseIndex]
+    if (this.hp > this.maxHp * (ph.atPct ?? 0)) return false // seuil pas encore atteint
+    this.phaseIndex++
+    if (Array.isArray(ph.add)) for (const k of ph.add) this.phaseAbilities.add(k) // le kit GRANDIT
+    if (ph.dmgMul && ph.dmgMul !== 1) { this.damage = Math.round(this.damage * ph.dmgMul); this.dmgScale *= ph.dmgMul }
+    if (ph.cdMul && ph.cdMul !== 1) this.phaseCdMul *= ph.cdMul
+    if (ph.trans) this.enraged = true // flag legacy (raccourcit le windup du barrage)
+    if (ph.trans) {
+      const tk = `boss-${this.rig}-trans`
+      if (this.rig && this.scene.anims.exists(tk)) {
+        this.transUntil = time + (ph.dur ?? this.def.enrage?.dur ?? 950)
+        this.attackPhase = 'idle'; this.attackOwner = null; this.rigState = 'trans'; this.anims.play(tk)
+      }
+      if (ph.scale) { this._pendingScale = ph.scale; this._transApplied = false }
+      this.scene.bossEnrage?.(this) // flash/onde/rugissement/annonce
+    } else if (ph.scale) {
+      this.setScale(Math.abs(this.scaleX) * ph.scale, this.scaleY * ph.scale)
+    }
+    if (ph.summon) this.scene.bossSummonAdds?.(this, ph.summon) // vague d'adds à l'entrée de phase
+    return time < this.transUntil
+  }
+
+  /** Garde-fou : une capacité ne peut DÉMARRER que si aucun pattern n'occupe le boss et qu'il n'est ni étourdi
+   *  ni en transfo. (Un pattern EN COURS continue via attackOwner dans le dispatch.) */
+  abilityOn(_name) {
+    if (this.attackPhase !== 'idle') return false
+    const now = this.scene.time.now
+    if (now < this.attackGraceUntil) return false // répit d'ouverture après le réveil (anti one-shot)
+    if (this.stunnedUntil && now < this.stunnedUntil) return false
+    if (this.fearUntil && now < this.fearUntil) return false
+    if (now < this.transUntil) return false
+    return true
+  }
+
   /** CHARGE TÉLÉGRAPHIÉE. Renvoie true tant qu'une attaque occupe le boss (télégraphe/dash/récup) ->
    *  l'appelant saute alors la nav normale. Cycle : idle -> telegraph (immobile, zone au sol) ->
    *  dash (ruée le long de l'angle verrouillé, gros coup au contact) -> recover (brève pause). */
@@ -486,6 +592,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
         this.charging = true
         this.chargeHitDone = false
         this.setVelocity(Math.cos(this.attackAngle) * cfg.speed, Math.sin(this.attackAngle) * cfg.speed)
+        if (Math.abs(Math.cos(this.attackAngle)) > 0.2) this.setFlipX(Math.cos(this.attackAngle) < 0) // s'oriente DANS le sens de la ruée
       }
       return true
     }
@@ -622,7 +729,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
     // idle : déclenche un déluge si le joueur est à portée et le cooldown est écoulé
     if (time >= this.nextAttackAt && dist <= cfg.range) {
-      const enr = this.enraged ? (this.def.enrage?.cdMul ?? 1) : 1 // en fureur : geste + cooldown raccourcis
+      const enr = this.phaseCdMul ?? 1 // paliers de phase franchis : geste + cooldown raccourcis
       const windup = cfg.windup * enr
       this.attackPhase = 'telegraph'
       this.attackUntil = time + windup
@@ -634,6 +741,121 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       const ak = `boss-${this.rig}-attack`
       this.anims.play(this.scene.anims.exists(ak) ? ak : `boss-${this.rig}-idle`, true)
       this.rigState = 'attack'
+      return true
+    }
+    return false
+  }
+
+  /** CÔNE FRONTAL (cleave/souffle). idle -> telegraph (immobile, secteur de danger VERROUILLÉ dans l'axe
+   *  boss->joueur) -> active (le secteur flashe, tout ce qui est DANS le cône est touché : portée + angle) ->
+   *  recover. Esquive = passer DERRIÈRE/SUR LE CÔTÉ du boss avant la résolution. */
+  updateBosscone(time, player, dx, dy, dist) {
+    const cfg = this.def.cone
+    if (this.attackPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) {
+        this.attackPhase = 'active'; this.attackUntil = time + (cfg.active ?? 180)
+        if (!this.coneHitDone) {
+          const range = cfg.range ?? 150, half = cfg.halfAngle ?? 0.6
+          const toP = Math.atan2(player.y - this.y, player.x - this.x)
+          const diff = Phaser.Math.Angle.Wrap(toP - this.coneAngle)
+          if (dist <= range && Math.abs(diff) <= half && player.takeDamage(Math.round(this.damage * (cfg.dmgMul ?? 1.5)), time)) {
+            this.coneHitDone = true; this.scene.onBossConeHit?.(this, this.coneAngle, cfg)
+          }
+        }
+      }
+      return true
+    }
+    if (this.attackPhase === 'active') { this.setVelocity(0, 0); if (time >= this.attackUntil) { this.attackPhase = 'recover'; this.attackUntil = time + (cfg.recover ?? 320) } ; return true }
+    if (this.attackPhase === 'recover') { this.setVelocity(0, 0); if (time >= this.attackUntil) { this.attackPhase = 'idle'; this.rigState = null } ; return true }
+    if (time >= this.coneNextAt && dist <= (cfg.range ?? 150)) {
+      const cd = this.phaseCdMul ?? 1, windup = (cfg.windup ?? 700) * cd
+      this.attackPhase = 'telegraph'; this.attackUntil = time + windup
+      this.coneAngle = Math.atan2(dy, dx); this.coneHitDone = false
+      this.coneNextAt = time + windup + (cfg.active ?? 180) + (cfg.recover ?? 320) + (cfg.cooldown ?? 2600) * cd
+      this.setVelocity(0, 0); if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0); this.rigState = null
+      if (this.rig) this.anims.play(`boss-${this.rig}-idle`, true)
+      this.scene.bossConeTelegraph?.(this, this.coneAngle, cfg)
+      return true
+    }
+    return false
+  }
+
+  /** NOVA POINT-BLANK (anneau de choc qui éjecte le joueur). idle -> telegraph (anneau CENTRÉ SUR LE BOSS) ->
+   *  active (test de rayon : <= radius touché ET repoussé) -> recover. Esquive = SORTIR du rayon avant la résolution. */
+  updateBossnova(time, player, dx, dy, dist) {
+    const cfg = this.def.nova
+    if (this.attackPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) {
+        this.attackPhase = 'active'; this.attackUntil = time + (cfg.active ?? 160)
+        if (!this.novaHitDone && dist <= (cfg.radius ?? 120) && player.takeDamage(Math.round(this.damage * (cfg.dmgMul ?? 1.3)), time)) {
+          this.novaHitDone = true
+          const d = dist || 1, k = cfg.knock ?? 0
+          if (k > 0) player.knockback((dx / d) * k, (dy / d) * k, cfg.knockMs ?? 260)
+          this.scene.onBossNovaHit?.(this, cfg)
+        }
+      }
+      return true
+    }
+    if (this.attackPhase === 'active') { this.setVelocity(0, 0); if (time >= this.attackUntil) { this.attackPhase = 'recover'; this.attackUntil = time + (cfg.recover ?? 320) } ; return true }
+    if (this.attackPhase === 'recover') { this.setVelocity(0, 0); if (time >= this.attackUntil) { this.attackPhase = 'idle'; this.rigState = null } ; return true }
+    if (time >= this.novaNextAt && dist <= (cfg.range ?? 150)) {
+      const cd = this.phaseCdMul ?? 1, windup = (cfg.windup ?? 800) * cd
+      this.attackPhase = 'telegraph'; this.attackUntil = time + windup; this.novaHitDone = false
+      this.novaNextAt = time + windup + (cfg.active ?? 160) + (cfg.recover ?? 320) + (cfg.cooldown ?? 4000) * cd
+      this.setVelocity(0, 0); if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0); this.rigState = null
+      if (this.rig) this.anims.play(`boss-${this.rig}-idle`, true)
+      this.scene.bossNovaTelegraph?.(this, cfg)
+      return true
+    }
+    return false
+  }
+
+  /** FLAQUES PERSISTANTES (voidzone). idle -> telegraph (marqueurs au sol VERROUILLÉS) -> spawn (flaques réelles
+   *  qui tiquent côté GameScene) -> recover. La 1re flaque ancre sous le joueur si anchorPlayer. */
+  updateBossvoidzone(time, player, dx, dy, dist) {
+    const cfg = this.def.voidzone
+    if (this.attackPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) { this.scene.bossSpawnVoidzones?.(this, this.voidSpots, cfg); this.attackPhase = 'recover'; this.attackUntil = time + (cfg.recover ?? 320) }
+      return true
+    }
+    if (this.attackPhase === 'recover') { this.setVelocity(0, 0); if (time >= this.attackUntil) { this.attackPhase = 'idle'; this.rigState = null } ; return true }
+    if (time >= this.voidNextAt && dist <= (cfg.range ?? 300)) {
+      const cd = this.phaseCdMul ?? 1, windup = (cfg.windup ?? 760) * cd
+      const count = cfg.count ?? 3, spread = cfg.spread ?? 95
+      this.voidSpots = []
+      for (let i = 0; i < count; i++) {
+        if (i === 0 && cfg.anchorPlayer) this.voidSpots.push({ x: player.x, y: player.y })
+        else { const a = Phaser.Math.FloatBetween(0, Math.PI * 2), rr = Phaser.Math.FloatBetween(spread * 0.35, spread); this.voidSpots.push({ x: player.x + Math.cos(a) * rr, y: player.y + Math.sin(a) * rr }) }
+      }
+      this.attackPhase = 'telegraph'; this.attackUntil = time + windup
+      this.voidNextAt = time + windup + (cfg.recover ?? 320) + (cfg.cooldown ?? 5000) * cd
+      this.setVelocity(0, 0); if (Math.abs(dx) > 0.3) this.setFlipX(dx < 0); this.rigState = null
+      if (this.rig) this.anims.play(`boss-${this.rig}-idle`, true)
+      this.scene.bossVoidzoneTelegraph?.(this, this.voidSpots, cfg)
+      return true
+    }
+    return false
+  }
+
+  /** INVOCATION D'ADDS (def.adds récurrent). windup court -> pop (côté GameScene, exemptés d'arène) -> recover. */
+  updateBossadds(time, player, dx, dy, dist) {
+    const cfg = this.def.adds
+    if (this.attackPhase === 'telegraph') {
+      this.setVelocity(0, 0)
+      if (time >= this.attackUntil) { this.scene.bossSummonAdds?.(this, cfg); this.attackPhase = 'recover'; this.attackUntil = time + (cfg.recover ?? 300) }
+      return true
+    }
+    if (this.attackPhase === 'recover') { this.setVelocity(0, 0); if (time >= this.attackUntil) { this.attackPhase = 'idle'; this.rigState = null } ; return true }
+    if (time >= this.addsNextAt) {
+      const cd = this.phaseCdMul ?? 1, windup = (cfg.windup ?? 700) * cd
+      this.attackPhase = 'telegraph'; this.attackUntil = time + windup
+      this.addsNextAt = time + windup + (cfg.recover ?? 300) + (cfg.cooldown ?? 12000) * cd
+      this.setVelocity(0, 0); this.rigState = null
+      if (this.rig) this.anims.play(`boss-${this.rig}-idle`, true)
+      this.scene.bossAddsTelegraph?.(this, cfg)
       return true
     }
     return false
@@ -854,55 +1076,42 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     let aimX
     let aimY
 
-    // CHARGE TÉLÉGRAPHIÉE (boss avec def.charge, une fois réveillé) : si une attaque est en cours, elle
-    // pilote la vélocité/anim -> on saute la nav + le facing normaux pour cette frame.
-    if (this.combatEngaged && def.charge && this.updateBossCharge(time, player, dx, dy, dist)) {
+    // ===== DISPATCH UNIFIÉ DES PATTERNS DE BOSS (phases WoW-like + capacités télégraphiées) =====
+    // 1) GESTIONNAIRE DE PHASES (généralise l'enrage 50%) : franchit les paliers (def.phases OU def.enrage migré),
+    //    applique boosts/unlocks/Trans/adds. Renvoie true s'il FIGE le boss (anim Trans) -> on saute la frame.
+    if (this.combatEngaged && this.updatePhases(time)) {
       if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
       this.updateHpBar(time)
       return
     }
-
-    // SAUT-SLAM TÉLÉGRAPHIÉ (boss avec def.slam, ex. Gélées) : même principe que la charge, pilote
-    // position/anim pendant le bond et l'écrasement -> on saute la nav + le facing normaux.
-    if (this.combatEngaged && def.slam && this.updateBossSlam(time, player, dx, dy, dist)) {
-      if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
-      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
-      this.updateHpBar(time)
-      return
-    }
-
-    // TRANSFO à 50 % PV (boss avec def.enrage, ex. Tengu) : passe en FUREUR une fois -> anim Trans + boost
-    // dégâts/cadence + grossissement. Pendant l'anim, le boss est FIGÉ.
-    if (this.combatEngaged && def.enrage && !this.enraged && this.hp <= this.maxHp * (def.enrage.hpPct ?? 0.5)) {
-      this.enraged = true
-      this.transUntil = time + (def.enrage.dur ?? 950)
-      this.attackPhase = 'idle' // annule un pattern en cours
-      this.damage = Math.round(this.damage * (def.enrage.dmgMul ?? 1.4))
-      this.dmgScale *= def.enrage.dmgMul ?? 1.4
-      this.scene.bossEnrage?.(this)
-      const tk = `boss-${this.rig}-trans`
-      if (this.scene.anims.exists(tk)) { this.rigState = 'trans'; this.anims.play(tk) }
-    }
-    if (time < this.transUntil) { // figé pendant la transformation
-      this.setVelocity(0, 0)
-      if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
-      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
-      this.updateHpBar(time)
-      return
-    }
-    if (this.enraged && !this._transApplied) { // transfo terminée -> applique le grossissement, reprend
-      this._transApplied = true
-      if (def.enrage?.scale) this.setScale(Math.abs(this.scaleX) * def.enrage.scale, this.scaleY * def.enrage.scale)
-      this.rigState = null
-    }
-
-    // DÉLUGE TÉLÉGRAPHIÉ (boss avec def.barrage, ex. Tengu) : volée de projectiles en éventail.
-    if (this.combatEngaged && def.barrage && this.updateBossBarrage(time, player, dx, dy, dist)) {
-      if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
-      this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
-      this.updateHpBar(time)
-      return
+    // 2) CAPACITÉS TÉLÉGRAPHIÉES : toutes partagent attackPhase (mutuellement exclusives au runtime). attackOwner =
+    //    la capacité qui POSSÈDE le cycle en cours -> une capacité ne reprend jamais le geste d'une autre. Une
+    //    nouvelle ne démarre que si débloquée par phase (has) + le boss est libre (abilityOn). Priorité = ordre.
+    if (this.combatEngaged) {
+      const has = (k) => def[k] && this.phaseAbilities.has(k)
+      const busy = this.attackPhase !== 'idle'
+      if (!busy) this.attackOwner = null
+      const ABIL = [
+        ['charge', () => this.updateBossCharge(time, player, dx, dy, dist)],
+        ['slam', () => this.updateBossSlam(time, player, dx, dy, dist)],
+        ['cone', () => this.updateBosscone(time, player, dx, dy, dist)],
+        ['nova', () => this.updateBossnova(time, player, dx, dy, dist)],
+        ['voidzone', () => this.updateBossvoidzone(time, player, dx, dy, dist)],
+        ['adds', () => this.updateBossadds(time, player, dx, dy, dist)],
+        ['barrage', () => this.updateBossBarrage(time, player, dx, dy, dist)],
+      ]
+      for (const [k, fn] of ABIL) {
+        if (!has(k)) continue
+        if (busy ? this.attackOwner !== k : !this.abilityOn(k)) continue
+        if (fn()) {
+          if (!busy) this.attackOwner = k // vient de démarrer -> il possède le cycle
+          if (this.isBoss && this.aura) { this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)); this.aura.setDepth(this.y - 1) }
+          this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
+          this.updateHpBar(time)
+          return
+        }
+      }
     }
 
     // biome courant du monstre (sert à la zone sûre prairie ET au verrou de biome ci-dessous)
@@ -945,8 +1154,9 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // PENDANT UNE ARÈNE de boss scellée : AUCUN mob ordinaire n'attaque le joueur (ni tir, ni zone, ni bond) ->
     // le combat reste un 1v1 avec le boss (ils sont déjà repoussés hors du cercle par keepMonsterOutOfArena ;
     // sans ce verrou, les mobs à distance crachaient leurs projectiles PAR-DESSUS le mur, dans l'arène).
-    if (this.scene.activeArena && this.mobPhase && this.mobPhase !== 'idle') { this.mobPhase = 'idle'; this.nextMobAtk = time + 600 } // coupe une attaque en cours
-    if (!this.isBoss && this.def.mobAtk && this.aggroed && !this.scene.activeArena && this.updateMobAttack(time, player, dx, dy, dist)) {
+    const arenaBlocksMe = this.scene.activeArena && this.summonedBy !== this.scene.activeArena.boss // un ADD du boss courant A LE DROIT d'attaquer dans l'arène
+    if (arenaBlocksMe && this.mobPhase && this.mobPhase !== 'idle') { this.mobPhase = 'idle'; this.nextMobAtk = time + 600 } // coupe une attaque en cours
+    if (!this.isBoss && this.def.mobAtk && this.aggroed && !arenaBlocksMe && this.updateMobAttack(time, player, dx, dy, dist)) {
       if (this.alert?.visible) this.alert.setPosition(this.x, this.y - this.barOffsetY - 6)
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
       this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)

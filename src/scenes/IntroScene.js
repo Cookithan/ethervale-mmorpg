@@ -1,11 +1,11 @@
 import Phaser from 'phaser'
 import { Audio } from '../data/sound.js'
 
-// Prologue de "The Last Adventure" (monde d'Iroas) — affiché à la création d'une nouvelle partie.
-// Ton atmosphérique, peu de noms : juste Iroas + le rôle du joueur.
+// Prologue de "Island of Ergas" (monde d'Ergas) — affiché à la création d'une nouvelle partie.
+// Ton atmosphérique, peu de noms : juste Ergas + le rôle du joueur.
 const PROLOGUE = [
-  "Il fut un temps où Iroas brillait : un royaume d'îles et de forêts, gardé par des héros que nul ne croyait mortels.",
-  'Puis le monde se brisa. La terre se fendit en domaines hostiles, et ceux qui veillaient sur Iroas se changèrent en monstres.',
+  "Il fut un temps où Ergas brillait : un royaume d'îles et de forêts, gardé par des héros que nul ne croyait mortels.",
+  'Puis le monde se brisa. La terre se fendit en domaines hostiles, et ceux qui veillaient sur Ergas se changèrent en monstres.',
   'Les héros partirent les affronter. Aucun ne revint.',
   "Aujourd'hui, il ne reste qu'un village au creux d'une clairière, cerné de ruines et de mers sombres. Et toi.",
   'Choisis ta voie : Guerrier, Tank, Mage ou Soigneur.',
@@ -26,7 +26,7 @@ export default class IntroScene extends Phaser.Scene {
 
     // titre du jeu
     this.add
-      .text(cw / 2, Math.max(50, ch * 0.11), 'The Last Adventure', {
+      .text(cw / 2, Math.max(50, ch * 0.11), 'Island of Ergas', {
         fontFamily: 'Georgia, "Times New Roman", serif',
         fontSize: `${Math.round(Phaser.Math.Clamp(cw / 16, 24, 44))}px`,
         fontStyle: 'bold',

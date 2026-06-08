@@ -2548,6 +2548,7 @@ export default class GameScene extends Phaser.Scene {
     const a = this.activeArena
     const b = mon.body
     if (!a || !b || !mon.active || mon.isBoss) return
+    if (mon.summonedBy === a.boss) return // les ADDS invoqués combattent DANS l'arène de leur boss
     // le CORPS ENTIER du mob doit rester DEHORS : on garde son centre à >= rayon + demi-corps + marge.
     const minD = a.r + Math.max(b.halfWidth, b.halfHeight) + 6
     const dx = b.center.x - a.cx
@@ -2793,7 +2794,7 @@ export default class GameScene extends Phaser.Scene {
     const names = ['Edda', 'Rurik', 'Sylvane', 'Bram', 'Oona', 'Tibert', 'Maelis', 'Joran', 'Cwen', 'Hadric', 'Niamh', 'Osric', 'Veya', 'Doran', 'Liesel']
     // apparences DISTINCTES (ni villageois du bourg, ni perso de classe) -> une UNIQUE par PNJ = pas de doublon
     const texes = ['npc_noble', 'npc_princess', 'npc_oldman', 'npc_oldman2', 'npc_monk', 'npc_monk2', 'npc_hunter', 'npc_inspector', 'npc_master', 'npc_shaman', 'npc_mangreen', 'npc_eskimo', 'npc_fighterwhite', 'npc_fighterred']
-    // dialogues d'AMBIANCE : chaque baladeur évoque une facette du monde d'Iroas (lore, pas de tuto)
+    // dialogues d'AMBIANCE : chaque baladeur évoque une facette du monde d'Ergas (lore, pas de tuto)
     const pool = [
       // Edda — le désert du sud
       ['Au sud, le désert brûle sous un soleil sans pitié.', 'Les araignées y sont grosses comme des chiens, et un cyclope borgne hante les dunes. Beaucoup sont partis le chasser... peu sont revenus.'],
@@ -2805,8 +2806,8 @@ export default class GameScene extends Phaser.Scene {
       ['La mer cache un kraken sur ses rivages ; ses tentacules ont coulé plus d\'un marin imprudent.', 'On dit que le marchand vend une barque. Avec elle, on pourrait enfin franchir les flots et voir ce qu\'il y a de l\'autre côté.'],
       // Oona — l'île maudite
       ['À l\'horizon sud-ouest, une île maudite flotte dans la brume.', 'Dargoth y règne sur les âmes damnées. Nul n\'en est jamais revenu — c\'est là-bas que finissent les légendes... ou qu\'elles commencent.'],
-      // Tibert — l'histoire d'Iroas
-      ['Iroas était jadis un grand royaume ; il n\'en reste que ce village et des ruines au loin.', 'Les anciens parlent d\'un dragon endormi sous les vagues. Réveille-le, dit-on, et le monde entier tremblera.'],
+      // Tibert — l'histoire d'Ergas
+      ['Ergas était jadis un grand royaume ; il n\'en reste que ce village et des ruines au loin.', 'Les anciens parlent d\'un dragon endormi sous les vagues. Réveille-le, dit-on, et le monde entier tremblera.'],
     ]
     // 6 baladeurs : 3 à GAUCHE du village, 3 à DROITE. On pioche dans toute la moitié correspondante de la
     // PRAIRIE (côté = signe de tx-cx) -> beaucoup de spots valides, donc les 6 se placent bien espacés.
@@ -3018,17 +3019,18 @@ export default class GameScene extends Phaser.Scene {
     this.time.delayedCall(cfg.windup, () => {
       if (!zone.active) return
       zone.setFillStyle(col, 0.5) // flash à l'instant du dash
+      this.playFx(cfg.fx ?? 'fx-slash', boss.x + Math.cos(angle) * 18, boss.y + Math.sin(angle) * 18, { tint: col, rot: angle + Math.PI / 2, depth: boss.y + 50, scale: 2.6 }) // lame qui fend l'air dans l'axe
       Audio.sfx(SFX.whoosh, { vol: 0.8, detune: 200 }) // souffle de la ruée
       this.tweens.add({ targets: [zone, core], alpha: 0, duration: cfg.duration, onComplete: () => { zone.destroy(); core.destroy() } })
     })
   }
 
-  /** Gros coup d'une charge qui touche le joueur : retour visuel renforcé (par rapport à une morsure). */
+  /** Gros coup d'une charge qui touche le joueur : FX du boss (def.charge.fx) teinté. */
   onBossChargeHit(boss) {
     const p = this.player
-    const fx = this.add.sprite(p.x, p.y - 4, 'fx_circslash').setDepth(p.y + 60).setScale(2.4).setTint(boss.def.charge?.color ?? (boss.isRaid ? 0x8b2fd6 : 0xff7a3a))
-    fx.play('fx-circslash')
-    fx.once('animationcomplete', () => fx.destroy())
+    const cfg = boss.def?.charge || {}
+    const col = cfg.color ?? (boss.isRaid ? 0x8b2fd6 : 0xff7a3a)
+    this.playFx(cfg.fx ?? 'fx-circslash', p.x, p.y - 4, { tint: col, depth: p.y + 60, scale: 2.6 })
     this.flashHurt()
     this.cameras.main.shake(220, 0.011)
     Audio.sfx(SFX.hit, { vol: 0.85, detune: -350 })
@@ -3053,17 +3055,190 @@ export default class GameScene extends Phaser.Scene {
   /** Impact d'un SAUT-SLAM : onde de choc circulaire qui s'étend + secousse + son lourd. Les dégâts (AoE)
    *  sont appliqués côté Monster (test de distance au point d'impact) ; ici on ne fait que le rendu. */
   onBossSlamImpact(boss, x, y, cfg) {
-    const r = cfg.hitRadius ?? 60
-    const col = cfg.color ?? 0x7be0c8
-    const wave = this.add.circle(x, y, 8).setStrokeStyle(6, col, 0.95).setDepth(y + 1)
-    this.tweens.add({
-      targets: { v: 0 }, v: 1, duration: 360, ease: 'Cubic.out',
-      onUpdate: (tw, t) => { wave.setRadius(8 + (r - 8) * t.v); wave.setAlpha(0.95 * (1 - t.v)) },
-      onComplete: () => wave.destroy(),
-    })
+    const r = cfg.hitRadius ?? 60, col = cfg.color ?? 0x7be0c8
+    const animKey = cfg.fx ?? 'fx-explosion' // débris/eau/glace selon le boss
+    const frame = { 'fx-explosion': 40, 'fx-rock': 30, 'fx-water': 40, 'fx-ice-spike': 32, 'fx-rock-spike': 54 }[animKey] ?? 40
+    this.playFx(animKey, x, y, { tint: col, depth: y + 2, scale: Phaser.Math.Clamp((r * 2) / frame, 1.6, 4.2) })
+    const wave = this.add.circle(x, y, 8).setStrokeStyle(5, col, 0.8).setDepth(y + 1) // onde fine en sous-couche (lisibilité du rayon)
+    this.tweens.add({ targets: { v: 0 }, v: 1, duration: 360, ease: 'Cubic.out', onUpdate: (tw, t) => { wave.setRadius(8 + (r - 8) * t.v); wave.setAlpha(0.8 * (1 - t.v)) }, onComplete: () => wave.destroy() })
     this.cameras.main.shake(220, 0.012)
-    Audio.sfx(SFX.hit, { vol: 0.8, detune: -400 }) // écrasement lourd
-    if (this.dist(this.player.x, this.player.y, x, y) <= r) this.flashHurt() // n'a flashé QUE si le joueur était dans le cercle
+    Audio.sfx(SFX.hit, { vol: 0.8, detune: -400 })
+    if (this.dist(this.player.x, this.player.y, x, y) <= r) this.flashHurt()
+  }
+
+  // ===== CALLBACKS DES NOUVELLES BRIQUES DE BOSS (cône / nova / flaques / adds) — FX + dégâts =====
+
+  /** « TELL » de lancement : faute d'anim de sort sur la plupart des rigs, le boss PULSE/charge (gonfle puis
+   *  se contracte en rythme) pendant le windup -> on VOIT qu'il prépare un sort. Restaure son échelle à la fin. */
+  bossCastTell(boss, windup) {
+    if (!boss?.active) return
+    const sx = boss.scaleX, sy = boss.scaleY
+    const half = Math.max(110, Math.min(190, (windup ?? 700) * 0.3))
+    const reps = Math.max(1, Math.round((windup ?? 700) / (half * 2)))
+    this.tweens.add({
+      targets: boss, scaleX: sx * 1.14, scaleY: sy * 0.9, duration: half, yoyo: true, repeat: reps, ease: 'Sine.inOut',
+      onComplete: () => { if (boss.active) boss.setScale(sx, sy) },
+    })
+  }
+
+  /** Pose un FX one-shot teinté qui s'auto-détruit. animKey ex 'fx-plant' ; texture = clé avec '_' ; si l'anim/texture
+   *  manque -> no-op SÛR (le télégraphe d'esquive reste, jamais de crash). */
+  playFx(animKey, x, y, { scale = 1, rot = 0, tint = 0xffffff, depth = 0, alpha = 1, life = 0 } = {}) {
+    if (!animKey) return null
+    const tex = animKey.replace(/-/g, '_')
+    if (!this.textures.exists(tex) || !this.anims.exists(animKey)) return null
+    const s = this.add.sprite(x, y, tex).setDepth(depth).setScale(scale).setRotation(rot).setAlpha(alpha)
+    if (tint !== 0xffffff) s.setTint(tint)
+    s.play(animKey)
+    if (life > 0) this.time.delayedCall(life, () => s.active && s.destroy()) // anims qui BOUCLENT (rune) : destruction temporisée (animationcomplete ne se déclenche jamais)
+    else s.once('animationcomplete', () => s.destroy()) // anims one-shot : détruit en fin d'anim
+    return s
+  }
+
+  /** Secteur de danger au sol pour un CÔNE (cleave/souffle) : éventail dans l'axe verrouillé qui pulse pendant
+   *  le windup puis flashe. Clippé au rayon de l'arène (le boss y est confiné). Esquive = sortir du secteur. */
+  bossConeTelegraph(boss, angle, cfg) {
+    let range = cfg.range ?? 150
+    const half = cfg.halfAngle ?? 0.6, col = cfg.color ?? 0xff5a2a
+    const ar = this.activeArena
+    if (ar && ar.boss === boss) { // cape la portée sur le bord de l'arène (intersection rayon/cercle)
+      const fx = boss.x - ar.cx, fy = boss.y - ar.cy
+      const b = 2 * (fx * Math.cos(angle) + fy * Math.sin(angle)), c = fx * fx + fy * fy - ar.r * ar.r
+      const disc = b * b - 4 * c
+      if (disc > 0) { const t = (-b + Math.sqrt(disc)) / 2; if (t > 0) range = Math.min(range, t) }
+    }
+    this.bossCastTell(boss, cfg.windup) // le boss « charge » son geste (pas d'anim de sort sur le rig)
+    const g = this.add.graphics().setDepth(boss.y - 2)
+    const draw = (fillA) => { g.clear(); g.fillStyle(col, fillA); g.lineStyle(2, col, Math.min(1, fillA + 0.3)); g.beginPath(); g.moveTo(boss.x, boss.y); g.arc(boss.x, boss.y, range, angle - half, angle + half, false); g.closePath(); g.fillPath(); g.strokePath() }
+    draw(0.16)
+    this.playFx('fx-magic-circle', boss.x, boss.y + 4, { tint: col, alpha: 0.5, depth: boss.y - 3, scale: Math.max(1.4, range / 60), life: cfg.windup ?? 700 }) // rune d'incantation au sol (décor)
+    Audio.sfx(SFX.whoosh, { vol: 0.4, detune: -450 })
+    const pulse = this.tweens.addCounter({ from: 0.16, to: 0.42, duration: (cfg.windup ?? 700) / 2, yoyo: true, repeat: -1, ease: 'Sine.inOut', onUpdate: (tw) => g.active && draw(tw.getValue()) })
+    this.time.delayedCall(cfg.windup ?? 700, () => {
+      if (!g.active) return
+      pulse.remove(); draw(0.55)
+      Audio.sfx(SFX.whoosh, { vol: 0.8, detune: 250 })
+      // BALAYAGE le long de l'axe : 3 tranches échelonnées (FX teinté du boss, perpendiculaire à l'axe).
+      const animKey = cfg.fx ?? 'fx-slash'
+      const rot = angle + Math.PI / 2
+      const sc = Phaser.Math.Clamp(range / 45, 2.2, 4.2)
+      ;[0.42, 0.66, 0.90].forEach((f, i) => this.time.delayedCall(i * 45, () => {
+        if (!boss.active) return
+        this.playFx(animKey, boss.x + Math.cos(angle) * range * f, boss.y + Math.sin(angle) * range * f, { tint: col, rot, depth: boss.y + 50, scale: sc * (0.85 + f * 0.35) })
+      }))
+      this.tweens.add({ targets: g, alpha: 0, duration: (cfg.active ?? 180) + 120, onComplete: () => g.destroy() })
+    })
+  }
+
+  /** Le cône touche : éclat de tranche + secousse + son + recul léger éventuel (cfg.knockback). */
+  onBossConeHit(boss, angle, cfg) {
+    const p = this.player, col = cfg.color ?? 0xff5a2a
+    this.playFx(cfg.fx ?? 'fx-slash', p.x, p.y - 4, { tint: col, rot: angle + Math.PI / 2, depth: p.y + 60, scale: 2.4 })
+    if (cfg.knockback) p.knockback(Math.cos(angle) * cfg.knockback, Math.sin(angle) * cfg.knockback, 220)
+    this.flashHurt(); this.cameras.main.shake(200, 0.010)
+    Audio.sfx(SFX.hit, { vol: 0.85, detune: -300 })
+  }
+
+  /** Anneau de danger d'une NOVA point-blank : cercle CENTRÉ SUR LE BOSS qui pulse, puis s'efface. Esquive = sortir du rayon. */
+  bossNovaTelegraph(boss, cfg) {
+    const r = cfg.radius ?? 120, col = cfg.color ?? 0x7be0ff
+    this.bossCastTell(boss, cfg.windup) // le boss « charge » son geste
+    const zone = this.add.circle(boss.x, boss.y, r, col, 0.16).setDepth(boss.y - 2)
+    const ring = this.add.circle(boss.x, boss.y, r, col, 0).setStrokeStyle(3, col, 0.85).setDepth(boss.y - 1)
+    this.tweens.add({ targets: zone, fillAlpha: 0.4, duration: (cfg.windup ?? 800) / 2, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    const rune = this.playFx('fx-magic-circle', boss.x, boss.y, { tint: col, alpha: 0.5, depth: boss.y - 3, scale: (r * 2) / 32, life: (cfg.windup ?? 800) + 220 }) // rune au sol = diamètre du rayon d'esquive
+    Audio.sfx(SFX.whoosh, { vol: 0.4, detune: -500 })
+    this.time.delayedCall(cfg.windup ?? 800, () => {
+      if (!zone.active) return
+      this.tweens.killTweensOf(zone)
+      if (rune?.active) this.tweens.add({ targets: rune, alpha: 0, duration: 160, onComplete: () => rune.active && rune.destroy() })
+      this.tweens.add({ targets: [zone, ring], alpha: 0, duration: (cfg.active ?? 160) + 120, onComplete: () => { zone.destroy(); ring.destroy() } })
+    })
+  }
+
+  /** Onde de la NOVA quand elle touche : FX d'onde (tranche circulaire/glace/explosion) + anneau fin en sous-couche. */
+  onBossNovaHit(boss, cfg) {
+    const r = cfg.radius ?? 120, col = cfg.color ?? 0x7be0ff
+    const animKey = cfg.fx ?? 'fx-slash-circular'
+    const frame = { 'fx-slash-circular': 54, 'fx-ice-burst': 32, 'fx-explosion': 40 }[animKey] ?? 40
+    this.playFx(animKey, boss.x, boss.y, { tint: col, depth: boss.y + 1, scale: (r * 2) / frame })
+    const wave = this.add.circle(boss.x, boss.y, 8).setStrokeStyle(4, col, 0.7).setDepth(boss.y + 1)
+    this.tweens.add({ targets: { v: 0 }, v: 1, duration: 340, ease: 'Cubic.out', onUpdate: (tw, t) => { wave.setRadius(8 + (r - 8) * t.v); wave.setAlpha(0.7 * (1 - t.v)) }, onComplete: () => wave.destroy() })
+    this.flashHurt(); this.cameras.main.shake(220, 0.011)
+    Audio.sfx(SFX.hit, { vol: 0.85, detune: -380 })
+  }
+
+  /** Marqueurs d'avertissement des FLAQUES pendant le windup (1 cercle pulsant par point verrouillé). */
+  bossVoidzoneTelegraph(boss, spots, cfg) {
+    const r = cfg.radius ?? 46, col = cfg.color ?? 0x7bd86a
+    this.bossCastTell(boss, cfg.windup) // le boss « charge » son geste
+    for (const s of spots) {
+      const zone = this.add.circle(s.x, s.y, r, col, 0.12).setDepth(s.y - 2)
+      const ring = this.add.circle(s.x, s.y, r, col, 0).setStrokeStyle(2, col, 0.7).setDepth(s.y - 1)
+      this.tweens.add({ targets: zone, fillAlpha: 0.34, duration: (cfg.windup ?? 760) / 2, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      this.time.delayedCall((cfg.windup ?? 760) + 40, () => { this.tweens.killTweensOf(zone); zone.destroy(); ring.destroy() })
+    }
+    Audio.sfx(SFX.whoosh, { vol: 0.35, detune: -400 })
+  }
+
+  /** Matérialise les FLAQUES persistantes : chaque flaque vit `lifetime` ms et tic des dégâts au joueur dedans
+   *  (toutes `tick` ms). Stockées dans this.voidZones, tickées par updateVoidZones. */
+  bossSpawnVoidzones(boss, spots, cfg) {
+    if (!this.voidZones) this.voidZones = []
+    const r = cfg.radius ?? 46, col = cfg.color ?? 0x7bd86a, now = this.time.now
+    const animKey = cfg.fx ?? null // FX d'APPARITION one-shot ; la flaque reste un cercle teinté tické
+    const frame = { 'fx-plant': 30, 'fx-ice-burst': 32, 'fx-water': 40 }[animKey] ?? 32
+    for (const s of spots) {
+      if (animKey) this.playFx(animKey, s.x, s.y, { tint: col, depth: s.y + 1, scale: Phaser.Math.Clamp((r * 2) / frame, 1.4, 3.6) }) // éclosion (lianes/glace/eau)
+      const fill = this.add.circle(s.x, s.y, r, col, 0.28).setDepth(s.y - 2)
+      const ring = this.add.circle(s.x, s.y, r, col, 0).setStrokeStyle(2, col, 0.6).setDepth(s.y - 1)
+      this.tweens.add({ targets: fill, fillAlpha: 0.18, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      this.voidZones.push({ x: s.x, y: s.y, r, expireAt: now + (cfg.lifetime ?? 4200), nextTick: now, tick: cfg.tick ?? 600, dmg: Math.round(boss.damage * (cfg.dmgMul ?? 0.55)), fill, ring, boss })
+    }
+    Audio.sfx(SFX.hit, { vol: 0.45, detune: -250 })
+  }
+
+  /** Tick par frame des flaques persistantes : dégâts au joueur dedans (cadence `tick`), retrait des expirées / orphelines. */
+  updateVoidZones(time) {
+    if (!this.voidZones || !this.voidZones.length) return
+    const p = this.player, keep = []
+    for (const z of this.voidZones) {
+      if (time >= z.expireAt || !z.boss?.active || z.boss.hp <= 0 || this.gameOver) { z.fill.destroy(); z.ring.destroy(); continue }
+      if (p.hp > 0 && time >= z.nextTick && this.dist(p.x, p.y, z.x, z.y) <= z.r) { z.nextTick = time + z.tick; if (p.takeDamage(z.dmg, time)) this.flashHurt() }
+      keep.push(z)
+    }
+    this.voidZones = keep
+  }
+
+  /** Bref signal d'invocation (rune/cercle au sol) pendant le windup des adds. */
+  bossAddsTelegraph(boss, cfg) {
+    const col = cfg.color ?? 0xb060ff
+    this.playFx(cfg.fx ?? 'fx-circle-orange', boss.x, boss.y + 4, { tint: col, depth: boss.y - 3, scale: 2.0, alpha: 0.85 }) // rune d'invocation animée au sol
+    const ring = this.add.circle(boss.x, boss.y, 40, col, 0).setStrokeStyle(3, col, 0.8).setDepth(boss.y - 1)
+    this.tweens.add({ targets: { v: 0 }, v: 1, duration: cfg.windup ?? 700, ease: 'Cubic.out', onUpdate: (tw, t) => { ring.setRadius(40 + 30 * t.v); ring.setAlpha(0.8 * (1 - t.v * 0.6)) }, onComplete: () => ring.destroy() })
+    Audio.sfx(SFX.magic, { vol: 0.5, detune: -200 })
+  }
+
+  /** Invoque des adds pour un boss (def.adds OU ph.summon). cfg = { type, count, level?, spread?, color? }. Les adds
+   *  apparaissent DANS l'arène, marqués summonedBy -> exemptés du mur d'arène et autorisés à attaquer dedans. */
+  bossSummonAdds(boss, cfg) {
+    if (!boss?.active || boss.hp <= 0 || !cfg) return
+    const type = cfg.type
+    if (!type || !MONSTER_TYPES[type]) return
+    const count = cfg.count ?? 3, level = cfg.level ?? Math.max(1, boss.level - 1), spread = cfg.spread ?? 70
+    const ar = this.activeArena, col = cfg.color ?? 0xb060ff
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.3, 0.3)
+      const rr = Phaser.Math.FloatBetween(spread * 0.5, spread)
+      let x = boss.x + Math.cos(a) * rr, y = boss.y + Math.sin(a) * rr
+      if (ar && ar.boss === boss) { const d = this.dist(x, y, ar.cx, ar.cy), lim = ar.r - 12; if (d > lim) { const ux = (x - ar.cx) / (d || 1), uy = (y - ar.cy) / (d || 1); x = ar.cx + ux * lim; y = ar.cy + uy * lim } }
+      const add = new Monster(this, x, y, type, { level })
+      add.summonedBy = boss; add.isAdd = true
+      add.engage(true) // attaque tout de suite (hors plafond d'aggro)
+      this.monsters.add(add)
+      this.playFx('fx-circle-orange', x, y, { tint: col, depth: y + 2, scale: 1.4 }) // éclosion de l'add (anneau d'invocation teinté)
+    }
+    this.scene.get('UIScene')?.showToast?.(`${boss.displayName ?? 'Le boss'} invoque des renforts !`, '#c79bff')
   }
 
   /** Scelle l'arène autour du REPAIRE du boss (centre fixe = clairière dégagée d'arbres). */
@@ -3126,6 +3301,8 @@ export default class GameScene extends Phaser.Scene {
     if (!a) return
     a.fill?.destroy()
     a.ring?.destroy()
+    if (this.voidZones) { this.voidZones.forEach((z) => { z.fill?.destroy(); z.ring?.destroy() }); this.voidZones = [] } // flaques résiduelles
+    this.monsters?.getChildren().slice().forEach((m) => { if (m.active && m.summonedBy === a.boss) m.despawn() }) // despawn des adds du boss (filet)
     this.activeArena = null
   }
 
@@ -3259,9 +3436,9 @@ export default class GameScene extends Phaser.Scene {
         ],
       },
       {
-        hx: cx - 7, hy: cy - 8, key: 'bank', tex: 'npc_inspector', name: 'Cornélius le banquier', enter: 'bank', place: 'Banque', // NORD-OUEST du cercle
+        hx: cx - 7, hy: cy - 8, key: 'bank', tex: 'npc_inspector', name: 'Régis le banquier', enter: 'bank', place: 'Banque', // NORD-OUEST du cercle
         lines: [
-          'La banque d\'Iroas gardera tes biens en sûreté — même après une mauvaise chute.',
+          'La banque d\'Ergas gardera tes biens en sûreté — même après une mauvaise chute.',
           'Le coffre ouvrira bientôt. Patience, l\'or appelle l\'or.',
         ],
       },
@@ -3553,7 +3730,7 @@ export default class GameScene extends Phaser.Scene {
   /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
   uiBusy() {
     const ui = this.scene.get('UIScene')
-    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.pauseOpen || ui.mapOpen))
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.bankOpen || ui.pauseOpen || ui.mapOpen))
   }
 
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
@@ -3663,7 +3840,7 @@ export default class GameScene extends Phaser.Scene {
     if (id === 'forge') return { title: 'Forge d’Aldric', npcTex: 'npc_villager', npcName: 'Aldric', forge: true, floor: 0x6e4d2e, plank: 0x533a20, wall: 0x4a4a4a, wallTop: 0x2e2e2e, accent: 0xff8a3a, lines: ['« Apporte tes armes : je répare et j’améliore. »'] }
     if (id === 'merchant') return { title: 'Comptoir du marchand', npcTex: 'npc_merchant', npcName: 'Tobias', shopGeneral: true, floor: 0x6e4d2e, plank: 0x533a20, wall: 0xc89860, wallTop: 0x8a6a3c, accent: 0xffc46a, lines: ['« Tout s’achète, tout se vend ! Que te faut-il ? »'] }
     if (id === 'house') return { title: 'Maison', npcTex: 'npc_master', npcName: 'Résident', floor: 0x6e4d2e, plank: 0x533a20, wall: 0xb98a55, wallTop: 0x7a5a30, accent: 0xffba70, lines: ['Un foyer chaleureux du bourg.'] }
-    if (id === 'bank') return { title: 'Banque d’Iroas', npcTex: 'npc_inspector', npcName: 'Cornélius', floor: 0x5c5238, plank: 0x453d2b, wall: 0x6a6a82, wallTop: 0x45455a, accent: 0xffe08a, lines: ['« La banque d’Iroas garde tes biens en sûreté. »', '« Le coffre ouvrira bientôt. Patience, l’or appelle l’or. »'] }
+    if (id === 'bank') return { title: 'Banque d’Ergas', npcTex: 'npc_inspector', npcName: 'Régis', bank: true, floor: 0x5c5238, plank: 0x453d2b, wall: 0x6a6a82, wallTop: 0x45455a, accent: 0xffe08a, lines: ['« La banque d’Ergas garde tes biens en sûreté, même après une chute. »'] }
     return { title: 'Échoppe d’Ylva', npcTex: 'npc_shaman', npcName: 'Ylva', shop: 'apothecary', floor: 0x5c5238, plank: 0x453d2b, wall: 0x2f6a3a, wallTop: 0x214c29, accent: 0x8ef0a0, lines: ['« Mes potions soignent, restaurent la mana et bravent le froid comme la chaleur. »'] }
   }
 
@@ -4410,6 +4587,7 @@ export default class GameScene extends Phaser.Scene {
       const npcW = { name: it.cfg.npcName, texture: it.cfg.npcTex, x: it.npc.x, y: it.npc.y }
       if (this.handleQuestInteraction(npcW)) return
       if (it.cfg.forge) { this.scene.get('UIScene')?.openForge?.(); return } // FORGE : Aldric ouvre la forge (réparation/amélioration/craft)
+      if (it.cfg.bank) { this.scene.get('UIScene')?.openBank?.(); return } // BANQUE : Cornélius ouvre le coffre (dépôt/retrait or + objets)
       if (it.cfg.shopGeneral) { this.scene.get('UIScene')?.openShop?.(); return } // MARCHAND : boutique générale
       if (it.cfg.shop) { this.scene.get('UIScene')?.openShop?.(it.cfg.shop); return } // apothicaire : Ylva ouvre sa carte (commande -> préparation)
       this.scene.get('UIScene')?.openDialogue(it.cfg.npcName, it.cfg.lines, it.cfg.npcTex)
@@ -5826,13 +6004,15 @@ export default class GameScene extends Phaser.Scene {
     const speed = b.projSpeed ?? 150
     const dmg = Math.round((b.projDamage ?? 9) * (boss.dmgScale ?? 1))
     const base = Math.atan2(player.y - boss.y, player.x - boss.x)
-    const fx = { anim: 'fx-fireball', tex: 'fx_fireball', scale: 1.5 }
+    const col = b.color ?? 0xffffff
+    const projFx = { anim: b.fx ?? 'fx-fireball', tex: (b.fx ?? 'fx-fireball').replace(/-/g, '_'), scale: 1.5 }
+    this.playFx('fx-circle-orange', boss.x, boss.y - 6, { tint: col === 0xffffff ? 0xff7a3a : col, depth: boss.y + 1, scale: 1.6 }) // flash d'incantation au tir
     for (let i = 0; i < shots; i++) {
       const ang = base + (i - (shots - 1) / 2) * gap // orbes régulièrement espacés autour de la visée
       const proj = this.enemyProjectiles.get(boss.x, boss.y)
       if (!proj) continue
       proj.dieOnWater = true // ne traverse pas l'eau
-      proj.fire(boss.x, boss.y - 6, boss.x + Math.cos(ang) * 200, boss.y + Math.sin(ang) * 200, dmg, this.time.now, null, 0xffffff, fx, speed)
+      proj.fire(boss.x, boss.y - 6, boss.x + Math.cos(ang) * 200, boss.y + Math.sin(ang) * 200, dmg, this.time.now, null, col, projFx, speed)
     }
     Audio.sfx(SFX.magic, { vol: 0.6, detune: -150 })
     this.cameras.main.shake(120, 0.004)
@@ -5845,7 +6025,10 @@ export default class GameScene extends Phaser.Scene {
     Audio.sfx('sfx_roar', { vol: 0.95, rate: 0.7, detune: -150 })
     boss.setTintFill(0xff5030)
     this.time.delayedCall(170, () => boss.active && boss.clearTint())
-    const ring = this.add.circle(boss.x, boss.y, 10, 0xff5030, 0).setStrokeStyle(4, 0xff5030, 0.9).setDepth(boss.y + 2)
+    const e = boss.def?.enrage || {}
+    const col = e.color ?? 0xff5030
+    this.playFx(e.fx ?? 'fx-flam', boss.x, boss.y - 4, { tint: col, depth: boss.y + 2, scale: 2.6, life: 900 }) // aura/flamme de fureur (fx-flam boucle -> life)
+    const ring = this.add.circle(boss.x, boss.y, 10, col, 0).setStrokeStyle(4, col, 0.9).setDepth(boss.y + 2)
     this.tweens.add({
       targets: { v: 0 }, v: 1, duration: 520, ease: 'Cubic.out',
       onUpdate: (tw, t) => { ring.setRadius(10 + 64 * t.v); ring.setAlpha(0.9 * (1 - t.v)) },
@@ -5946,6 +6129,7 @@ export default class GameScene extends Phaser.Scene {
 
   onMonsterKilled(mon) {
     this.player.gainXp(mon.xpReward ?? mon.def.xp)
+    if (mon.summonedBy) return // ADD invoqué par un boss : XP seule, pas de butin ni de repop de camp
     if (mon.isBoss) {
       this.onBossKilled(mon)
       return
@@ -5975,6 +6159,9 @@ export default class GameScene extends Phaser.Scene {
 
   /** Mort d'un BOSS de biome : butin garanti (épique + or + soin), annonce, respawn long. */
   onBossKilled(mon) {
+    this.monsters.getChildren().slice().forEach((m) => { // despawn de tous les adds invoqués par ce boss
+      if (m.active && m.summonedBy === mon) { const fx = this.add.circle(m.x, m.y, 6, 0xb060ff, 0.7).setDepth(m.y + 2); this.tweens.add({ targets: fx, scale: 3, alpha: 0, duration: 280, onComplete: () => fx.destroy() }); m.despawn() }
+    })
     const i = this.bosses.indexOf(mon)
     if (i >= 0) this.bosses.splice(i, 1)
     if (this.activeBoss === mon) this.activeBoss = null
@@ -6278,6 +6465,7 @@ export default class GameScene extends Phaser.Scene {
       this.keepMonsterOffBridge(mon) // les mobs ne marchent pas sur les ponts/gués (pas de traversée de rivière)
       mon.setDepth(mon.y)
     })
+    this.updateVoidZones(time) // flaques persistantes des boss (voidzone) : tic de dégâts + expiration
     this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
     this.updateMageClones(time) // clones du Mage (Image miroir) : tir + barre de vie + expiration
     if (p.charging2) { // Charge du Tank : la bulle suit, fin au bout de 4 s

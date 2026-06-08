@@ -40,7 +40,7 @@ export const QUESTS = {
   },
   q_lingots: {
     id: 'q_lingots', giver: 'Mira', type: 'collect', target: 'mat_essence', targetName: 'Lingot de fer', count: 6,
-    title: 'Le fer d\'Iroas', desc: 'Le forgeron manque de métal. Rapporte 6 Lingots de fer (lâchés par les bêtes des bois et du désert).',
+    title: 'Le fer d\'Ergas', desc: 'Le forgeron manque de métal. Rapporte 6 Lingots de fer (lâchés par les bêtes des bois et du désert).',
     reward: { xp: 130, gold: 40, item: 'chainmail' }, next: 'q_north',
   },
   q_north: {
@@ -65,7 +65,7 @@ export const QUESTS = {
   },
   q_finale: {
     id: 'q_finale', giver: 'Tibert', type: 'talk', target: 'Mira',
-    title: 'L\'espoir d\'Iroas', desc: 'Tu as repoussé les ténèbres de chaque contrée. Reviens au village porter la nouvelle à Mira.',
+    title: 'L\'espoir d\'Ergas', desc: 'Tu as repoussé les ténèbres de chaque contrée. Reviens au village porter la nouvelle à Mira.',
     reward: { xp: 300, gold: 250, item: 'potion_mana_big' }, next: 'q_boss_bamboo',
   },
 
@@ -92,7 +92,7 @@ export const QUESTS = {
   },
   q_boss_dargoth: {
     id: 'q_boss_dargoth', giver: 'Oona', type: 'kill', target: 'giantflam', targetName: 'Dargoth', count: 1,
-    title: 'Le Seigneur Maudit', desc: 'Il te faudra une barque pour franchir les flots jusqu\'à l\'île maudite. Là règne Dargoth. Affronte-le, et Iroas connaîtra l\'aube.',
+    title: 'Le Seigneur Maudit', desc: 'Il te faudra une barque pour franchir les flots jusqu\'à l\'île maudite. Là règne Dargoth. Affronte-le, et Ergas connaîtra l\'aube.',
     reward: { xp: 1200, gold: 1000, item: 'potion_mana_big' },
   },
 }
