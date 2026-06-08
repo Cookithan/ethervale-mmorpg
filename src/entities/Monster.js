@@ -118,12 +118,25 @@ export const MONSTER_TYPES = {
     tier: 'epic', loot: { gold: [6, 12] }, name: 'Cyclope démon',
     // BULL-RUSH : ruée lourde et télégraphiée (pas de feuille charge -> garde l'idle). Mêlée sûre entre 2 ruées.
     charge: { range: 320, windup: 760, speed: 400, duration: 540, dmgMul: 1.6, cooldown: 2800, hitRadius: 30, color: 0xc97b3a, fx: 'fx-rock' },
+    // KIT : bull-rush + onde de choc au sol (stomp) débloquée à 45 % PV.
+    nova: { range: 150, radius: 72, windup: 1200, active: 160, recover: 320, dmgMul: 1.3, knock: 380, knockMs: 240, cooldown: 4000, color: 0xc97b3a, fx: 'fx-explosion' },
+    phases: [{ atPct: 0.45, add: ['nova'] }],
   },
   // Seigneur de flamme (Terres Maudites) : rig SANS walk (reste sur place, lent) -> playRig retombe sur idle
   giantflam: {
     key: 'boss_giantflam_idle', rig: 'giantflam', face: 'face_giantflam',
-    hp: 90, speed: 18, damage: 22, xp: 40, aggro: 120, scale: 2.2, body: { w: 24, h: 34 },
+    hp: 130, speed: 18, damage: 22, xp: 40, aggro: 120, scale: 2.2, body: { w: 24, h: 34 },
     tier: 'epic', loot: { gold: [8, 16] }, name: 'Seigneur de flamme',
+    // DARGOTH (boss FINAL de l'île maudite) — 3 PHASES façon Ragnaros (rig sans walk -> sorts télégraphiés au sol).
+    // P1 : souffle (cône) + mares de feu (flaques). P2@60 % : +nova de feu + 2 imbraises (adds flam). P3@30 % : +météore (slam) + boost.
+    cone: { range: 175, halfAngle: 0.6, windup: 1200, active: 200, recover: 340, dmgMul: 1.5, cooldown: 2900, color: 0xff7a3a, fx: 'fx-flam' },
+    voidzone: { range: 280, windup: 1150, recover: 320, count: 3, radius: 44, spread: 100, lifetime: 4600, tick: 650, dmgMul: 0.6, cooldown: 4800, anchorPlayer: true, color: 0xff7a3a, fx: 'fx-flam' },
+    nova: { range: 160, radius: 78, windup: 1250, active: 160, recover: 320, dmgMul: 1.35, knock: 420, knockMs: 260, cooldown: 3800, color: 0xff7a3a, fx: 'fx-explosion' },
+    slam: { range: 230, windup: 1000, jumpDur: 480, hitRadius: 66, dmgMul: 1.6, cooldown: 3200, color: 0xff5030, fx: 'fx-explosion' },
+    phases: [
+      { atPct: 0.60, add: ['nova'], trans: true, summon: { type: 'flam', count: 2 } },
+      { atPct: 0.30, add: ['slam'], dmgMul: 1.3, cdMul: 0.78, trans: true },
+    ],
   },
 
   democyclop2: {
@@ -132,6 +145,10 @@ export const MONSTER_TYPES = {
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Cyclope ancien',
     // Cyclope ancien : bull-rush plus rapide, plus large et plus fort.
     charge: { range: 330, windup: 720, speed: 440, duration: 540, dmgMul: 1.7, cooldown: 2500, hitRadius: 32, color: 0xd49a4a, fx: 'fx-rock' },
+    // KIT (ANCIEN) : bull-rush + stomp d'emblée ; écrasement (slam) débloqué à 40 % PV.
+    nova: { range: 155, radius: 76, windup: 1150, active: 160, recover: 320, dmgMul: 1.35, knock: 410, knockMs: 250, cooldown: 3700, color: 0xd49a4a, fx: 'fx-explosion' },
+    slam: { range: 200, windup: 700, jumpDur: 460, hitRadius: 60, dmgMul: 1.5, cooldown: 3200, color: 0xd49a4a, fx: 'fx-rock' },
+    phases: [{ atPct: 0.40, add: ['slam'] }],
   },
   giantbamboo: {
     key: 'boss_giantbamboo_idle', rig: 'giantbamboo', face: 'face_giantbamboo',
@@ -149,17 +166,30 @@ export const MONSTER_TYPES = {
     tier: 'epic', loot: { gold: [6, 13] }, name: 'Gelée polaire',
     // SAUT-SLAM : bondit sur la position du joueur (cercle de danger télégraphié) puis écrase = AoE.
     slam: { range: 230, windup: 650, jumpDur: 460, hitRadius: 62, dmgMul: 1.6, cooldown: 2200, color: 0x7be0c8, fx: 'fx-water' },
+    // KIT : saut-slam + mares de gel à 50 % + nova de givre à 25 %.
+    voidzone: { range: 240, windup: 1100, recover: 320, count: 3, radius: 40, spread: 95, lifetime: 4200, tick: 600, dmgMul: 0.55, cooldown: 4600, anchorPlayer: true, color: 0x7be0c8, fx: 'fx-ice-burst' },
+    nova: { range: 150, radius: 72, windup: 1250, active: 160, recover: 320, dmgMul: 1.3, knock: 360, knockMs: 240, cooldown: 4200, color: 0x7be0c8, fx: 'fx-ice-burst' },
+    phases: [{ atPct: 0.50, add: ['voidzone'] }, { atPct: 0.25, add: ['nova'] }],
   },
   giantspirit: {
     key: 'boss_giantspirit_idle', rig: 'giantspirit', face: 'face_giantspirit',
     hp: 82, speed: 30, damage: 18, xp: 38, aggro: 120, scale: 2.0, body: { w: 22, h: 30 },
     tier: 'epic', loot: { gold: [8, 15] }, name: 'Âme damnée',
+    // KIT (spectre) : mares d'âmes (flaques) d'emblée ; vortex (nova) à 55 % ; salve de bolts spectraux à 30 %.
+    voidzone: { range: 260, windup: 1100, recover: 320, count: 3, radius: 42, spread: 100, lifetime: 4200, tick: 600, dmgMul: 0.55, cooldown: 4800, anchorPlayer: true, color: 0xb060ff, fx: 'fx-spirit' },
+    nova: { range: 155, radius: 76, windup: 1200, active: 160, recover: 320, dmgMul: 1.35, knock: 400, knockMs: 250, cooldown: 3800, color: 0xb060ff, fx: 'fx-slash-circular' },
+    barrage: { range: 300, windup: 850, recover: 420, shots: 5, gap: 0.34, projSpeed: 150, projDamage: 6, cooldown: 2800, color: 0xb060ff, fx: 'fx-spirit' },
+    phases: [{ atPct: 0.55, add: ['nova'] }, { atPct: 0.30, add: ['barrage'] }],
   },
   redsamurai: {
     key: 'boss_redsamurai_idle', rig: 'redsamurai', face: 'face_redsamurai',
     hp: 88, speed: 32, damage: 19, xp: 38, aggro: 95, scale: 1.5, body: { w: 40, h: 28 },
     tier: 'epic', loot: { gold: [8, 15] }, name: 'Samouraï Rouge',
-    charge: { range: 340, windup: 780, speed: 430, duration: 520, dmgMul: 1.7, cooldown: 2800, hitRadius: 28, color: 0xff3030, chargeOriginY: 0.75 },
+    charge: { range: 340, windup: 780, speed: 430, duration: 520, dmgMul: 1.7, cooldown: 2800, hitRadius: 28, color: 0xff3030, chargeOriginY: 0.75, fx: 'fx-slash' },
+    // KIT (samouraï rouge = plus dur) : charge + cône de lame d'emblée ; nova de recul à 55 %.
+    cone: { range: 165, halfAngle: 0.45, windup: 1100, active: 180, recover: 320, dmgMul: 1.55, cooldown: 2700, color: 0xff3030, knockback: 70, fx: 'fx-slash' },
+    nova: { range: 145, radius: 74, windup: 1200, active: 160, recover: 320, dmgMul: 1.35, knock: 400, knockMs: 260, cooldown: 3800, color: 0xff3030, fx: 'fx-slash-circular' },
+    phases: [{ atPct: 0.55, add: ['nova'] }],
   },
   tengured: {
     key: 'boss_tengured_idle', rig: 'tengured', face: 'face_tengured',
@@ -168,6 +198,13 @@ export const MONSTER_TYPES = {
     // DÉLUGE : volée de boules de feu en éventail (anim Attack) ; TRANSFO à 50 % PV (anim Trans) -> enrage.
     barrage: { range: 320, windup: 700, recover: 450, shots: 5, gap: 0.34, projSpeed: 150, projDamage: 6, cooldown: 2600, color: 0xff8a4a, fx: 'fx-fireball' },
     enrage: { hpPct: 0.5, dmgMul: 1.4, cdMul: 0.62, scale: 1.12, dur: 950, fx: 'fx-flam', color: 0xff6a3a },
+    // KIT (Tengu rouge) : barrage + nova de feu d'emblée ; mares de feu à 70 % ; FUREUR + 3 imbraises à 50 %.
+    nova: { range: 150, radius: 74, windup: 1250, active: 160, recover: 320, dmgMul: 1.3, knock: 420, knockMs: 260, cooldown: 4200, color: 0xff6a3a, fx: 'fx-explosion' },
+    voidzone: { range: 300, windup: 1100, recover: 320, count: 3, radius: 40, spread: 95, lifetime: 4200, tick: 600, dmgMul: 0.55, cooldown: 5200, anchorPlayer: true, color: 0xff6a3a, fx: 'fx-flam' },
+    phases: [
+      { atPct: 0.70, add: ['voidzone'] },
+      { atPct: 0.50, dmgMul: 1.4, cdMul: 0.62, scale: 1.12, trans: true, summon: { type: 'flam', count: 3 } },
+    ],
   },
   giantslime2: {
     key: 'boss_giantslime2_idle', rig: 'giantslime2', face: 'face_giantslime2',
@@ -175,6 +212,10 @@ export const MONSTER_TYPES = {
     tier: 'epic', loot: { gold: [7, 14] }, name: 'Gelée ancienne',
     // Gelée ancienne : saut-slam plus rapide, plus large et plus fort.
     slam: { range: 240, windup: 580, jumpDur: 430, hitRadius: 68, dmgMul: 1.75, cooldown: 1950, color: 0x9fe8ff, fx: 'fx-water' },
+    // KIT (ANCIEN) : saut-slam + mares de gel d'emblée ; nova de givre à 40 %.
+    voidzone: { range: 240, windup: 1000, recover: 320, count: 4, radius: 40, spread: 100, lifetime: 4400, tick: 600, dmgMul: 0.6, cooldown: 4200, anchorPlayer: true, color: 0x9fe8ff, fx: 'fx-ice-burst' },
+    nova: { range: 155, radius: 76, windup: 1150, active: 160, recover: 300, dmgMul: 1.35, knock: 400, knockMs: 250, cooldown: 3600, color: 0x9fe8ff, fx: 'fx-ice-burst' },
+    phases: [{ atPct: 0.40, add: ['nova'] }],
   },
 
   // --- BOSS CÔTIER À DISTANCE (tire des orbes que le joueur ESQUIVE ; mêlée faible -> garde tes distances ou approche) ---
@@ -185,6 +226,10 @@ export const MONSTER_TYPES = {
     ranged: true, shootRange: 230, shootCd: 1700, projSpeed: 155, projDamage: 16,
     solid: true, // gros corps : le joueur ne le traverse pas (collision, en plus de l'overlap de morsure)
     tier: 'epic', loot: { gold: [9, 17] }, name: 'Kraken',
+    // KIT (Kraken) : orbes (ranged) ; salve d'encre (barrage) débloquée à 55 % ; mares d'encre (flaques) à 30 %.
+    barrage: { range: 300, windup: 900, recover: 420, shots: 6, gap: 0.32, projSpeed: 150, projDamage: 6, cooldown: 2900, color: 0x4a90d0, fx: 'fx-fireball' },
+    voidzone: { range: 280, windup: 1150, recover: 320, count: 3, radius: 42, spread: 100, lifetime: 4400, tick: 600, dmgMul: 0.55, cooldown: 5000, anchorPlayer: true, color: 0x4a90d0, fx: 'fx-water' },
+    phases: [{ atPct: 0.55, add: ['barrage'] }, { atPct: 0.30, add: ['voidzone'] }],
   },
 
   giantfrog: {
