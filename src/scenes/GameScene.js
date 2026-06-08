@@ -163,7 +163,7 @@ const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMEN
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
-const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque offerte au lancement + touche G = téléportation sur Sargèr + gate de niveau désactivé (pour tester l'end-game).
+const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque offerte + touche G = téléport Sargèr + gate niveau désactivé (test end-game).
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -444,7 +444,6 @@ export default class GameScene extends Phaser.Scene {
     this.occupied = new Set()
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
-    if (!this.preview) this.spawnSargerSignpost() // panneau « Sargèr ⟶ » à la côte EST d'Ergas (indice end-game)
     // (plus de spawnForest : il ne posait que des arbres verts Ninja en PRAIRIE -> la prairie est une zone SÛRE, sans arbres ;
     //  la forêt est peuplée par scatterForestTrees ci-dessous)
     this.spawnBiomeTrees()
@@ -2844,18 +2843,20 @@ export default class GameScene extends Phaser.Scene {
       ['La forêt qui nous entoure est vieille comme le monde.', 'Ses chênes ont vu passer des héros... et les ont vus tomber. Un samouraï sylvestre veille en son cœur ; on ne le défie pas seul.'],
       // Bram — la mer et le kraken
       ['La mer cache un kraken sur ses rivages ; ses tentacules ont coulé plus d\'un marin imprudent.', 'On dit que le marchand vend une barque. Avec elle, on pourrait enfin franchir les flots et voir ce qu\'il y a de l\'autre côté.'],
-      // Oona — l'île maudite
-      ['À l\'horizon sud-ouest, une île maudite flotte dans la brume.', 'Dargoth y règne sur les âmes damnées. Nul n\'en est jamais revenu — c\'est là-bas que finissent les légendes... ou qu\'elles commencent.'],
+      // Oona — l'île maudite (Sargèr, à l'EST)
+      ['Loin à l\'EST, par-delà le grand détroit, l\'île maudite de SARGÈR flotte dans la brume.', 'Dargoth y règne sur les âmes damnées, gardé par trois sentinelles. Nul n\'en est jamais revenu — c\'est là-bas que finissent les légendes... ou qu\'elles commencent. Il te faudra une barque, et de l\'expérience (niveau 30).'],
       // Tibert — l'histoire d'Ergas
       ['Ergas était jadis un grand royaume ; il n\'en reste que ce village et des ruines au loin.', 'Les anciens parlent d\'un dragon endormi sous les vagues. Réveille-le, dit-on, et le monde entier tremblera.'],
     ]
     // 6 baladeurs : 3 à GAUCHE du village, 3 à DROITE. On pioche dans toute la moitié correspondante de la
     // PRAIRIE (côté = signe de tx-cx) -> beaucoup de spots valides, donc les 6 se placent bien espacés.
-    const TARGET = 6
+    const TARGET = 5 // baladeurs ERRANTS (Oona est placée À PART, FIXE, sur la plage est)
+    const wanderIdx = [0, 1, 2, 3, 5] // indices des errants (on SAUTE 4 = Oona)
     this.wildNpcs = []
     for (let guard = 0; this.wildNpcs.length < TARGET && guard < 12000; guard++) {
       const i = this.wildNpcs.length
-      const left = i < TARGET / 2 // les 3 premiers à gauche du village, les 3 suivants à droite
+      const idx = wanderIdx[i]
+      const left = i < TARGET / 2 // moitié à gauche du village, moitié à droite
       const tx = Phaser.Math.Between(this.cx - 20, this.cx + 20)
       const ty = Phaser.Math.Between(this.cy - 20, this.cy + 20)
       if (left ? tx > this.cx - 3 : tx < this.cx + 3) continue // garde le bon côté (petit couloir neutre au centre)
@@ -2864,8 +2865,12 @@ export default class GameScene extends Phaser.Scene {
       if (this.biomeAt(tx, ty) !== 'prairie') continue // UNIQUEMENT en prairie
       if (this.dist(tx, ty, this.cx, this.cy) < 11) continue // pas sur les bâtiments du centre
       if (this.wildNpcs.some((n) => this.dist(tx, ty, n.tx, n.ty) < 6)) continue // bien espacés au spawn
-      this.wildNpcs.push({ tx, ty, tex: texes[i], name: names[i], lines: pool[i % pool.length] })
+      this.wildNpcs.push({ tx, ty, tex: texes[idx], name: names[idx], lines: pool[idx] })
     }
+    // OONA : placée FIXE au RIVAGE EST d'Ergas (latitude du village), à contempler l'horizon où flotte Sargèr.
+    let obx = Math.round(this.cx)
+    while (obx < MAP_W - 3 && !this.isOcean(obx + 1, this.cy)) obx++ // jusqu'au rivage est
+    this.wildNpcs.push({ tx: obx, ty: Math.round(this.cy), tex: texes[4], name: names[4], lines: pool[4], fixed: true })
   }
 
   spawnBosses() {
@@ -3565,18 +3570,6 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Feu de camp animé au centre du village (bûches + flamme animée + halo chaud + collision). */
-  /** PANNEAU « Sargèr ⟶ » planté au RIVAGE EST d'Ergas (latitude du village) : indice de wayfinding vers l'end-game. */
-  spawnSargerSignpost() {
-    let tx = Math.round(this.cx)
-    const ty = Math.round(this.cy)
-    while (tx < MAP_W - 3 && !this.isOcean(tx + 1, ty)) tx++ // avance vers l'EST jusqu'au rivage
-    if (tx <= this.cx) return // sécurité (pas de côte trouvée)
-    const x = tx * TILE + 8, y = ty * TILE + 8, D = (ty + 1) * TILE
-    this.add.rectangle(x, y + 6, 3, 16, 0x5a3d22).setDepth(D) // poteau
-    this.add.rectangle(x, y - 5, 38, 16, 0x8a5a32).setStrokeStyle(1.5, 0x4a2f18).setDepth(D + 1) // panneau
-    this.add.text(x, y - 5, 'Sargèr\n⟶ levant', { fontFamily: FONT, fontSize: '7px', color: '#f2e4c8', align: 'center', lineSpacing: -1, stroke: '#3a2410', strokeThickness: 2 }).setOrigin(0.5).setDepth(D + 2).setResolution(3)
-  }
-
   spawnVillageCampfire() {
     const x = this.cx * TILE + 8
     const y = this.cy * TILE + 8
@@ -4995,6 +4988,7 @@ export default class GameScene extends Phaser.Scene {
       if (!n) continue
       this.tweens.killTweensOf(n.sprite) // stoppe la "respiration" (sinon elle écrase l'anim de marche)
       n.sprite.setScale(1)
+      if (npc.fixed) continue // OONA : PNJ FIXE -> garde son corps statique (collision) + branche statique d'updateNpcs (fait face au joueur, indice, marqueur ?), PAS d'errance
       // RETIRE le corps statique de l'arbre de collision (enable=false ne suffit pas : overlapRect
       // détecterait encore le propre corps du PNJ -> il se croit bloqué et ne bouge jamais).
       if (n.sprite.body) this.physics.world.disable(n.sprite)
