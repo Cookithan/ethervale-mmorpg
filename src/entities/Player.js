@@ -10,12 +10,12 @@ const HURT_IFRAMES = 600 // invulnérabilité après avoir été touché (ms)
 const SHOOT_COOLDOWN = 360 // délai mini entre deux tirs à distance (ms) — attaque de base à distance
 const MANA_REGEN = 1.6 // mana/s de BASE (volontairement BAS : la barre se remplit lentement -> la mana limite les sorts ; les items de régén la complètent)
 const INV_MAX = 6 // capacité du SAC (cap strict) — l'équipement des 4 slots est à part (= nb de cases de la hotbar)
-const STACK_MAX = 6 // taille maxi d'une PILE de consommables (potions...) dans UNE case du sac
+const STACK_MAX = 6 // taille maxi d'une PILE (potions uniquement)
 
-/** Empilable dans une seule case ? Seuls les consommables (potions, feu de camp...) le sont — chaque
- *  équipement reste unique (durabilité/amélioration propres). Une pile porte un champ `qty` (1..STACK_MAX). */
+/** Empilable dans une seule case ? Seules les POTIONS/fioles (et le feu de camp) le sont — PAS les repas ni les
+ *  boissons de la taverne (champ `cat` = 'food'|'drink'), qui prennent une case chacun. Une pile porte `qty` (1..STACK_MAX). */
 function isStackable(item) {
-  return !!item && item.type === 'consumable'
+  return !!item && item.type === 'consumable' && !item.cat
 }
 
 // Progression « façon WoW » (brief A2) : cap niveau 50, courbe d'XP exponentielle DOUCE.
@@ -54,6 +54,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.setSize(10, 8).setOffset(3, 7)
 
     this.facing = 'down'
+    this.sitting = false // assis sur un siège de taverne (figé jusqu'au lever)
     this.anims.play(`${heroKey}-idle-down`)
 
     // état combat / progression
@@ -131,6 +132,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // SAC DE MORT (A1) : à la mort, or + sac tombent ici {gold, items, x, y} ; 1 seul à la fois.
     this.deathBag = null
     this.deathsSinceRecovery = 0 // remourir sans récupérer remplace l'ancien sac ; 3 = tout perdu
+    this.respawnHome = false // a dormi au dortoir -> réapparaît dans son lit à la mort (sinon place du village)
+    this.shopLevels = { apothecary: 1, tavern: 1 } // niveaux de rénovation des boutiques de lieu (1..4, par perso)
+    this.foodBuff = { atk: 0, def: 0, regen: 0, until: 0 } // buff de repas/élixir en cours (temps absolu `until`)
     this.setPity = {} // pièces de panoplie : kills de boss depuis le dernier drop (par id) -> drop garanti à X
 
     this.hp = this.baseMaxHp
@@ -182,6 +186,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.questsDone = s.questsDone ?? []
     this.deathBag = s.deathBag ?? null
     this.deathsSinceRecovery = s.deathsSinceRecovery ?? 0
+    this.respawnHome = s.respawnHome ?? false // point de repos (dortoir) persistant
+    this.shopLevels = s.shopLevels ?? { apothecary: 1, tavern: 1 } // anciennes saves -> palier 1
+    this.foodBuff = s.foodBuff ?? { atk: 0, def: 0, regen: 0, until: 0 }
     this.setPity = s.setPity ?? {}
     this.reviveCharge = s.reviveCharge ?? false
     this.recomputeStats()
@@ -248,6 +255,10 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       spellDuration += b.spellDuration ?? 0
       if (st.count >= 4) this.activeSet = st.set // panoplie complète -> compétence de set débloquée
     }
+    // BUFF DE REPAS (taverne) / élixir : +ATQ / +DÉF tant qu'il est actif (temps absolu `until`). La régén est
+    // appliquée frame par frame dans GameScene.updateFoodBuff ; l'expiration y rappelle recomputeStats pour retirer ce bonus.
+    const fbNow = this.scene?.time?.now ?? 0
+    if (this.foodBuff && fbNow < (this.foodBuff.until || 0)) { atk += this.foodBuff.atk || 0; def += this.foodBuff.def || 0 }
     this.coldResist = coldResist
     this.heatResist = heatResist
     // MAINS NUES (aucune arme équipée — ex. après casse) : peu de dégâts (moins qu'une dague) pour
@@ -497,6 +508,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.mana = Math.min(this.maxMana, this.mana + ((this.manaRegen ?? MANA_REGEN) * dt) / 1000)
     }
     this._lastT = time
+    // ASSIS (taverne) : FIGÉ sur le siège jusqu'à ce qu'on se relève (E). Aucun déplacement ni attaque (la mana régénère).
+    if (this.sitting) {
+      this.setVelocity(0, 0)
+      this.moveTarget = null
+      this.anims.play(`${this.heroKey}-idle-${this.facing}`, true)
+      return
+    }
     // RECUL (knockback, ex. au contact du feu de camp) : on garde la vélocité de recul, input ignoré
     if (time < (this.knockUntil ?? 0)) {
       this.anims.play(`${this.heroKey}-idle-${this.facing}`, true)

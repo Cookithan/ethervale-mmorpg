@@ -53,11 +53,14 @@ export function makeSave(player, character) {
     equipped: player.equipped,
     inventory: player.inventory,
     hasBoat: player.hasBoat,
+    shopLevels: player.shopLevels, // niveaux de rénovation des boutiques de lieu (apothicaire/taverne) PAR PERSO
+    foodBuff: player.foodBuff, // buff de repas/élixir en cours (atk/def/regen + until) — survit à une sauvegarde rapide
     resources: player.resources, // poche de matériaux empilables
     quest: player.quest, // quête active (chaîne)
     questsDone: player.questsDone,
     deathBag: player.deathBag, // sac de mort en attente de récupération (A1)
     deathsSinceRecovery: player.deathsSinceRecovery,
+    respawnHome: player.respawnHome, // a dormi au dortoir -> respawn dans son lit à la mort
     setPity: player.setPity, // compteur anti-malchance des pièces de panoplie (par id)
     reviveCharge: player.reviveCharge, // bénédiction de résurrection (Soigneur, set) en attente
     exploredFog: player.exploredFog, // brouillard de guerre : cellules de carte déjà explorées

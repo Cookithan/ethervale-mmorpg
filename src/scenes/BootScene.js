@@ -232,6 +232,9 @@ export default class BootScene extends Phaser.Scene {
       'foc_scroll', 'foc_ice', 'foc_plant', 'foc_thunder', 'foc_fire', // Focus = parchemins élémentaires
       'ring_green', 'ring_yellow', 'ring_purple', 'ring_red', // Anneaux = gemmes colorées
       'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', 'pot_fire', 'pot_frost', // potions (soin / mana / température)
+      'pot_regen', 'pot_antidote', 'pot_grand', 'pot_ward', // élixirs d'apothicaire (paliers 3-4) : régén / antidote / grand élixir / garde
+      'food_rice', 'food_skewer', 'food_fish', 'food_stew', 'food_mead', // REPAS de taverne (Ninja Items/Food : Onigiri/Yakitori/Fish/Meat/Honey)
+      'food_roast', 'food_tea', 'food_feast', 'icon_locked', // repas-bonus taverne (paliers 3-4) + icône « verrouillé » (palier non débloqué)
       'mat_leather', 'mat_bone', 'mat_essence', 'mat_crystal', // matériaux empilables (Os = vraie icône Kyrise ; Lingot = ingot Kyrise)
     ]) {
       this.load.image(key, `assets/items/${key}.png`)

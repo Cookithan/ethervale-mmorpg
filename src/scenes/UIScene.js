@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { ITEMS, MATERIALS, RECIPES, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
+import { ITEMS, MATERIALS, RECIPES, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, SHOP_CONFIGS, SHOP_MAX_TIER, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
 import { SKILL_ICONS, SPELL3_COST } from '../data/classes.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
@@ -550,13 +550,42 @@ export default class UIScene extends Phaser.Scene {
       }
       return
     }
-    // POTION DE TEMPÉRATURE (feu = immunité froid, givre = immunité chaud) pendant tempDur (10 min)
+    // POTION DE TEMPÉRATURE (feu = immunité froid, givre = immunité chaud, 'both' = les deux : Garde majeure) pendant tempDur
     if (item.tempBuff) {
       if (!p.tempBuff) p.tempBuff = { fire: 0, frost: 0 }
-      p.tempBuff[item.tempBuff] = this.game_.time.now + (item.tempDur ?? 600000)
+      const until = this.game_.time.now + (item.tempDur ?? 600000)
+      if (item.tempBuff === 'both') { p.tempBuff.fire = until; p.tempBuff.frost = until }
+      else p.tempBuff[item.tempBuff] = until
       p.takeOne(item)
-      const label = item.tempBuff === 'fire' ? 'Protégé du froid' : 'Protégé de la chaleur'
-      this.showToast(`${label} — 10 min`, item.tempBuff === 'fire' ? '#ffb060' : '#a0e6ff')
+      const label = item.tempBuff === 'both' ? 'Protégé du froid ET de la chaleur' : item.tempBuff === 'fire' ? 'Protégé du froid' : 'Protégé de la chaleur'
+      this.showToast(`${label} — 10 min`, item.tempBuff === 'frost' ? '#a0e6ff' : '#ffb060')
+      Audio.sfx('ui_accept', { detune: 0 })
+      return
+    }
+    // ANTIDOTE : purge la jauge de température (plus de gel/brûlure) instantanément
+    if (item.cure) {
+      this.game_.player.temp = 0
+      this.game_._tempDanger = false
+      p.takeOne(item)
+      this.showToast('Antidote — corps tempéré', '#a0e6ff')
+      Audio.sfx('ui_accept', { detune: 0 })
+      return
+    }
+    // REPAS-BONUS / ÉLIXIR À EFFET (foodBuff : +ATQ/+DÉF/régén) : applique le buff (+ soin/mana éventuel),
+    // SANS refuser même si PV pleins (le bonus de combat vaut le coup). Un seul buff à la fois (remplace l'ancien).
+    if (item.foodBuff) {
+      const fb = item.foodBuff
+      const dur = fb.dur ?? 300000
+      p.foodBuff = { atk: fb.atk || 0, def: fb.def || 0, regen: fb.regen || 0, until: this.game_.time.now + dur }
+      if ((item.heal ?? 0) > 0) p.heal(item.heal)
+      if ((item.mana ?? 0) > 0) p.mana = Math.min(p.maxMana, p.mana + item.mana)
+      p.recomputeStats() // applique immédiatement le +ATQ / +DÉF
+      p.takeOne(item)
+      const parts = []
+      if (fb.atk) parts.push(`+${fb.atk} ATQ`)
+      if (fb.def) parts.push(`+${fb.def} DÉF`)
+      if (fb.regen) parts.push(`+${fb.regen} PV/s`)
+      this.showToast(`${item.name} — ${parts.join(' ')} (${Math.round(dur / 60000)} min)`, '#ffd86b')
       Audio.sfx('ui_accept', { detune: 0 })
       return
     }
@@ -767,24 +796,66 @@ export default class UIScene extends Phaser.Scene {
 
   // ---------- boutique (marchand) ----------
 
-  openShop() {
+  openShop(shopType = null) {
     if (this.game_.gameOver) return
     if (this.charOpen) this.closeChar()
     if (this.forgeOpen) this.closeForge()
     this.shopOpen = true
-    this.shopBuyCat = 'weapon' // catégorie d'achat par défaut (colonne ACHETER)
+    this.shopType = SHOP_CONFIGS[shopType] ? shopType : null // boutique de LIEU (apothicaire/taverne) ou marchand général
+    this.shopBuyCat = this.shopType ? 'shop' : 'weapon' // boutique de lieu = liste unique (pas d'onglets de catégorie)
+    this.shopCategory = null // taverne : 'drink' | 'food' (posé par le choix « boisson ou repas ») ; null = tout
     this.scene.pause('GameScene')
-    Audio.playMusic(this, 'mus_shop') // thème "Fight" chez le marchand (restauré à la fermeture par GameScene.update)
+    if (!this.shopType) Audio.playMusic(this, 'mus_shop') // SEUL le marchand général change la musique ; taverne/apothicaire gardent la musique en cours
     Audio.sfx('ui_accept', { detune: 0 })
     this.buildShop()
   }
 
+  /** TAVERNE : le serveur, arrivé à ta table, demande « Qu'est-ce que je vous sers, BOISSON ou REPAS ? ».
+   *  Le choix ouvre la carte filtrée (cf. buildLocationShop + this.shopCategory). Échap = repartir. */
+  openServerChoice() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.forgeOpen) this.closeForge()
+    this.destroyShop()
+    this.shopOpen = true
+    this.shopType = 'tavern'
+    this.shopCategory = null
+    this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 }) // pas de changement de musique à la taverne
+    const reg = (o) => { this.shopObjects.push(o); return o }
+    const cw = this.scale.width, ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.62).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeShop()))
+    const W = 360, H = 184, x0 = cw / 2 - W / 2, y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, 0x2a1d13, 0.99).setStrokeStyle(3, 0xd99a3a).setInteractive())
+    reg(this.add.rectangle(x0 + 30, y0 + 30, 42, 42, 0x000000, 0.45).setStrokeStyle(2, 0xd99a3a))
+    const port = reg(this.add.image(x0 + 30, y0 + 30, 'npc_noble', 0)); port.setScale(36 / Math.max(port.width, port.height))
+    reg(this.add.text(x0 + 60, y0 + 16, 'Brewen', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#fff' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + 60, y0 + 35, '« Qu\'est-ce que je vous sers ? »', { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'italic', color: '#ffcf86' }).setOrigin(0, 0))
+    const btn = (bx, label, sub, cat) => {
+      const w = 158, h = 60, by = y0 + 92
+      const bg = reg(this.add.rectangle(bx, by, w, h, 0x3a2a1a, 1).setOrigin(0, 0).setStrokeStyle(2, 0xd99a3a))
+      reg(this.add.text(bx + w / 2, by + 20, label, { fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', color: '#ffe1b0' }).setOrigin(0.5))
+      reg(this.add.text(bx + w / 2, by + 42, sub, { fontFamily: 'monospace', fontSize: '9px', color: '#c9b48a' }).setOrigin(0.5))
+      const z = reg(this.add.rectangle(bx, by, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+      z.on('pointerover', () => bg.setFillStyle(0x59401f, 1))
+      z.on('pointerout', () => bg.setFillStyle(0x3a2a1a, 1))
+      z.on('pointerdown', () => { this.shopCategory = cat; Audio.sfx('ui_accept', { detune: 60 }); this.buildShop() })
+    }
+    btn(x0 + 14, 'Boisson', 'chopes & breuvages', 'drink')
+    btn(x0 + W - 172, 'Repas', 'plats qui requinquent', 'food')
+    reg(this.add.text(cw / 2, y0 + H - 8, 'Échap = repartir', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5, 1))
+  }
+
   closeShop() {
+    const wasTavern = this.shopType === 'tavern'
     this.shopOpen = false
+    this.shopType = null
+    this.shopCategory = null
     this.destroyShop()
     this.hideTip()
     Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
+    if (wasTavern) this.game_.onTavernShopClosed?.() // le serveur repart (par sa porte) quand on quitte la carte
   }
 
   destroyShop() {
@@ -905,6 +976,7 @@ export default class UIScene extends Phaser.Scene {
   buildShop() {
     const p = this.game_.player
     if (!p) return
+    if (this.shopType && SHOP_CONFIGS[this.shopType]) { this.buildLocationShop(p); return } // boutique de lieu « qui monte en niveau » (panneau bespoke)
     this.destroyShop()
     const reg = (o) => {
       this.shopObjects.push(o)
@@ -918,7 +990,7 @@ export default class UIScene extends Phaser.Scene {
     const x0 = cw / 2 - W / 2
     const y0 = ch / 2 - H / 2
     reg(this.add.rectangle(cw / 2, ch / 2, W, H, PANEL, 0.98).setStrokeStyle(2, GOLD).setInteractive()) // absorbe les clics DANS le panneau
-    this.drawPanelHeader(reg, x0, y0, W, 'merchant_face', undefined, 'Marchand', p.gold)
+    this.drawPanelHeader(reg, x0, y0, W, 'merchant_face', undefined, 'Marchand', p.gold) // marchand général (les boutiques de lieu ont leur propre panneau)
 
     // DEUX COLONNES toujours visibles : ACHETER (gauche, filtres de catégorie) | VENDRE (droite, sac + matériaux)
     const colW = 222
@@ -932,6 +1004,157 @@ export default class UIScene extends Phaser.Scene {
     this.drawBuyColumn(reg, lx, top, colW, bottom)
     this.drawSellColumn(reg, rx, top, colW, bottom)
     reg(this.add.text(cw / 2, y0 + H - 8, 'Échap = fermer', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5, 1))
+  }
+
+  /** BOUTIQUE DE LIEU = ARDOISE DE MENU (apothicaire / taverne) : on lit la carte et on COMMANDE en cliquant une ligne,
+   *  comme au bar. N'affiche QUE les plats/fioles DISPONIBLES (jamais de ligne verrouillée). Toute la progression
+   *  (« étoffer la carte ») tient dans un petit lien discret en pied de menu. */
+  buildLocationShop(p) {
+    this.destroyShop()
+    const reg = (o) => { this.shopObjects.push(o); return o }
+    const cw = this.scale.width, ch = this.scale.height
+    const cfg = SHOP_CONFIGS[this.shopType]
+    const level = Phaser.Math.Clamp(p.shopLevels?.[this.shopType] ?? 1, 1, SHOP_MAX_TIER)
+    const apo = this.shopType === 'apothecary'
+    // THÈME (même mise en page, encre différente) : apothicaire = alchimie verte/violette ; taverne = bois chaud ambré.
+    const th = apo
+      ? { panel: 0x231a2e, head: 0x2f2440, frame: 0x9a70d0, accent: '#c7a3ff', chalk: '#efe7ff', banner: 0x3a2c4e, bannerHi: 0x52406e, flavor: '« De quoi as-tu besoin ? »', help: 'Clique une fiole pour la commander' }
+      : { panel: 0x2a1d13, head: 0x3a2a1a, frame: 0xd99a3a, accent: '#ffcf86', chalk: '#fff1d8', banner: 0x4a3320, bannerHi: 0x66482e, flavor: '« Qu’est-ce que je te sers ? »', help: 'Clique un plat pour le commander' }
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.62).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeShop())) // clic hors panneau = fermer
+    const W = 460, H = 448
+    const x0 = cw / 2 - W / 2, y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, th.panel, 0.99).setStrokeStyle(3, th.frame).setInteractive())
+    reg(this.add.rectangle(cw / 2, ch / 2, W - 10, H - 10, th.panel, 0).setStrokeStyle(1, th.frame, 0.35)) // double liseré « craie »
+    // EN-TÊTE : portrait du tenancier + nom du lieu + réplique d'accueil + or
+    reg(this.add.rectangle(x0 + 5, y0 + 5, W - 10, 54, th.head, 1).setOrigin(0, 0))
+    reg(this.add.rectangle(x0 + 32, y0 + 32, 44, 44, 0x000000, 0.45).setStrokeStyle(2, th.frame))
+    const port = reg(this.add.image(x0 + 32, y0 + 32, cfg.portrait, 0)); port.setScale(38 / Math.max(port.width, port.height))
+    reg(this.add.text(x0 + 60, y0 + 13, cfg.title, { fontFamily: 'monospace', fontSize: '14px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + 60, y0 + 34, th.flavor, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'italic', color: th.accent }).setOrigin(0, 0))
+    reg(this.add.text(x0 + W - 16, y0 + 16, `Or ${p.gold}`, { fontFamily: 'monospace', fontSize: '13px', color: '#ffd84d' }).setOrigin(1, 0))
+    // TAVERNE : 2 petits onglets BOISSON / REPAS (bascule la catégorie sans devoir se relever)
+    let tabsBottom = y0 + 64
+    if (!apo && this.shopCategory) {
+      const tab = (tx, label, cat) => {
+        const tw = 88, tht = 18, on = this.shopCategory === cat
+        reg(this.add.rectangle(tx, y0 + 64, tw, tht, on ? th.frame : 0x241812, 1).setOrigin(0, 0).setStrokeStyle(1, th.frame))
+        reg(this.add.text(tx + tw / 2, y0 + 64 + tht / 2, label, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: on ? '#241812' : th.accent }).setOrigin(0.5))
+        const z = reg(this.add.rectangle(tx, y0 + 64, tw, tht, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+        z.on('pointerdown', () => { this.shopCategory = cat; this.buildShop() })
+      }
+      tab(x0 + 16, 'Boissons', 'drink'); tab(x0 + 110, 'Repas', 'food')
+      tabsBottom = y0 + 86
+    }
+    // MENU = UNE BANNIÈRE PAR ITEM (uniquement les DISPONIBLES + filtrées par catégorie pour la taverne).
+    const menu = cfg.items.filter((e) => e.tier <= level && (!this.shopCategory || ITEMS[e.id]?.cat === this.shopCategory)).map((e) => ITEMS[e.id]).filter(Boolean)
+    const listTop = tabsBottom + 8, listBottom = y0 + H - 34
+    const pitch = Phaser.Math.Clamp(Math.floor((listBottom - listTop) / Math.max(1, menu.length)), 30, 52) // bannières aérées si peu d'items, compactes si beaucoup
+    const bh = pitch - 6
+    const twoLine = bh >= 36 // assez haute -> nom + effet sur 2 lignes ; sinon effet en ligne
+    const bx = x0 + 16, bw = W - 32
+    menu.forEach((item, i) => {
+      const rowY = listTop + i * pitch, cy = rowY + bh / 2
+      const afford = p.gold >= item.price
+      // CORPS de la bannière (plaque thématisée + liseré + relief) — `body` recoloré au survol
+      const body = reg(this.add.rectangle(bx, rowY, bw, bh, th.banner, 1).setOrigin(0, 0).setStrokeStyle(2, th.frame))
+      reg(this.add.rectangle(bx + 2, rowY + 2, bw - 4, 2, 0xffffff, 0.10).setOrigin(0, 0)) // reflet haut
+      reg(this.add.rectangle(bx + 2, rowY + bh - 3, bw - 4, 2, 0x000000, 0.22).setOrigin(0, 0)) // ombre bas
+      // MÉDAILLON + icône à gauche
+      reg(this.add.circle(bx + 22, cy, Math.min(17, bh / 2 - 2), 0x000000, 0.35).setStrokeStyle(1.5, th.frame))
+      this.addItemIcon(reg, bx + 22, cy, item, Math.min(26, bh - 8))
+      // NOM (+ effet en sous-titre si la bannière est assez haute, sinon en ligne)
+      const name = reg(this.add.text(bx + 46, twoLine ? cy - 7 : cy, itemName(item), { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: th.chalk }).setOrigin(0, 0.5))
+      if (twoLine) reg(this.add.text(bx + 46, cy + 9, this.shopEffectStr(item), { fontFamily: 'monospace', fontSize: '10px', color: th.accent }).setOrigin(0, 0.5))
+      else reg(this.add.text(bx + 50 + name.width, cy, this.shopEffectStr(item), { fontFamily: 'monospace', fontSize: '10px', color: th.accent }).setOrigin(0, 0.5))
+      // PRIX à droite
+      reg(this.add.text(bx + bw - 12, cy, `${item.price} or`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: afford ? '#ffe27a' : '#d98a78' }).setOrigin(1, 0.5))
+      // SURVOL (la bannière s'éclaire) + CLIC (commander)
+      const hit = reg(this.add.rectangle(bx, rowY, bw, bh, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+      hit.on('pointerover', () => { body.setFillStyle(th.bannerHi, 1); name.setColor('#ffffff') })
+      hit.on('pointerout', () => { body.setFillStyle(th.banner, 1); name.setColor(th.chalk) })
+      hit.on('pointerdown', () => { if (afford) this.orderItem(item); else { this.playDenied(); this.showToast(`Il te manque ${item.price - p.gold} or`, '#e0a866') } })
+    })
+    // PIED : aide à gauche + petit lien DISCRET « étoffer la carte » à droite (toute la progression vit ici)
+    reg(this.add.rectangle(x0 + 14, y0 + H - 32, W - 28, 1, th.frame, 0.3).setOrigin(0, 0))
+    reg(this.add.text(x0 + 18, y0 + H - 17, th.help, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'italic', color: '#9a8c78' }).setOrigin(0, 0.5))
+    this.drawMenuUpgrade(reg, x0 + W - 18, y0 + H - 17, p, cfg, level, th)
+    // étincelle discrète après amélioration de la carte
+    if (this._shopRenovateFlash) {
+      this._shopRenovateFlash = false
+      const fl = reg(this.add.rectangle(cw / 2, ch / 2, W, H, th.frame, 0.3))
+      this.tweens.add({ targets: fl, alpha: 0, duration: 600, ease: 'Cubic.out' })
+    }
+  }
+
+  /** Effet COURT d'un consommable, façon carte de menu (le détail complet reste dans l'objet, via son `desc`). */
+  shopEffectStr(item) {
+    if (item.heal && item.mana) return `+${item.heal} PV  +${item.mana} mn`
+    if (item.heal) return item.foodBuff ? `+${item.heal} PV  +bonus` : `+${item.heal} PV`
+    if (item.mana) return `+${item.mana} mana`
+    const fb = item.foodBuff
+    if (fb) {
+      if (fb.atk && fb.def) return `+${fb.atk} ATQ  +${fb.def} DÉF`
+      if (fb.atk) return `+${fb.atk} ATQ`
+      if (fb.def) return `+${fb.def} DÉF`
+      if (fb.regen) return `+${fb.regen} PV/s`
+    }
+    if (item.tempBuff === 'both') return 'résiste froid+chaud'
+    if (item.tempBuff === 'fire') return 'résiste au froid'
+    if (item.tempBuff === 'frost') return 'résiste à la chaleur'
+    if (item.cure) return 'purge froid/chaud'
+    if (item.placeFire) return 'foyer-refuge'
+    return ''
+  }
+
+  /** Commande (= achat) d'un item du menu.
+   *  - APOTHICAIRE : Ylva prépare -> on paie, on ferme la carte et le délai s'écoule (livraison au sac). On peut revenir commander.
+   *  - TAVERNE : servi immédiatement (le barman est à ta table). */
+  orderItem(item) {
+    const p = this.game_.player
+    if (this.shopType === 'apothecary') {
+      if (p.gold < item.price) { this.playDenied(); this.showToast(`Il te manque ${item.price - p.gold} or`, '#e0a866'); return }
+      if (!p.canAccept(item)) { this.playDenied(); this.showToast(`Sac plein (${p.invMax}) — fais de la place`, '#e0a866'); return }
+      p.gold -= item.price
+      this.game_.prepPotion(item)
+      this.closeShop() // Ylva se met au travail : la scène reprend, le minuteur tourne (reviens lui parler pour commander d'autres potions)
+      return
+    }
+    const before = p.gold
+    this.buyItem(item) // taverne : vérifie l'or + la place, débite, rebuild
+    if (p.gold < before) this.showToast(`Servi : ${itemName(item)}`, '#ffd86b')
+  }
+
+  /** Petit lien DISCRET « Étoffer la carte » en pied de menu (toute la progression de la boutique tient ici).
+   *  Hybride : exige le NIVEAU de perso ET l'or. Au palier max : mention inerte « Carte complète ». */
+  drawMenuUpgrade(reg, x, y, p, cfg, level, th) {
+    if (level >= SHOP_MAX_TIER) { reg(this.add.text(x, y, 'Carte complète ★', { fontFamily: 'monospace', fontSize: '10px', color: '#9a8c78' }).setOrigin(1, 0.5)); return }
+    const cost = cfg.costs[level - 1], req = cfg.minLevel[level - 1]
+    const ready = p.level >= req && p.gold >= cost
+    const label = p.level < req ? `Étoffer la carte — niv. ${req}` : `Étoffer la carte — ${cost} or`
+    const t = reg(this.add.text(x, y, `${ready ? '✦ ' : ''}${label}`, { fontFamily: 'monospace', fontSize: '10px', color: ready ? th.accent : '#8b94a6' }).setOrigin(1, 0.5))
+    const hit = reg(this.add.rectangle(x - t.width - 4, y - 9, t.width + 8, 18, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+    hit.on('pointerdown', () => {
+      if (ready) this.renovateShop()
+      else { this.playDenied(); this.showToast(p.level < req ? `Niveau ${req} de personnage requis` : `Il te manque ${cost - p.gold} or`, '#e0a866') }
+    })
+  }
+
+  /** Paie la rénovation : -or, +1 palier, sauvegarde, étincelle + son, rebuild. */
+  renovateShop() {
+    const p = this.game_.player
+    const cfg = SHOP_CONFIGS[this.shopType]
+    const level = p.shopLevels?.[this.shopType] ?? 1
+    if (level >= SHOP_MAX_TIER) return
+    const cost = cfg.costs[level - 1], req = cfg.minLevel[level - 1]
+    if (p.level < req || p.gold < cost) { this.playDenied(); return }
+    p.gold -= cost
+    if (!p.shopLevels) p.shopLevels = { apothecary: 1, tavern: 1 }
+    p.shopLevels[this.shopType] = level + 1
+    this.game_.saveGame?.()
+    Audio.sfx('ui_accept', { detune: 120 })
+    this.showToast(`${cfg.title} — carte étoffée ! (palier ${level + 1})`, '#ffd86b')
+    this._shopRenovateFlash = true
+    this.buildShop()
   }
 
   /** Ligne compacte d'objet (boutique) : icône + nom (+×qté) + bouton à droite. */
@@ -989,17 +1212,35 @@ export default class UIScene extends Phaser.Scene {
       if (q > 0) rows.push({ item: ITEMS[id], qty: q, btn: { label: `+${sellPrice(ITEMS[id]) * q}`, enabled: true, onClick: () => this.sellResource(id) } })
     }
     const matTotal = MATERIALS.reduce((s, id) => s + sellPrice(ITEMS[id]) * (p.resources[id] ?? 0), 0)
+    const invTotal = p.inventory.reduce((s, it) => s + sellPrice(it) * (it.qty ?? 1), 0)
+    const grandTotal = matTotal + invTotal
     if (!rows.length) {
       reg(this.add.text(x + w / 2, y + 40, '(rien à vendre)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
       return
     }
     const rowH = 38
     const gap = 4
-    const listBottom = matTotal > 0 ? bottom - 24 : bottom // réserve la place du bouton "tout vendre"
+    const listBottom = grandTotal > 0 ? bottom - 24 : bottom // réserve la place du bouton "Vendre TOUT"
     const maxRows = Math.floor((listBottom - y) / (rowH + gap))
     rows.slice(0, maxRows).forEach((r, i) => this.drawShopRow(reg, x, y + i * (rowH + gap), w, rowH, r.item, r.qty, r.btn))
     if (rows.length > maxRows) reg(this.add.text(x + w, y + maxRows * (rowH + gap), `+${rows.length - maxRows}…`, { fontFamily: 'monospace', fontSize: '9px', color: '#ffe066' }).setOrigin(1, 0))
-    if (matTotal > 0) this.drawForgeBtn(reg, x, bottom - 18, w, true, `Vendre tous les matériaux (+${matTotal})`, () => this.sellAllResources())
+    if (grandTotal > 0) this.drawForgeBtn(reg, x, bottom - 18, w, true, `Vendre TOUT — sac + matériaux (+${grandTotal})`, () => this.sellAll())
+  }
+
+  /** Vend TOUT le sac (objets non équipés) ET tous les matériaux d'un coup. L'équipement PORTÉ n'est pas concerné. */
+  sellAll() {
+    const p = this.game_.player
+    let total = 0
+    for (const it of p.inventory) total += sellPrice(it) * (it.qty ?? 1)
+    for (const id of MATERIALS) total += sellPrice(ITEMS[id]) * (p.resources[id] ?? 0)
+    if (total <= 0) return
+    p.inventory = []
+    p.invVersion++
+    for (const id of MATERIALS) { const q = p.resources[id] ?? 0; if (q > 0) p.removeResource(id, q) }
+    p.gold += total
+    Audio.sfx('ui_coin', { detune: 0 })
+    this.showToast(`Tout vendu : +${total} or`, '#6fdc6f')
+    this.buildShop()
   }
 
   // ---------- helpers d'UI partagés (boutique + forge) ----------

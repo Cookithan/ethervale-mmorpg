@@ -179,15 +179,37 @@ export const ITEMS = {
   elite_bluebat: { id: 'elite_bluebat', name: 'Aile Givrée', slot: 'ring', icon: 'eq_ring_emerald', iconTint: 0xbfe0ff, eliteOnly: true, rarity: 'epic', price: 640, stats: { mana: 50, defense: 3, manaRegen: 2 } },
 
   // ===== CONSOMMABLES (type 'consumable') -> clic dans le sac. `heal` = +PV, `mana` = +mana. =====
+  // POTIONS DE BASE (seules vendues au MARCHAND général) : soin + mana communes.
   potion: { id: 'potion', name: 'Potion de soin', type: 'consumable', icon: 'pot_heal', rarity: 'common', price: 40, heal: 45 },
-  potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, heal: 120 },
   potion_mana: { id: 'potion_mana', name: 'Potion de mana', type: 'consumable', icon: 'pot_mana', rarity: 'common', price: 45, mana: 40 },
-  potion_mana_big: { id: 'potion_mana_big', name: 'Grande potion de mana', type: 'consumable', icon: 'pot_mana_big', rarity: 'rare', price: 120, mana: 90 },
-  // potions de TEMPÉRATURE (10 min) : la potion de feu protège du FROID, la potion de givre protège de la CHALEUR.
-  potion_fire: { id: 'potion_fire', name: 'Potion de feu', type: 'consumable', icon: 'pot_fire', rarity: 'rare', price: 150, tempBuff: 'fire', tempDur: 600000, desc: 'Protège du FROID 10 min (immunité gel)' },
-  potion_frost: { id: 'potion_frost', name: 'Potion de givre', type: 'consumable', icon: 'pot_frost', rarity: 'rare', price: 150, tempBuff: 'frost', tempDur: 600000, desc: 'Protège de la CHALEUR 10 min (immunité feu)' },
+  // GRANDES potions + potions de TEMPÉRATURE : `vendor:'apothecary'` -> exclusives à Ylva (pas au marchand).
+  potion_big: { id: 'potion_big', name: 'Grande potion de soin', type: 'consumable', icon: 'pot_heal_big', rarity: 'rare', price: 110, vendor: 'apothecary', heal: 120 },
+  potion_mana_big: { id: 'potion_mana_big', name: 'Grande potion de mana', type: 'consumable', icon: 'pot_mana_big', rarity: 'rare', price: 120, vendor: 'apothecary', mana: 90 },
+  potion_fire: { id: 'potion_fire', name: 'Potion de feu', type: 'consumable', icon: 'pot_fire', rarity: 'rare', price: 150, vendor: 'apothecary', tempBuff: 'fire', tempDur: 600000, desc: 'Protège du FROID 10 min (immunité gel)' },
+  potion_frost: { id: 'potion_frost', name: 'Potion de givre', type: 'consumable', icon: 'pot_frost', rarity: 'rare', price: 150, vendor: 'apothecary', tempBuff: 'frost', tempDur: 600000, desc: 'Protège de la CHALEUR 10 min (immunité feu)' },
   // feu de camp À POSER : crée un foyer temporaire (zone-refuge) qui neutralise le froid ET le chaud autour.
-  campfire_kit: { id: 'campfire_kit', name: 'Feu de camp', type: 'consumable', icon: 'campfire', rarity: 'rare', price: 800, placeFire: true, fireDur: 90000, fireRadius: 64, desc: 'À poser : foyer ~90 s qui réchauffe — protège du FROID autour (sans effet au désert)' },
+  campfire_kit: { id: 'campfire_kit', name: 'Feu de camp', type: 'consumable', icon: 'campfire', rarity: 'rare', price: 800, vendor: 'apothecary', placeFire: true, fireDur: 90000, fireRadius: 64, desc: 'À poser : foyer ~90 s qui réchauffe — protège du FROID autour (sans effet au désert)' },
+
+  // ===== ÉLIXIRS d'APOTHICAIRE (paliers 3-4 de l'Échoppe d'Ylva) — `vendor:'apothecary'` = exclusifs à Ylva. =====
+  potion_regen: { id: 'potion_regen', name: 'Élixir de régénération', type: 'consumable', icon: 'pot_regen', rarity: 'rare', price: 240, vendor: 'apothecary', foodBuff: { regen: 6, dur: 300000 }, desc: 'Régénère +6 PV/s pendant 5 min' },
+  potion_antidote: { id: 'potion_antidote', name: 'Antidote', type: 'consumable', icon: 'pot_antidote', rarity: 'common', price: 130, vendor: 'apothecary', cure: true, desc: 'Purge le gel et la brûlure (annule les effets de température)' },
+  potion_grand: { id: 'potion_grand', name: 'Grand Élixir', type: 'consumable', icon: 'pot_grand', rarity: 'epic', price: 360, vendor: 'apothecary', heal: 260, mana: 120, desc: '+260 PV ET +120 mana d\'un seul trait' },
+  potion_ward: { id: 'potion_ward', name: 'Garde majeure', type: 'consumable', icon: 'pot_ward', rarity: 'epic', price: 280, vendor: 'apothecary', tempBuff: 'both', tempDur: 600000, desc: 'Protège du FROID ET de la CHALEUR 10 min' },
+
+  // ===== REPAS de TAVERNE (type 'consumable') — soin/mana instantanés, abordables, EMPILABLES. `vendor:'tavern'` =
+  // vendus UNIQUEMENT à la taverne (exclus du marchand général via SHOP_STOCK). Icônes Ninja Items/Food. =====
+  // `cat` = 'food' (repas) ou 'drink' (boisson) -> filtre le menu après le choix « boisson ou repas ? » du serveur.
+  meal_rice: { id: 'meal_rice', name: 'Boulette de riz', type: 'consumable', icon: 'food_rice', rarity: 'common', price: 22, heal: 40, vendor: 'tavern', cat: 'food', desc: 'Un en-cas qui requinque (+40 PV)' },
+  meal_skewer: { id: 'meal_skewer', name: 'Brochette grillée', type: 'consumable', icon: 'food_skewer', rarity: 'common', price: 38, heal: 70, vendor: 'tavern', cat: 'food', desc: 'Viande grillée au feu de bois (+70 PV)' },
+  meal_fish: { id: 'meal_fish', name: 'Poisson grillé', type: 'consumable', icon: 'food_fish', rarity: 'common', price: 52, heal: 95, vendor: 'tavern', cat: 'food', desc: 'Pêche du jour, bien dorée (+95 PV)' },
+  meal_stew: { id: 'meal_stew', name: 'Ragoût du tavernier', type: 'consumable', icon: 'food_stew', rarity: 'rare', price: 78, heal: 140, vendor: 'tavern', cat: 'food', desc: 'Le plat qui remet d\'aplomb (+140 PV)' },
+  // BOISSONS
+  meal_ale: { id: 'meal_ale', name: 'Chope de bière', type: 'consumable', icon: 'food_mead', rarity: 'common', price: 18, heal: 30, vendor: 'tavern', cat: 'drink', desc: 'Une bonne chope mousseuse (+30 PV)' },
+  meal_mead: { id: 'meal_mead', name: 'Chope d\'hydromel', type: 'consumable', icon: 'food_mead', rarity: 'common', price: 60, mana: 70, vendor: 'tavern', cat: 'drink', desc: 'Boisson revigorante (+70 mana)' },
+  // REPAS/BOISSONS-BONUS (paliers 3-4) — soin + BUFF temporaire (foodBuff : +ATQ/+DÉF/régén pendant N min). Un seul buff à la fois (le nouveau remplace l'ancien).
+  meal_roast: { id: 'meal_roast', name: 'Rôti et bière', type: 'consumable', icon: 'food_roast', rarity: 'rare', price: 95, heal: 90, vendor: 'tavern', cat: 'food', foodBuff: { atk: 5, dur: 300000 }, desc: '+90 PV et +5 ATQ pendant 5 min' },
+  meal_tea: { id: 'meal_tea', name: 'Thé chaud des collines', type: 'consumable', icon: 'food_tea', rarity: 'common', price: 70, vendor: 'tavern', cat: 'drink', foodBuff: { def: 4, dur: 300000 }, desc: '+4 DÉF pendant 5 min' },
+  meal_feast: { id: 'meal_feast', name: 'Festin du Dernier Repos', type: 'consumable', icon: 'food_feast', rarity: 'epic', price: 220, heal: 200, vendor: 'tavern', cat: 'food', foodBuff: { atk: 5, def: 4, regen: 2, dur: 360000 }, desc: '+200 PV, +5 ATQ, +4 DÉF et +2 PV/s pendant 6 min' },
 
   // ===== MATÉRIAUX (type 'material') — ressources lâchées par les mobs, EMPILABLES dans une poche à part
   // (pas le sac d'équipement). Servent à VENDRE (or) ET à AMÉLIORER l'équipement à la forge. `price` =
@@ -232,8 +254,38 @@ export const ELITE_DROP = {
   flam: 'elite_flam', mushroom: 'elite_mushroom', trex: 'elite_trex', bluebat: 'elite_bluebat',
 }
 
-// stock du marchand = catalogue SAUF légendaires, pièces de set, objets forgés ET items d'élite
-export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set && !it.craftedOnly && !it.eliteOnly)
+// stock du marchand GÉNÉRAL = catalogue SAUF légendaires, pièces de set, objets forgés, items d'élite ET
+// produits exclusifs à un lieu (`vendor` : repas de taverne…). Les potions restent dispo au marchand ET à l'apothicaire.
+export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set && !it.craftedOnly && !it.eliteOnly && !it.vendor)
+
+// BOUTIQUES PAR LIEU « qui montent en niveau » (concept Rénovation). Chaque boutique a son TIER 1..4 PAR PERSO
+// (player.shopLevels[shopType]). On RÉNOVE en payant de l'or ET en ayant le niveau de perso requis ; chaque palier
+// (a) garnit la déco du panneau et (b) débloque une rangée de marchandises plus fortes. `items[].tier` = palier de
+// déblocage (les items au-dessus du tier courant s'affichent verrouillés). `costs`/`minLevel` = T1→T2, T2→T3, T3→T4.
+// `portrait` = frame 0 du spritesheet du PNJ. Routé depuis GameScene.interiorInteract → UIScene.openShop.
+export const SHOP_CONFIGS = {
+  apothecary: {
+    title: 'Échoppe d’Ylva', portrait: 'npc_shaman', shopName: 'Atelier',
+    costs: [400, 1500, 5000], minLevel: [5, 12, 22],
+    items: [
+      { id: 'potion', tier: 1 }, { id: 'potion_mana', tier: 1 },
+      { id: 'potion_big', tier: 2 }, { id: 'potion_mana_big', tier: 2 }, { id: 'potion_fire', tier: 2 }, { id: 'potion_frost', tier: 2 },
+      { id: 'potion_regen', tier: 3 }, { id: 'potion_antidote', tier: 3 }, { id: 'campfire_kit', tier: 3 },
+      { id: 'potion_grand', tier: 4 }, { id: 'potion_ward', tier: 4 },
+    ],
+  },
+  tavern: {
+    title: 'Taverne du Dernier Repos', portrait: 'npc_noble', shopName: 'Comptoir',
+    costs: [350, 1300, 4500], minLevel: [5, 12, 22],
+    items: [
+      { id: 'meal_rice', tier: 1 }, { id: 'meal_skewer', tier: 1 }, { id: 'meal_ale', tier: 1 }, { id: 'meal_mead', tier: 1 },
+      { id: 'meal_fish', tier: 2 }, { id: 'meal_stew', tier: 2 },
+      { id: 'meal_roast', tier: 3 }, { id: 'meal_tea', tier: 3 },
+      { id: 'meal_feast', tier: 4 },
+    ],
+  },
+}
+export const SHOP_MAX_TIER = 4
 
 // BATEAU (brief A3) : achat SPÉCIAL au marchand (onglet dédié) — déverrouille la navigation sur l'eau
 // (le héros embarque dès qu'il marche sur l'eau) → accès aux Terres maudites end-game. Pas un objet de

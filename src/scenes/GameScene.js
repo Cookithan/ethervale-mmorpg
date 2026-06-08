@@ -621,6 +621,7 @@ export default class GameScene extends Phaser.Scene {
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
+        if (this.player?.sitting) return // ASSIS : aucun clic (pas de déplacement à la souris, pas de tir)
         // ignore les clics sur le panneau d'inventaire (géré par UIScene)
         const ui = this.scene.get('UIScene')
         if (ui?.pointerOverInventory?.(p.x, p.y)) return
@@ -3224,21 +3225,22 @@ export default class GameScene extends Phaser.Scene {
     // (marchand = entrée `merchant:true` -> place la maison + porte, mais PAS de villageois bavard ;
     //  le sprite du marchand s'y tient, posé par spawnMerchant.)
     this.villagers = [
-      { hx: cx + 7, hy: cy - 1, key: 'apothecary', merchant: true, place: 'Marché' }, // EST du cercle = marchand (échoppe verte)
+      { hx: cx + 7, hy: cy - 1, key: 'apothecary', merchant: true, enter: 'merchant', place: 'Marché' }, // EST du cercle = marchand (échoppe verte) — enterable
       {
-        hx: cx - 9, hy: cy - 1, key: 'house_long', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge', place: 'Forge', // OUEST du cercle
+        hx: cx - 9, hy: cy - 1, key: 'house_long', tex: 'npc_villager', name: 'Aldric le Forgeron', role: 'forge', enter: 'forge', place: 'Forge', // OUEST du cercle
         lines: [
           'Je suis Aldric, le forgeron. Apporte-moi tes armes et armures.',
           'Je peux les réparer quand elles s\'usent, et les améliorer contre de l\'or.',
         ],
       },
-      // MIRA tient l'AUBERGE (grande bâtisse, à la place de son ancienne maison) + donneuse de quêtes
+      // MIRA tient l'AUBERGE. Les QUÊTES se donnent à la RÉCEPTION (intérieur) : ce PNJ de seuil n'est qu'un
+      // accueil (noQuest) qui invite à entrer — l'auberge affiche un marqueur ! / ? quand Mira a une tâche.
       {
-        hx: cx - 2, hy: cy - 12, key: 'cabin', tex: 'npc_woman', name: 'Mira', enter: 'inn', place: 'Auberge', // NORD du cercle
+        hx: cx - 2, hy: cy - 12, key: 'cabin', tex: 'npc_woman', name: 'Mira', enter: 'inn', place: 'Auberge', noQuest: true, // NORD du cercle
         lines: [
-          'Bienvenue à l\'auberge, voyageur ! Je suis Mira, je tiens ces lieux.',
+          'Bienvenue, voyageur ! Je suis Mira, je tiens l\'auberge.',
           'Appuie sur C pour ta fiche (équipe armes/armures). Le marchand est à droite — parle-lui avec E.',
-          'Les monstres lâchent or et équipement, ramasse tout ! Et reviens me voir, j\'ai du travail pour toi.',
+          'Entre donc : je t\'accueille à la réception, et j\'ai souvent du travail pour un aventurier.',
         ],
       },
       // --- BÂTIMENTS DE SERVICE (entrées préparées via `enter` pour les intérieurs à venir) ---
@@ -3264,11 +3266,11 @@ export default class GameScene extends Phaser.Scene {
         ],
       },
       {
-        hx: cx - 1, hy: cy + 7, key: 'house_orange', tex: 'npc_master', name: 'Sieur Aldwin', place: 'Maison', // SUD du cercle (npc_master : plus de Noble en doublon, réservé au barman)
+        hx: cx - 1, hy: cy + 7, key: 'house_orange', tex: 'npc_master', name: 'Sieur Aldwin', enter: 'house', place: 'Maison', // SUD du cercle (npc_master : plus de Noble en doublon, réservé au barman)
         lines: ['Un noble de passage ? Non, j\'habite ici. Ce bourg grandit vite, n\'est-ce pas ?'],
       },
       {
-        hx: cx - 7, hy: cy + 5, key: 'cottage', tex: 'npc_princess', name: 'Dame Elara', place: 'Maison', // SUD-OUEST du cercle
+        hx: cx - 7, hy: cy + 5, key: 'cottage', tex: 'npc_princess', name: 'Dame Elara', enter: 'house', place: 'Maison', // SUD-OUEST du cercle
         lines: ['On dit qu\'avec assez d\'aventuriers, ce village deviendra une vraie cité. Tu y participes !'],
       },
     ]
@@ -3296,18 +3298,19 @@ export default class GameScene extends Phaser.Scene {
         // Posé PILE au seuil = juste sous le BAS DU COLLIDER du bâtiment (= là où le joueur s'arrête), colonne de la porte.
         // (Le collider de la taverne est remonté de 16 px -> on remonte aussi son carré d'autant.) Seulement taverne/apothicaire.
         let zone = null
-        if (v.enter === 'tavern' || v.enter === 'apothecary' || v.enter === 'inn') {
+        if (v.enter === 'tavern' || v.enter === 'apothecary' || v.enter === 'inn' || v.enter === 'forge' || v.enter === 'merchant' || v.enter === 'house' || v.enter === 'bank') {
           // carré VERT d'entrée = CONTOUR de l'ouverture de la PORTE, calé sur le BAS DU COLLIDER (= base VISIBLE
           // du bâtiment ; tient compte de la rangée vide remontée pour la taverne). Couvre la tuile de la porte +
           // 4 px sous le collider pour que le joueur collé à la porte le touche -> il entre.
           // Corps DYNAMIQUE immobile => dessiné en VERT en debug (distinct du bleu des bâtiments), invisible en jeu.
           const lift = v.key === 'tavern' ? 16 : 0
           const colBottom = (hy + b.h) * TILE - lift
-          zone = this.add.rectangle(v.nx * TILE + 8, colBottom - 9, 16, 26) // couvre la porte EN HAUT et descend jusqu'au seuil EN BAS (colBottom+4) -> le joueur collé au bâtiment le touche => il entre
+          const doorOff = v.enter === 'merchant' ? 15 : 0 // bâtiment marchand RETOURNÉ : la porte visible est décalée -> +15px à droite pour aligner la hitbox
+          zone = this.add.rectangle(v.nx * TILE + 8 + doorOff, colBottom - 9, 16, 26) // couvre la porte EN HAUT et descend jusqu'au seuil EN BAS -> le joueur collé au bâtiment le touche => il entre
           this.physics.add.existing(zone)
           zone.body.setAllowGravity(false); zone.body.moves = false; zone.body.immovable = true
         }
-        this.buildingEntrances.push({ id: v.enter, x: v.nx * TILE + 8, y: v.ny * TILE + 8, zone })
+        this.buildingEntrances.push({ id: v.enter, x: v.nx * TILE + 8, y: v.ny * TILE + 8, zone, npcName: v.name, npcTex: v.tex, lines: v.lines }) // npc* = override du résident (maison Aldwin/Elara)
       }
     }
     this.paintVillageGround() // place + chemins reliant les maisons (look "village")
@@ -3341,6 +3344,7 @@ export default class GameScene extends Phaser.Scene {
 
   /** Nom du LIEU (Forge, Marché, Taverne…) au-dessus de chaque bâtiment de service + halo de porte (enterables). */
   drawBuildingSigns() {
+    this.buildingQuestMarks = [] // marqueurs ! / ? au-dessus des bâtiments dont le PNJ d'intérieur donne des quêtes (auberge = Mira)
     for (const v of this.villagers) {
       // (ancien « halo rond clignotant » sur la porte RETIRÉ : pris pour un obstacle, et inutile depuis l'entrée automatique)
       if (!v.place) continue
@@ -3350,6 +3354,22 @@ export default class GameScene extends Phaser.Scene {
       const sy = v.ty * TILE - 3
       this.add.text(sx, sy, v.place, { fontFamily: FONT, fontSize: '10px', fontStyle: 'bold', color: '#ffb22e', stroke: '#241608', strokeThickness: 4 })
         .setOrigin(0.5, 1).setDepth(9500).setResolution(3)
+      // si on PEUT entrer et que le PNJ d'intérieur est un donneur de quêtes -> on prépare un marqueur au-dessus du nom
+      if (v.enter) {
+        const giver = this.interiorConfig(v.enter).npcName
+        if (giver && Object.values(QUESTS).some((q) => q.giver === giver)) this.buildingQuestMarks.push({ x: sx, y: sy - 12, giver, text: null })
+      }
+    }
+  }
+
+  /** Marqueur ! / ? flottant au-dessus d'un bâtiment enterable quand son PNJ d'intérieur a une quête à donner/rendre
+   *  (auberge = Mira) -> guide le joueur à entrer (les quêtes se donnent à la réception). */
+  updateBuildingQuestMarks() {
+    for (const m of this.buildingQuestMarks || []) {
+      const mark = this.questMark(m.giver)
+      if (!mark) { m.text?.setVisible(false); continue }
+      if (!m.text) m.text = this.add.text(m.x, m.y, '', { fontFamily: 'Georgia, serif', fontSize: '16px', fontStyle: 'bold', stroke: '#1a1206', strokeThickness: 5 }).setOrigin(0.5, 1).setResolution(3).setDepth(9600)
+      m.text.setText(mark).setColor(mark === '?' ? '#6dfca0' : '#ffd21a').setVisible(true).setY(m.y + Math.sin(this.time.now / 360) * 1.5)
     }
   }
 
@@ -3505,7 +3525,7 @@ export default class GameScene extends Phaser.Scene {
   spawnMerchant() {
     // devant la porte de la maison du HAUT (merchantHome, calculé dans spawnVillage) ; repli au centre
     const h = this.merchantHome
-    const mx = (h ? h.nx : this.cx + 3) * TILE + 8
+    const mx = (h ? h.nx + 1 : this.cx + 3) * TILE + 8 + 16 // À CÔTÉ de la porte, décalé à DROITE (la porte sert d'entrée vers l'intérieur marchand)
     const my = (h ? h.ny : this.cy) * TILE + 8
     this.merchant = this.add.sprite(mx, my, 'npc_merchant', 0).setDepth(my)
     this.physics.add.existing(this.merchant, true)
@@ -3637,15 +3657,20 @@ export default class GameScene extends Phaser.Scene {
   // comptoir = service (1re tranche : dialogue ; potions/boissons-buffs à venir). On ressort par la porte du bas (E).
 
   interiorConfig(id) {
-    if (id === 'tavern') return { title: 'Taverne du Dernier Repos', npcTex: 'npc_noble', npcName: 'Brewen', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a3a2c, wallTop: 0x5e241a, accent: 0xffb24a, lines: ['« Assieds-toi, l’ami ! Bientôt, des chopes et ragoûts qui requinquent. »'] }
+    if (id === 'tavern') return { title: 'Taverne du Dernier Repos', npcTex: 'npc_noble', npcName: 'Brewen', shop: 'tavern', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a3a2c, wallTop: 0x5e241a, accent: 0xffb24a, lines: ['« Assieds-toi, l’ami ! Chopes et ragoûts qui requinquent, c’est par ici. »'] }
     if (id === 'inn') return { title: 'Auberge du Voyageur', npcTex: 'npc_woman', npcName: 'Mira', floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a6a3c, wallTop: 0x5e3a1a, accent: 0xffc46a, lines: ['« Bienvenue, voyageur ! Une tâche pour toi ? Et le dortoir est par la porte de droite pour te reposer. »'] }
     if (id === 'dorm') return { title: 'Dortoir', npcTex: null, npcName: null, floor: 0x6e4d2e, plank: 0x533a20, wall: 0x8a6a3c, wallTop: 0x5e3a1a, accent: 0xffc46a, lines: [] }
-    return { title: 'Échoppe d’Ylva', npcTex: 'npc_shaman', npcName: 'Ylva', floor: 0x5c5238, plank: 0x453d2b, wall: 0x2f6a3a, wallTop: 0x214c29, accent: 0x8ef0a0, lines: ['« Mes potions soignent, restaurent la mana et bravent le froid. (Bientôt en vente ici.) »'] }
+    if (id === 'forge') return { title: 'Forge d’Aldric', npcTex: 'npc_villager', npcName: 'Aldric', forge: true, floor: 0x6e4d2e, plank: 0x533a20, wall: 0x4a4a4a, wallTop: 0x2e2e2e, accent: 0xff8a3a, lines: ['« Apporte tes armes : je répare et j’améliore. »'] }
+    if (id === 'merchant') return { title: 'Comptoir du marchand', npcTex: 'npc_merchant', npcName: 'Tobias', shopGeneral: true, floor: 0x6e4d2e, plank: 0x533a20, wall: 0xc89860, wallTop: 0x8a6a3c, accent: 0xffc46a, lines: ['« Tout s’achète, tout se vend ! Que te faut-il ? »'] }
+    if (id === 'house') return { title: 'Maison', npcTex: 'npc_master', npcName: 'Résident', floor: 0x6e4d2e, plank: 0x533a20, wall: 0xb98a55, wallTop: 0x7a5a30, accent: 0xffba70, lines: ['Un foyer chaleureux du bourg.'] }
+    if (id === 'bank') return { title: 'Banque d’Iroas', npcTex: 'npc_inspector', npcName: 'Cornélius', floor: 0x5c5238, plank: 0x453d2b, wall: 0x6a6a82, wallTop: 0x45455a, accent: 0xffe08a, lines: ['« La banque d’Iroas garde tes biens en sûreté. »', '« Le coffre ouvrira bientôt. Patience, l’or appelle l’or. »'] }
+    return { title: 'Échoppe d’Ylva', npcTex: 'npc_shaman', npcName: 'Ylva', shop: 'apothecary', floor: 0x5c5238, plank: 0x453d2b, wall: 0x2f6a3a, wallTop: 0x214c29, accent: 0x8ef0a0, lines: ['« Mes potions soignent, restaurent la mana et bravent le froid comme la chaleur. »'] }
   }
 
   /** Entre dans l'intérieur d'un bâtiment depuis le VILLAGE (fondu + téléport hors-map). Déclenché AU contact de la porte. */
-  enterInterior(id) {
+  enterInterior(id, ent = null) {
     if (this.inInterior || this.uiBusy() || this.gameOver) return
+    this._interiorNpcOverride = (id === 'house' && ent && ent.npcName) ? { id, npcName: ent.npcName, npcTex: ent.npcTex, lines: ent.lines } : null // MAISON : résident variable (Aldwin / Elara)
     this._villageReturn = { x: this.player.x, y: this.player.y }
     this._savedZoom = this.cameras.main.zoom // pour restaurer le zoom du village à la sortie
     this.goInterior(id, {})
@@ -3710,15 +3735,20 @@ export default class GameScene extends Phaser.Scene {
    *  murs pierre (tuile pleine) + porte + comptoir + PNJ + mobilier + LUMIÈRE chaude. */
   buildInterior(id) {
     const cfg = this.interiorConfig(id)
+    // OVERRIDE de PNJ : pour la MAISON, le résident (nom/tex/dialogue) vient du villageois dont on a passé la porte (Aldwin vs Elara…).
+    const ov = this._interiorNpcOverride
+    if (ov && ov.id === id) { if (ov.npcName) cfg.npcName = ov.npcName; if (ov.npcTex) cfg.npcTex = ov.npcTex; if (ov.lines) cfg.lines = ov.lines; if (ov.title) cfg.title = ov.title }
     const ox = -3200
     const oy = -3200
-    const cols = id === 'tavern' ? 17 : id === 'inn' ? 14 : id === 'dorm' ? 17 : 15 // auberge = petite réception ; dortoir = grand (20 lits)
-    const rows = id === 'tavern' ? 13 : id === 'inn' ? 10 : id === 'dorm' ? 18 : 12
+    const cols = id === 'tavern' ? 17 : id === 'inn' ? 14 : id === 'dorm' ? 17 : id === 'forge' ? 14 : id === 'merchant' ? 14 : id === 'house' ? 13 : id === 'bank' ? 13 : 15
+    const rows = id === 'tavern' ? 13 : id === 'inn' ? 10 : id === 'dorm' ? 18 : id === 'forge' ? 11 : id === 'merchant' ? 11 : id === 'house' ? 11 : id === 'bank' ? 11 : 12
     const W = cols * TILE
     const H = rows * TILE
     const D = 7000
     const objs = []
     const colliders = []
+    const interiorBeds = [] // dortoir : zones de repos (corps des lits) -> soin complet + sauvegarde
+    const interiorSeats = [] // taverne : places assises (sous les tables) -> s'asseoir appelle le barman
     const g0 = Math.floor(cols / 2) - 1
     const g1 = Math.floor(cols / 2) // trou de porte = 2 tuiles -> passage LARGE et confortable (le joueur ne reste plus coincé)
     const doorCx = ox + (g0 + 1) * TILE // centre du trou de porte (2 tuiles : g0 et g1)
@@ -3726,13 +3756,14 @@ export default class GameScene extends Phaser.Scene {
     // FOND SOMBRE plein écran (couvre le « gris » hors-map) — scrollFactor 0
     objs.push(this.add.rectangle(0, 0, this.scale.width + 80, this.scale.height + 80, 0x0a0810, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(D - 100))
     // SOL en bois (planches Penzilla, tuile répétée) — taverne = planches + bois plus FONCÉ
-    const floorFrame = id === 'apothecary' ? 28 : 92, floorTint = id === 'apothecary' ? 0x8f8270 : 0xb5895a // apothicaire = sol froid (laisse parler le violet) ; taverne + auberge = planches bois chaud
+    const floorFrame = id === 'apothecary' ? 28 : 92, floorTint = id === 'apothecary' ? 0x8f8270 : id === 'forge' ? 0x5a5048 : id === 'bank' ? 0x6e6880 : 0xb5895a // apothicaire froid / forge cendre / banque pierre bleue / autres bois chaud
     objs.push(this.add.tileSprite(ox + W / 2, oy + H / 2, W, H, 'penz_floors', floorFrame).setTint(floorTint).setDepth(D))
     // MURS pierre (tuile PLEINE 33/34 alternée — l'analyse pixel a montré que les rangées 4-5 sont 100% pleines) :
     // mur du fond sur 2 rangées + côtés + bas avec un trou de porte au centre
-    const wallTint = id === 'apothecary' ? 0x9a8aa8 : 0xc89860 // apothicaire = pierre FROIDE violacée ; taverne = pierre CHAUDE
-    const woodWall = id === 'inn' || id === 'dorm' // AUBERGE + DORTOIR = mur en PLANCHES BOIS VERTICALES (penz_floors tourné 90°) + teinte foncée -> distinct du sol
-    const wt = (cx, cy) => { const im = this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, woodWall ? 'penz_floors' : 'mw_walls', woodWall ? 92 : ((cx + cy) % 2 ? 33 : 34)).setTint(woodWall ? 0x5a3520 : wallTint).setDepth(D + 6); if (woodWall) im.setAngle(90); objs.push(im) }
+    const wallTint = id === 'apothecary' ? 0x9a8aa8 : id === 'forge' ? 0x4a4a4a : id === 'bank' ? 0x6a6a82 : 0xc89860 // apothicaire violacé / forge pierre grise / banque pierre bleue
+    const woodWall = id === 'inn' || id === 'dorm' || id === 'tavern' || id === 'merchant' || id === 'house' // murs BOIS (les autres = pierre mw_walls)
+    const woodTint = id === 'tavern' ? 0x402a16 : id === 'merchant' ? 0x6e4a28 : id === 'house' ? 0x6b4c28 : 0x5a3520 // taverne foncé / marchand chaud / maison bois clair
+    const wt = (cx, cy) => { const im = this.add.image(ox + cx * TILE + 8, oy + cy * TILE + 8, woodWall ? 'penz_floors' : 'mw_walls', woodWall ? 92 : ((cx + cy) % 2 ? 33 : 34)).setTint(woodWall ? woodTint : wallTint).setDepth(D + 6); if (woodWall) im.setAngle(90); objs.push(im) }
     for (let c = 0; c < cols; c++) { wt(c, 0); wt(c, 1) }
     for (let r = 2; r < rows; r++) { wt(0, r); wt(cols - 1, r) }
     for (let c = 1; c < cols - 1; c++) { if (c !== g0 && c !== g1) wt(c, rows - 1) }
@@ -3769,9 +3800,7 @@ export default class GameScene extends Phaser.Scene {
         ;(items || []).forEach((it, i) => si(it, ox + (tx + 1 + (i - (items.length - 1) / 2) * 0.6) * TILE, oy + (ty + 0.55) * TILE, D + 14))
         pp(9, 0, 1, 2, ox + (tx + 2.05) * TILE, oy + (ty + 0.15) * TILE, D + 12, true)  // DROITE : profil MIROIR (sens inversé)
         solid(ox + (tx + 0.3) * TILE, oy + (ty + 0.5) * TILE, 1.4 * TILE, 1.0 * TILE) // hitbox de table RÉDUITE
-        // petite hitbox sur l'assise de chaque chaise (haut / gauche / droite)
-        const chairHit = (cx, cy) => solid(ox + (cx + 0.25) * TILE, oy + (cy + 0.95) * TILE, 0.5 * TILE, 0.5 * TILE)
-        chairHit(tx + 0.5, ty - 1.7); chairHit(tx - 1.05, ty + 0.15); chairHit(tx + 2.05, ty + 0.15)
+        // (AUCUNE hitbox sur les chaises : les 3 chaises de chaque table sont des PLACES ASSISES où le client peut se poser)
       }
       // tapis sous les 2 tables (recentrés + descendus de 10 px avec les tables)
       pp(10, 2, 3, 2, ox + 3.0 * TILE, oy + 8.625 * TILE, D + 2); pp(10, 2, 3, 2, ox + 10.0 * TILE, oy + 8.625 * TILE, D + 2)
@@ -3784,16 +3813,30 @@ export default class GameScene extends Phaser.Scene {
       })
       // BARMAN (Brewen) dans la bande derrière le comptoir (remonté de 4 px)
       npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE - 4, cfg.npcTex, 0).setDepth(D + 11)
-      // COMPTOIR PLEINE LARGEUR (ligne) — 2 rangs ; INFRANCHISSABLE (on ne passe pas derrière)
+      // COMPTOIR PLEINE LARGEUR (ligne) — 2 rangs ; INFRANCHISSABLE pour le JOUEUR. On laisse une OUVERTURE (porte du
+      // barman) à la colonne 14 : visuellement le comptoir s'y interrompt -> le barman la franchit (il se déplace en
+      // lerp, donc traverse le collider plein), mais le joueur reste bloqué partout (corps 10px > ouverture).
       const bL = 1, bR = cols - 1
+      const barDoorCol = bR - 2 // = 14 : porte du barman, à droite du comptoir
       for (const row of [5.0, 5.4]) {
         pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13)
-        for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13)
+        for (let c = bL + 1; c < bR - 1; c++) { if (c === barDoorCol) continue; pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13) }
         pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13)
       }
+      // PORTE DU BARMAN : MÊME porte Sprout animée que l'entrée (spr_door), ALIGNÉE sur la bande du comptoir (rangs 5.0 & 5.4)
+      this._barmanDoorSpr = this.add.sprite(ox + (barDoorCol + 0.5) * TILE, oy + 5.7 * TILE - 2.5, 'spr_door', 1).setScale(1, 1.0875).setDepth(D + 14) // -5px par le bas au total (haut inchangé)
+      objs.push(this._barmanDoorSpr)
+      objs.push(this.add.image(ox + (barDoorCol + 0.5) * TILE, oy + 5.7 * TILE, 'int_glow').setScale(0.9).setTint(0xffcf8a).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 9))
       for (let c = 2; c < bR - 1; c += 2) si([54, 42, 49, 61, 54, 42][((c / 2) | 0) % 6], ox + (c + 0.5) * TILE, oy + 5.05 * TILE, D + 16) // chopes/plats sur le bar
-      // TABOURETS (boire au bar) + petite hitbox sur chacun
-      for (let i = 0; i < 6; i++) { pp(12, 1, 1, 1, ox + (2.5 + i * 2) * TILE, oy + 6.6 * TILE, D + 12); solid(ox + (2.7 + i * 2) * TILE, oy + 6.95 * TILE, 0.6 * TILE, 0.5 * TILE) }
+      // TABOURETS du bar : on peut S'Y ASSEOIR (E) -> plus de hitbox (sinon on ne pourrait pas s'y poser)
+      for (let i = 0; i < 6; i++) {
+        const sxc = 2.5 + i * 2
+        pp(12, 1, 1, 1, ox + sxc * TILE, oy + 6.6 * TILE, D + 12)
+        interiorSeats.push({
+          cx: ox + (sxc + 0.5) * TILE, cy: oy + 6.85 * TILE - 2, hw: 0.5 * TILE, hh: 0.6 * TILE, face: 'up', // assise PILE sur le tabouret (-2px vers le haut), face au comptoir
+          bx: ox + (sxc + 0.5) * TILE, by: oy + 7.6 * TILE, bface: 'up', // le barman remonte de l'allée et s'arrête COLLÉ devant (sous) le client
+        })
+      }
       // LANTERNES + lueurs chaudes — AUCUN feu (+ petite hitbox sur le pied de chaque lampe)
       pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.0 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 7.0 * TILE, D + 10)
       solid(ox + 1.3 * TILE, oy + 8.4 * TILE - 5, 0.5 * TILE, 1.2 * TILE + 5); solid(ox + (cols - 1.7) * TILE, oy + 8.4 * TILE - 5, 0.5 * TILE, 1.2 * TILE + 5)
@@ -3803,8 +3846,19 @@ export default class GameScene extends Phaser.Scene {
       // 2 GRANDES TABLES OVALES (3 chaises bois tournées vers la table, aérées) — rentrées vers le centre (tour de table possible)
       oval(3.5, 9.125, [54, 26])
       oval(10.5, 9.125, [49, 61])
-      // COLLISION : comptoir pleine largeur = on ne passe pas derrière le bar (bord du HAUT descendu de 5 px, bas inchangé)
-      solid(ox + bL * TILE, oy + 5.0 * TILE, (bR - bL) * TILE, 1.4 * TILE - 8)
+      // PLACES ASSISES aux tables : on s'assoit PILE sur CHACUNE des 3 chaises (haut / gauche / droite), face à la table.
+      // Le barman vient se poster à côté, dans une colonne DÉGAGÉE (pas à travers la table).
+      for (const tx of [3.5, 10.5]) {
+        const ty = 9.125
+        // chaque chaise = place du barman JUSTE À CÔTÉ du client (collé), dans une colonne dégagée (pas à travers la table)
+        interiorSeats.push({ cx: ox + (tx + 1.0) * TILE, cy: oy + (ty - 0.7) * TILE, hw: 0.5 * TILE, hh: 0.6 * TILE, face: 'down', bx: ox + tx * TILE, by: oy + (ty - 0.7) * TILE, bface: 'right' }) // chaise HAUT (barman à gauche)
+        interiorSeats.push({ cx: ox + (tx - 0.55) * TILE, cy: oy + (ty + 1.05) * TILE, hw: 0.5 * TILE, hh: 0.7 * TILE, face: 'right', bx: ox + (tx - 1.6) * TILE, by: oy + (ty + 1.05) * TILE, bface: 'right' }) // chaise GAUCHE (barman à gauche)
+        interiorSeats.push({ cx: ox + (tx + 2.55) * TILE, cy: oy + (ty + 1.15) * TILE, hw: 0.5 * TILE, hh: 0.7 * TILE, face: 'left', bx: ox + (tx + 3.6) * TILE, by: oy + (ty + 1.15) * TILE, bface: 'left' }) // chaise DROITE (barman à droite)
+      }
+      // COLLISION : comptoir EN DEUX TRONÇONS avec un TROU de 8px (la porte du barman, col 14.25-14.75). Le joueur
+      // (corps 10px) ne peut pas franchir ce trou ; le barman, déplacé en lerp, le traverse. -> "porte que seul lui franchit".
+      solid(ox + bL * TILE, oy + 5.0 * TILE, (14.25 - bL) * TILE, 1.4 * TILE - 6)         // tronçon GAUCHE (jusqu'à la porte) — +2px vers le bas
+      solid(ox + 14.75 * TILE, oy + 5.0 * TILE, (bR - 14.75) * TILE, 1.4 * TILE - 6)       // tronçon DROIT (après la porte) — +2px vers le bas
     } else if (id === 'inn') {
       // === AUBERGE-RÉCEPTION FERMÉE : comptoir en L qui ENFERME Mira (inaccessible, on lui parle par-dessus) + PORTE Sprout animée EN HAUT À DROITE ===
       const cxm = cols / 2
@@ -3837,7 +3891,12 @@ export default class GameScene extends Phaser.Scene {
     } else if (id === 'dorm') {
       // === GRAND DORTOIR : 20 lits (5x4) pour se reposer, allées praticables, porte de sortie -> réception ===
       const cxm = cols / 2
-      const bed = (key, gx, gy) => { objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, key).setOrigin(0, 0).setDepth(D + 9)); solid(ox + (gx + 0.2) * TILE, oy + (gy + 0.6) * TILE, 1.6 * TILE, 2.2 * TILE) }
+      const bed = (key, gx, gy) => {
+        objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, key).setOrigin(0, 0).setDepth(D + 9))
+        solid(ox + (gx + 0.2) * TILE, oy + (gy + 0.6) * TILE, 1.6 * TILE, 0.8 * TILE) // CHEVET (tête de lit) solide -> bloque le passage vers la rangée du fond
+        // ZONE DE REPOS = corps du lit : en montant depuis l'allée, on s'y « allonge » (PV + mana au max + sauvegarde)
+        interiorBeds.push({ cx: ox + (gx + 1.0) * TILE, cy: oy + (gy + 1.95) * TILE, hw: 0.8 * TILE, hh: 0.65 * TILE })
+      }
       const colsX = [1.5, 4.5, 7.5, 10.5, 13.5], rowsY = [2.0, 6.0, 10.0, 14.0]
       const COL = ['nin_bed_tan', 'nin_bed_red', 'nin_bed_blue', 'nin_bed_green']
       rowsY.forEach((gy, r) => colsX.forEach((gx, c) => {
@@ -3849,6 +3908,67 @@ export default class GameScene extends Phaser.Scene {
       pp(6, 7, 1, 3, ox + 1 * TILE, oy + 2.2 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 2.2 * TILE, D + 10)
       pp(6, 7, 1, 3, ox + 1 * TILE, oy + (rows - 4) * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + (rows - 4) * TILE, D + 10)
       objs.push(this.add.image(ox + W / 2, oy + H / 2, 'int_glow').setDisplaySize(W, H).setTint(0xffba70).setAlpha(0.1).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
+    } else if (id === 'forge') {
+      // === FORGE d'Aldric : fournaise rougeoyante + établi (comptoir) + étagère d'outils ===
+      const cxm = cols / 2, bL = 1, bR = cols - 1
+      const aglow = (x, y, s, t, a) => objs.push(this.add.image(ox + x * TILE, oy + y * TILE, 'int_glow').setScale(s).setTint(t).setAlpha(a).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 11))
+      pp(6, 7, 1, 3, ox + 1.5 * TILE, oy + 1.0 * TILE, D + 10); solid(ox + 1.6 * TILE, oy + 1.2 * TILE, 0.8 * TILE, 2.4 * TILE) // fournaise (colonne) — rougeoyante par le halo
+      aglow(2.0, 2.4, 2.4, 0xff5533, 0.40); aglow(2.0, 3.4, 1.8, 0xffaa44, 0.24)
+      pp(6, 4, 3, 3, ox + (cols - 4.2) * TILE, oy + 1.4 * TILE - 18, D + 8); solid(ox + (cols - 4.2) * TILE, oy + 1.4 * TILE - 18, 3 * TILE, 3 * TILE) // étagère d'outils
+      si(24, ox + (cols - 3.6) * TILE, oy + 1.9 * TILE - 18, D + 10); si(26, ox + (cols - 2.7) * TILE, oy + 1.9 * TILE - 18, D + 10); si(54, ox + (cols - 1.8) * TILE, oy + 1.9 * TILE - 18, D + 10)
+      npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE - 4, cfg.npcTex, 0).setDepth(D + 11) // Aldric derrière l'établi
+      for (const row of [5.6, 6.0]) { pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13); for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13); pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13) }
+      si(24, ox + (cxm - 1.5) * TILE, oy + 5.65 * TILE, D + 16); si(26, ox + (cxm + 0.4) * TILE, oy + 5.6 * TILE, D + 16); si(54, ox + (cxm + 2.0) * TILE, oy + 5.6 * TILE, D + 16) // marteau/pinces/lingot
+      solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE - 6)
+      si(15, ox + 1.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.3, 0x6a7a8a); si(15, ox + (cols - 1.5) * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.2, 0x4a4a4a)
+      aglow(cxm, 7.0, 2.4, 0xffaa44, 0.16); aglow(cols - 2.6, 2.2, 1.6, 0xffcf8a, 0.18)
+    } else if (id === 'merchant') {
+      // === MARCHAND : mur d'étagères de marchandises + grand comptoir + Tobias ===
+      const cxm = cols / 2, bL = 1, bR = cols - 1
+      const aglow = (x, y, s, t, a) => objs.push(this.add.image(ox + x * TILE, oy + y * TILE, 'int_glow').setScale(s).setTint(t).setAlpha(a).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 11))
+      ;[1.5, 5.5, 9.5].forEach((c, i) => {
+        pp(6, 4, 3, 3, ox + c * TILE, oy + 1.4 * TILE - 18, D + 8); solid(ox + c * TILE, oy + 1.4 * TILE - 18, 3 * TILE, 3 * TILE)
+        si([6, 56, 54][i], ox + (c + 0.5) * TILE, oy + 1.9 * TILE - 18, D + 10, 0.9, [0xff7050, null, 0xffb050][i]); si([40, 57, 42][i], ox + (c + 1.4) * TILE, oy + 1.9 * TILE - 18, D + 10, 0.9, [0x8050d0, null, null][i]); si([49, 58, 61][i], ox + (c + 2.3) * TILE, oy + 1.9 * TILE - 18, D + 10, 0.88)
+      })
+      npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE - 4, cfg.npcTex, 0).setDepth(D + 11)
+      for (const row of [5.6, 6.0]) { pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13); for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13); pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13) }
+      si(24, ox + (cxm - 2.5) * TILE, oy + 5.65 * TILE, D + 16); si(26, ox + (cxm - 1.6) * TILE, oy + 5.55 * TILE, D + 16); si(54, ox + (cxm + 0.4) * TILE, oy + 5.6 * TILE, D + 16); si(6, ox + (cxm + 1.5) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0xff7050); si(49, ox + (cxm + 2.6) * TILE, oy + 5.6 * TILE, D + 16)
+      solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE - 6)
+      pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.0 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 7.0 * TILE, D + 10)
+      solid(ox + 1.3 * TILE, oy + 8.4 * TILE, 0.5 * TILE, 1.2 * TILE); solid(ox + (cols - 1.7) * TILE, oy + 8.4 * TILE, 0.5 * TILE, 1.2 * TILE)
+      si(15, ox + 2.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.3); si(14, ox + (cols - 2.5) * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.2)
+      aglow(cxm, 7.2, 2.4, 0xffcf8a, 0.18); aglow(2, 2.4, 1.6, 0xffd9a0, 0.16); aglow(cols - 2, 2.4, 1.6, 0xffd9a0, 0.16)
+    } else if (id === 'house') {
+      // === MAISON : foyer + lit + table à manger + étagère (cosy) — le résident est près de la table ===
+      const cxm = cols / 2
+      const glow = (gx, gy, rpx, color, alpha) => objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, 'int_glow').setDisplaySize(rpx * 2, rpx * 2).setTint(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
+      pp(6, 7, 1, 3, ox + 1.0 * TILE, oy + 1.0 * TILE, D + 10); solid(ox + 1.1 * TILE, oy + 1.2 * TILE, 0.8 * TILE, 2.4 * TILE); glow(1.5, 2.4, 80, 0xffb060, 0.26) // foyer
+      pp(0, 4, 2, 2, ox + (cols - 3.5) * TILE, oy + 1.2 * TILE, D + 9); solid(ox + (cols - 3.3) * TILE, oy + 1.6 * TILE, 1.6 * TILE, 1.6 * TILE) // lit
+      pp(8, 3, 2, 1, ox + (cols - 3.5) * TILE, oy + 3.4 * TILE, D + 2)
+      pp(10, 2, 3, 2, ox + (cxm - 1.5) * TILE, oy + 5.6 * TILE, D + 2) // tapis sous la table
+      pp(5, 2, 2, 2, ox + (cxm - 1) * TILE, oy + 6.0 * TILE, D + 10); solid(ox + (cxm - 0.7) * TILE, oy + 6.4 * TILE, 1.4 * TILE, 1.0 * TILE) // table
+      pp(5, 0, 1, 2, ox + (cxm - 0.5) * TILE, oy + 4.3 * TILE, D + 9); pp(7, 0, 1, 2, ox + (cxm - 0.5) * TILE, oy + 7.8 * TILE, D + 11) // chaise HAUT (vue de FACE) + chaise BAS (vue de DOS, devant la table)
+      si(42, ox + cxm * TILE, oy + 6.5 * TILE, D + 13, 0.9) // pain sur la table
+      npc = this.add.sprite(ox + (cxm + 2.2) * TILE, oy + 6.3 * TILE, cfg.npcTex, 0).setDepth(D + 11) // résident à côté de la table
+      pp(3, 2, 2, 2, ox + (cols - 3) * TILE, oy + 6.2 * TILE, D + 10); solid(ox + (cols - 3) * TILE, oy + 6.6 * TILE, 1.4 * TILE, 1.2 * TILE) // étagère
+      si(58, ox + (cols - 2.5) * TILE, oy + 6.4 * TILE, D + 12, 0.9); si(57, ox + (cols - 1.6) * TILE, oy + 6.4 * TILE, D + 12, 0.9)
+      si(15, ox + 1.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.3)
+      glow(cxm, 6.5, 150, 0xffba70, 0.14); glow(cols - 2.4, 6.4, 70, 0xffce7a, 0.12)
+    } else if (id === 'bank') {
+      // === BANQUE : coffre-fort + comptoir de guichet + Cornélius + or ===
+      const cxm = cols / 2, bL = 2, bR = cols - 1
+      const glow = (gx, gy, rpx, color, alpha) => objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, 'int_glow').setDisplaySize(rpx * 2, rpx * 2).setTint(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
+      pp(6, 4, 3, 3, ox + 1.0 * TILE, oy + 1.4 * TILE - 18, D + 8); solid(ox + 1.0 * TILE, oy + 1.4 * TILE - 18, 3 * TILE, 3 * TILE); glow(2.5, 1.8, 90, 0x6a9aff, 0.16) // coffre-fort
+      pp(3, 2, 2, 2, ox + (cols - 3.5) * TILE, oy + 1.6 * TILE, D + 10); solid(ox + (cols - 3.5) * TILE, oy + 1.6 * TILE, 2 * TILE, 2 * TILE) // étagère à trésor
+      si(54, ox + (cols - 3.0) * TILE, oy + 2.0 * TILE, D + 12, 0.85, 0xffd700); si(54, ox + (cols - 2.0) * TILE, oy + 2.0 * TILE, D + 12, 0.85, 0xffed4e); si(54, ox + (cols - 2.5) * TILE, oy + 2.8 * TILE, D + 12, 0.8, 0xffd700)
+      npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE - 4, cfg.npcTex, 0).setDepth(D + 11) // Cornélius derrière le guichet
+      for (const row of [5.6, 6.0]) { pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13); for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13); pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13) }
+      si(24, ox + (bL + 0.6) * TILE, oy + 5.65 * TILE, D + 16); si(26, ox + (bL + 1.4) * TILE, oy + 5.55 * TILE, D + 16); si(54, ox + (cxm + 1.0) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0xffd700)
+      solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE - 6)
+      pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.0 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 7.0 * TILE, D + 10)
+      solid(ox + 1.3 * TILE, oy + 8.4 * TILE, 0.5 * TILE, 1.2 * TILE); solid(ox + (cols - 1.7) * TILE, oy + 8.4 * TILE, 0.5 * TILE, 1.2 * TILE)
+      si(15, ox + 2.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.3); si(14, ox + (cols - 2.5) * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.2)
+      glow(cxm, 7.2, 120, 0xffd700, 0.18); glow(cols - 2.5, 2.2, 70, 0xffd700, 0.12)
     } else {
       // === APOTHICAIRE : modèle TAVERNE — Ylva CENTRÉE derrière un GRAND comptoir + mur de fioles JOINTIF + chaudron en COIN ===
       const cxm = cols / 2
@@ -3907,7 +4027,7 @@ export default class GameScene extends Phaser.Scene {
     pp(8, 3, 2, 1, doorCx - TILE, oy + (rows - 1.6) * TILE, D + 1)
     // titre
     // TITRE de la salle : affiché dans l'UIScene (HUD, zoom 1) -> net et bien dimensionné, pas déformé par le zoom de la caméra de jeu
-    this.scene.get('UIScene')?.showInteriorTitle?.(cfg.title)
+    this.scene.get('UIScene')?.showInteriorTitle?.(cfg.title) // (plus de toast d'entrée — le titre + l'indice d'assise suffisent)
     // COLLIDERS invisibles (murs + comptoir)
     const wall = (x, y, w, h) => {
       const rr = this.add.rectangle(x + w / 2, y + h / 2, w, h).setVisible(false)
@@ -3921,21 +4041,44 @@ export default class GameScene extends Phaser.Scene {
     wall(ox, oy + H - TILE, g0 * TILE, TILE)
     wall(ox + (g1 + 1) * TILE, oy + H - TILE, W - (g1 + 1) * TILE, TILE)
     for (const s of furnSolids) wall(s[0], s[1], s[2], s[3]) // collisions des meubles (comptoir, tables, étagères, cheminée…)
+    // HITBOX DE SIÈGE (taverne) : un collider par chaise/tabouret, ACTIVÉ quand le siège est LIBRE (on bute dessus comme
+    // un meuble) et DÉSACTIVÉ quand quelqu'un est assis dessus (cf. updateSeatHint qui pilote `solidBody.enable`).
+    for (const seat of interiorSeats) {
+      const r = this.add.rectangle(seat.cx, seat.cy, 12, 12).setVisible(false)
+      this.physics.add.existing(r, true)
+      colliders.push(this.physics.add.collider(this.player, r))
+      objs.push(r)
+      seat.solidBody = r.body
+    }
     // indice « Parler (E) » au-dessus du PNJ (la SORTIE est automatique en marchant sur la porte -> pas d'indice « Sortir »)
     const hint = npc ? this.add.text(npc.x, npc.y - 15, 'Parler (E)', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false).setResolution(3) : null
     if (hint) objs.push(hint)
     this._interior = {
       id, cfg, objs, colliders, npc, hint, exitDoorSprite: exitDoorSpr,
+      npcHome: npc ? { x: npc.x, y: npc.y } : null, // position de DÉPART du PNJ (stable même s'il se déplace : ex. Ylva qui prépare) -> portée du E
+      questGiver: !!cfg.npcName && Object.values(QUESTS).some((q) => q.giver === cfg.npcName), // PNJ d'intérieur donneur de quêtes (Mira) -> marqueur ! / ? + pont
       bounds: { x: ox, y: oy, w: W, h: H }, // pour fixer + zoomer la caméra sur la pièce
       entry: { x: doorCx, y: oy + (rows - 2.2) * TILE },
       exit: { x: doorCx, y: oy + (rows - 1) * TILE + 8 },
+    }
+    if (interiorBeds.length) { // dortoir : lits où se reposer + point d'apparition à la mort (sur un lit près de la porte)
+      this._interior.beds = interiorBeds
+      this._interior._restArmed = false // on apparaît peut-être SUR un lit (respawn) -> pas de re-repos immédiat tant qu'on n'a pas bougé
+      this._interior.restSpawn = { x: ox + 5.5 * TILE, y: oy + 15.95 * TILE } // lit (col 4.5, rangée 14) : on réapparaît allongé ici
+    }
+    if (interiorSeats.length) { // taverne : places (tabourets + tables) où s'asseoir (E) pour appeler le barman
+      this._interior.seats = interiorSeats
+      this._interior.barDoor = { x: ox + 14.5 * TILE, behindY: oy + 4.5 * TILE, frontY: oy + 8.0 * TILE } // porte du barman (col 14) ; frontY = ALLÉE DÉGAGÉE (sous les tabourets, au-dessus des tables) où il circule sans rien traverser
+      this._interior.barDoorSprite = this._barmanDoorSpr // porte Sprout animée (ouvre/referme quand le barman la franchit)
+      this._interior.seatHint = this.add.text(0, 0, 'S\'asseoir (E)', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(D + 60).setVisible(false).setResolution(3)
+      this._interior.objs.push(this._interior.seatHint)
     }
     if (id === 'inn') { // porte intérieure vers le dortoir (EN HAUT À DROITE) : zone atteignable + porte animée + retour
       this._interior.dormDoor = { x: ox + 11.5 * TILE, y: oy + 2.0 * TILE }    // case sous la porte du fond (sol libre, atteignable)
       this._interior.dormReturn = { x: ox + 11.5 * TILE, y: oy + 3.3 * TILE }  // retour depuis le dortoir : plus bas, sans re-déclencher
       this._interior.dormDoorSprite = this._dormDoorSpr                        // porte Sprout animée (ouvre/referme à la bascule)
     }
-    if (id === 'tavern' || id === 'apothecary' || id === 'inn') { // tenancier qui s'affaire : va-et-vient ALÉATOIRE armoire (fond) <-> comptoir (devant)
+    if (id === 'tavern' || id === 'apothecary' || id === 'inn') { // tenancier qui s'affaire ; Ylva ne s'anime que PENDANT une préparation (prepper)
       // hitbox du tenancier (corps dynamique immobile qui le SUIT) -> invisible en jeu, visible en debug
       const bhb = this.add.rectangle(npc.x, npc.y + 3, 11, 9).setVisible(false)
       this.physics.add.existing(bhb); bhb.body.setAllowGravity(false); bhb.body.moves = false; bhb.body.immovable = true
@@ -3949,6 +4092,7 @@ export default class GameScene extends Phaser.Scene {
         midY: oy + geo.midY * TILE,
         armoireXs: geo.ax.map((c) => ox + c * TILE),
         frontXmin: ox + geo.fxmin * TILE, frontXmax: ox + geo.fxmax * TILE,
+        prepper: id === 'apothecary', // Ylva : ne déambule (prépare) que tant qu'une potion mijote
       }
       this.pickBarmanTarget(this._interior.bw)
     }
@@ -4020,7 +4164,156 @@ export default class GameScene extends Phaser.Scene {
       this.time.delayedCall(230, () => this.exitInterior())
       return
     }
-    if (it.npc && it.hint) { it.hint.setVisible(this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) } // indice « Parler » (pas dans le dortoir)
+    // indice « Parler (E) » près du PNJ — SAUF à la taverne (le barman n'est pas accessible : on s'assoit pour l'appeler) ni au dortoir
+    if (it.npc && it.hint && it.id !== 'tavern') { it.hint.setVisible(this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) }
+    if (it.npc && it.questGiver) { // marqueur ! (quête dispo) / ? (à rendre) au-dessus de Mira à la réception
+      it.npc.name = it.cfg.npcName
+      this.updateQuestMark(it.npc, it.npc)
+      if (it.npc.qmark && !it._qmarkTracked) { it.objs.push(it.npc.qmark); it._qmarkTracked = true } // suivi pour le nettoyage à la sortie
+    }
+    if (it.beds) this.updateDormRest(it) // dortoir : repos sur un lit -> soin + sauvegarde
+    if (it.seats) this.updateSeatHint(it) // taverne : indice « S'asseoir (E) » près d'un siège / « Se lever (E) » une fois assis
+    if (it.id === 'apothecary' && it.npc) { // indicateur « prépare… » au-dessus d'Ylva tant qu'une potion mijote
+      const on = (this._brewing || 0) > 0
+      if (on && !it.brewLabel) {
+        it.brewLabel = this.add.text(it.npc.x, it.npc.y - 16, 'prépare…', { fontFamily: FONT, fontSize: '8px', color: '#d8c4ff', stroke: '#241038', strokeThickness: 3 }).setOrigin(0.5, 1).setResolution(3).setDepth(60002)
+        it.objs.push(it.brewLabel)
+      }
+      if (it.brewLabel) it.brewLabel.setVisible(on).setPosition(it.npc.x, it.npc.y - 16 + Math.sin(time / 220) * 1.5)
+    }
+  }
+
+  /** Siège de taverne le plus proche du héros (tabouret ou table), ou null. */
+  nearSeat(it) {
+    const p = this.player
+    return it.seats?.find((s) => Math.abs(p.x - s.cx) <= s.hw + 6 && Math.abs(p.y - s.cy) <= s.hh + 8) || null
+  }
+
+  /** Hitbox des sièges (solides si LIBRES + joueur pas dessus), lever en bougeant, et indice flottant. */
+  updateSeatHint(it) {
+    const p = this.player
+    // hitbox dynamique : un siège est SOLIDE quand il est libre ET que le joueur n'est pas dessus (sinon désactivé : on est assis, ou on vient de se lever et on n'a pas encore dégagé)
+    for (const s of it.seats) {
+      if (!s.solidBody) continue
+      const on = Math.abs(p.x - s.cx) < 0.55 * TILE && Math.abs(p.y - s.cy) < 0.55 * TILE
+      s.solidBody.enable = !s.takenBy && !on
+    }
+    // SE LEVER en appuyant sur une touche de déplacement — armé seulement APRÈS avoir relâché (anti-relevé immédiat)
+    if (it._seated) {
+      const c = p.cursors, k = p.keys
+      const moving = c && k && (c.left.isDown || c.right.isDown || c.up.isDown || c.down.isDown || k.A.isDown || k.D.isDown || k.W.isDown || k.S.isDown || k.Q?.isDown || k.Z?.isDown)
+      if (!moving) it._satReady = true
+      else if (it._satReady) { this.standUp(it); return }
+    }
+    const h = it.seatHint
+    if (!h) return
+    if (it._seated) { h.setText('bouge = te lever').setVisible(true).setPosition(p.x, p.y - 16) } // une seule info essentielle
+    else { const s = this.nearSeat(it); h.setVisible(!!s).setText('S\'asseoir (E)'); if (s) h.setPosition(p.x, p.y - 16) }
+  }
+
+  /** S'ASSEOIR : recale le héros sur le siège, le FIGE (sitting), et APPELLE le barman (il vient prendre la commande). */
+  sitDown(it, seat) {
+    const p = this.player
+    if (seat.takenBy && seat.takenBy !== 'me') { this.scene.get('UIScene')?.showToast?.('Cette place est déjà prise', '#e0a866'); return } // MULTI : 1 chaise = 1 joueur
+    seat.takenBy = 'me' // -> updateSeatHint désactive la hitbox de CE siège (les autres restent solides)
+    it._seated = seat
+    it._satReady = false // « bouger pour se lever » ne s'arme qu'après avoir RELÂCHÉ les touches (sinon on se relève dès l'assise)
+    p.sitting = true
+    p.setPosition(seat.cx, seat.cy).setVelocity(0, 0)
+    p.moveTarget = null
+    p.facing = seat.face || 'up'
+    if (this.anims.exists(`${p.heroKey}-idle-${p.facing}`)) p.anims.play(`${p.heroKey}-idle-${p.facing}`, true)
+    Audio.sfx('ui_accept', { detune: -60 })
+    this.callBarman(it, seat) // appelle le serveur
+  }
+
+  /** Appelle le serveur à un siège : « J'arrive » + itinéraire (par sa porte) vers le client. Un seul client à la fois (multi). */
+  callBarman(it, seat) {
+    const bw = it.bw
+    if (!bw) return
+    if (bw.servingSeat && bw.servingSeat !== seat) { this.scene.get('UIScene')?.showToast?.('Le serveur est occupé — il arrive dès qu\'il a fini.', '#ffcf86'); return }
+    bw.servingSeat = seat
+    bw.serving = true; bw.served = false; bw.returning = false
+    bw.path = this.barmanPath(it, seat); bw.pathIdx = 0; bw.faceAtTable = seat.bface
+    if (bw.bubble) bw.bubble.destroy()
+    bw.bubble = this.add.text(bw.sprite.x, bw.sprite.y - 16, 'J\'arrive, un instant !', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000bb', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(7060).setResolution(3)
+    it.objs.push(bw.bubble)
+  }
+
+  /** Le serveur REPART (carte fermée / payé / client levé) : retour au bar PAR SA PORTE, puis reprend son va-et-vient. */
+  barmanReturn(it) {
+    const bw = it.bw
+    if (!bw || !bw.serving || bw.returning) return
+    const seat = bw.servingSeat, d = it.barDoor
+    bw.returning = true; bw.served = true // en retour : ne ré-ouvre pas la carte
+    if (bw.bubble) { bw.bubble.destroy(); bw.bubble = null }
+    bw.path = seat ? [{ x: seat.bx, y: d.frontY }, { x: d.x, y: d.frontY }, { x: d.x, y: d.behindY }] : [{ x: d.x, y: d.frontY }, { x: d.x, y: d.behindY }]
+    bw.pathIdx = 0
+  }
+
+  /** Appelé par UIScene.closeShop quand on QUITTE la carte de la taverne -> le serveur repart. */
+  onTavernShopClosed() {
+    const it = this._interior
+    if (it && it.id === 'tavern' && it.bw && it.bw.serving) this.barmanReturn(it)
+  }
+
+  /** Itinéraire du barman du COMPTOIR jusqu'au client, EN PASSANT PAR SA PORTE (col 14) et en longeant le devant du
+   *  bar (corridor au-dessus des tables) -> il ne traverse plus les meubles. Étapes : porte(arrière) -> porte(avant)
+   *  -> devant le bar à la colonne du client -> place du client. */
+  barmanPath(it, seat) {
+    const d = it.barDoor
+    return [
+      { x: d.x, y: d.behindY },   // 1) longe l'arrière du bar jusqu'à la porte
+      { x: d.x, y: d.frontY },    // 2) franchit la porte vers l'avant
+      { x: seat.bx, y: d.frontY }, // 3) longe le devant du bar jusqu'à la colonne du client (au-dessus des tables)
+      { x: seat.bx, y: seat.by },  // 4) descend/monte jusqu'à la place du client
+    ]
+  }
+
+  /** SE LEVER : libère le héros (réactive sa collision) et renvoie le barman à son va-et-vient. */
+  standUp(it) {
+    const p = this.player
+    if (it._seated) it._seated.takenBy = null // libère la chaise -> sa hitbox redevient solide quand on s'en éloigne (updateSeatHint)
+    it._seated = null
+    p.sitting = false
+    if (it.bw && it.bw.serving) this.barmanReturn(it) // s'il était en train de servir, il repart par sa porte
+    Audio.sfx('ui_cancel', { detune: 0 })
+  }
+
+  /** Dortoir : si le héros monte sur le CORPS d'un lit -> repos (PV + mana au max + sauvegarde). Re-armé dès qu'on
+   *  a quitté tous les lits (sinon on ne peut pas re-déclencher en restant dessus). */
+  updateDormRest(it) {
+    const p = this.player
+    if (p.hp <= 0) return
+    const onBed = it.beds.some((b) => Math.abs(p.x - b.cx) <= b.hw && Math.abs(p.y - b.cy) <= b.hh)
+    if (!onBed) { it._restArmed = true; return }      // hors lit -> ré-arme
+    if (it._restArmed === false) return               // déjà reposé sur ce lit (il faut le quitter d'abord)
+    it._restArmed = false
+    this.restInBed()
+  }
+
+  /** Repos d'auberge : PV et mana au maximum + sauvegarde de la partie (le dortoir sert de point de repos). */
+  restInBed() {
+    const p = this.player
+    const healed = p.heal(p.maxHp)                    // soigne à fond (affiche le chiffre vert)
+    const manaWas = p.mana
+    if (p.maxMana > 0) p.mana = p.maxMana
+    const firstTime = !p.respawnHome
+    p.respawnHome = true                              // l'auberge devient ton POINT DE REPOS -> tu réapparais ICI à la mort
+    this.saveGame()                                   // l'auberge fait office de point de sauvegarde
+    Audio.sfx('ui_accept', { detune: -150 })
+    this.showRestZzz()                                // petit « z Z z » au-dessus du héros
+    const ui = this.scene.get('UIScene')
+    if (firstTime) ui?.showToast?.('Point de repos enregistré — tu réapparaîtras ici', '#ffd86b')
+    else ui?.showToast?.(healed > 0 || p.mana > manaWas ? 'Reposé — partie sauvegardée' : 'Partie sauvegardée', '#7cfc9a')
+  }
+
+  /** Petit « z Z z » qui s'élève en ondulant au-dessus du héros (feedback de repos). */
+  showRestZzz() {
+    const p = this.player
+    const t = this.add.text(p.x + 8, p.y - 16, 'z Z z', { fontFamily: FONT, fontSize: '9px', color: '#bfe9ff', stroke: '#10202a', strokeThickness: 3 })
+      .setOrigin(0.5).setDepth(20000).setResolution(3)
+    this.tweens.add({ targets: t, y: t.y - 18, x: t.x + 6, alpha: 0, duration: 1300, ease: 'Sine.out', onComplete: () => t.destroy() })
   }
 
   /** Nouvelle COLONNE cible du barman : devant une armoire au hasard, ou un endroit aléatoire du comptoir. */
@@ -4034,7 +4327,34 @@ export default class GameScene extends Phaser.Scene {
    *  (devant), avec pauses. Déplacement par lerp (sprite sans corps), anims de marche directionnelles. */
   updateBarman(bw, time, dt) {
     const s = bw.sprite
-    if (bw.hitbox) bw.hitbox.body.reset(s.x, s.y + 3) // la hitbox suit le barman
+    if (bw.hitbox) { bw.hitbox.body.enable = !bw.serving; bw.hitbox.body.reset(s.x, s.y + 3) } // la hitbox suit le barman ; désactivée en service (ne bouscule pas le client assis)
+    // YLVA (apothicaire) : IMMOBILE à son comptoir tant qu'elle n'a rien à préparer ; dès qu'une potion mijote, elle s'anime (va-et-vient « comme avant »)
+    if (bw.prepper && (this._brewing || 0) === 0) { s.anims.play(`${bw.texture}-idle-${bw.facing || 'down'}`, true); return }
+    // MODE SERVICE (taverne) : le barman a été APPELÉ -> il file directement à la table prendre la commande
+    if (bw.serving) { // APPELÉ : suit son itinéraire (porte du bar -> devant -> client), tranquillement, sans traverser les meubles
+      const wp = bw.path && bw.path[bw.pathIdx]
+      if (bw.bubble) bw.bubble.setPosition(s.x, s.y - 16) // la bulle « J'arrive » le suit
+      if (!wp) { // fin de parcours
+        if (bw.returning) { bw.serving = false; bw.returning = false; bw.servingSeat = null; bw.phase = 'toX'; bw.zone = 'comptoir'; this.pickBarmanTarget(bw); return } // rentré derrière le bar -> reprend son va-et-vient (libre pour un autre client)
+        bw.facing = bw.faceAtTable || 'down' // arrivé au client -> face à lui ; il demande « boisson ou repas ? »
+        s.anims.play(`${bw.texture}-idle-${bw.facing}`, true)
+        if (bw.bubble) { bw.bubble.destroy(); bw.bubble = null }
+        if (!bw.served) { bw.served = true; this.scene.get('UIScene')?.openServerChoice?.() }
+        return
+      }
+      const dx = wp.x - s.x, dy = wp.y - s.y, d = Math.hypot(dx, dy)
+      if (d <= 3) { // étape atteinte -> suivante ; la PORTE s'ouvre quand il la franchit (aller ET retour)
+        const door = this._interior?.barDoorSprite
+        if (door && this._interior?.barDoor && Math.abs(s.x - this._interior.barDoor.x) < 0.6 * TILE && !door.anims?.isPlaying && this.anims.exists('door-cycle')) { door.play('door-cycle'); Audio.sfx('ui_accept', { detune: -150 }) }
+        bw.pathIdx++
+        return
+      }
+      const step = 58 * dt // allure tranquille (il prend son temps)
+      s.x += (dx / d) * Math.min(step, d); s.y += (dy / d) * Math.min(step, d)
+      bw.facing = Math.abs(dx) > Math.abs(dy) ? (dx < 0 ? 'left' : 'right') : (dy < 0 ? 'up' : 'down')
+      s.anims.play(`${bw.texture}-walk-${bw.facing}`, true)
+      return
+    }
     if (time < bw.pauseUntil) { s.anims.play(`${bw.texture}-idle-${bw.facing}`, true); return }
     const step = bw.speed * dt
     if (bw.phase === 'toX') { // 1) se placer horizontalement (dans la bande dégagée) sous le spot visé
@@ -4064,13 +4384,61 @@ export default class GameScene extends Phaser.Scene {
     s.anims.play(`${bw.texture}-walk-${bw.facing}`, true)
   }
 
-  /** E dans un intérieur : parle au PNJ si proche, sinon sort si on est sur la porte. */
+  /** E dans un intérieur : parle au PNJ si proche, sinon sort si on est sur la porte.
+   *  TAVERNE = exception : le barman n'est pas « parlable » -> on s'assoit (auto) pour l'appeler ; E ne fait que
+   *  ré-ouvrir le menu si on est déjà servi à table. */
   interiorInteract() {
     const it = this._interior
     if (!it) return
     const p = this.player
-    if (it.npc && this.dist(p.x, p.y, it.npc.x, it.npc.y) <= 52) this.scene.get('UIScene')?.openDialogue(it.cfg.npcName, it.cfg.lines, it.cfg.npcTex)
-    else if (this.dist(p.x, p.y, it.exit.x, it.exit.y) <= 24) this.exitInterior()
+    if (it.id === 'tavern') { // E = s'asseoir près d'un siège / RAPPELER le serveur si déjà assis (pour se lever : bouger)
+      if (it._seated) {
+        if (it.bw && !it.bw.serving) this.callBarman(it, it._seated) // le serveur est reparti -> on le rappelle pour recommander
+        else this.scene.get('UIScene')?.showToast?.('Le serveur arrive…', '#ffcf86')
+        return
+      }
+      const seat = this.nearSeat(it)
+      if (seat) { this.sitDown(it, seat); return }
+      if (this.dist(p.x, p.y, it.exit.x, it.exit.y) <= 24) { this.exitInterior(); return }
+      this.scene.get('UIScene')?.showToast?.('Approche-toi d\'un tabouret ou d\'une table, puis E pour t\'asseoir', '#ffcf86')
+      return
+    }
+    // PNJ d'intérieur : on mesure la distance à sa POSITION DE DÉPART (npcHome), stable même s'il se déplace (Ylva qui prépare)
+    const nx = it.npcHome?.x ?? it.npc?.x, ny = it.npcHome?.y ?? it.npc?.y
+    if (it.npc && this.dist(p.x, p.y, nx, ny) <= 56) {
+      // PONT vers les quêtes : un PNJ d'intérieur (Mira à la réception) donne/valide des quêtes comme un villageois.
+      const npcW = { name: it.cfg.npcName, texture: it.cfg.npcTex, x: it.npc.x, y: it.npc.y }
+      if (this.handleQuestInteraction(npcW)) return
+      if (it.cfg.forge) { this.scene.get('UIScene')?.openForge?.(); return } // FORGE : Aldric ouvre la forge (réparation/amélioration/craft)
+      if (it.cfg.shopGeneral) { this.scene.get('UIScene')?.openShop?.(); return } // MARCHAND : boutique générale
+      if (it.cfg.shop) { this.scene.get('UIScene')?.openShop?.(it.cfg.shop); return } // apothicaire : Ylva ouvre sa carte (commande -> préparation)
+      this.scene.get('UIScene')?.openDialogue(it.cfg.npcName, it.cfg.lines, it.cfg.npcTex)
+    } else if (this.dist(p.x, p.y, it.exit.x, it.exit.y) <= 24) {
+      this.exitInterior()
+    }
+  }
+
+  /** Apothicaire : Ylva PRÉPARE la potion commandée (déjà payée). Délai selon la RARETÉ (plus rare = plus long),
+   *  puis livraison DIRECTE au sac. Le minuteur tourne sur GameScene (la carte est fermée pendant l'attente).
+   *  Si le sac est plein à la livraison, Ylva garde la potion et retente plus tard (jamais perdue). */
+  prepPotion(item) {
+    const ms = { common: 3000, rare: 6000, epic: 10000, legendary: 15000 }[item.rarity] || 4000
+    const ui = () => this.scene.get('UIScene')
+    ui()?.showToast?.(`Ylva prépare : ${item.name}…`, '#c7a3ff')
+    this._brewing = (this._brewing || 0) + 1 // indicateur « prépare… » au-dessus d'Ylva (cf. updateInterior)
+    let warned = false
+    const deliver = () => {
+      const it = cloneItem(item)
+      if (this.player.addItem(it)) {
+        this._brewing = Math.max(0, (this._brewing || 1) - 1)
+        ui()?.showToast?.(`Prête : ${item.name} !`, '#9bf0a8')
+        Audio.sfx('sfx_levelup', { vol: 0.4, detune: -300 })
+      } else { // sac plein : Ylva la garde, on retente (elle n'est jamais perdue)
+        if (!warned) { warned = true; ui()?.showToast?.('Sac plein — Ylva garde ta potion au comptoir', '#e0a866') }
+        this.time.delayedCall(2500, deliver)
+      }
+    }
+    this.time.delayedCall(ms, deliver)
   }
 
   // ---------- quêtes (brief §10) ----------
@@ -4101,6 +4469,7 @@ export default class GameScene extends Phaser.Scene {
 
   /** Côté quêtes : progresse un objectif TALK, ou offre/rend chez le donneur. true = interaction consommée. */
   handleQuestInteraction(t) {
+    if (t.noQuest) return false // PNJ de seuil (accueil de l'auberge) : ne donne/valide aucune quête
     const p = this.player
     const aq = this.activeQuest()
     // progression d'une quête PARLER dont la cible est ce PNJ (ne consomme pas l'interaction)
@@ -4186,6 +4555,7 @@ export default class GameScene extends Phaser.Scene {
   /** Met à jour le marqueur de quête '!'/'?' au-dessus d'un PNJ : petit BADGE sombre cerclé (lisible sur
    *  n'importe quel sol) + symbole net, placé juste au-dessus du nom. */
   updateQuestMark(npc, s) {
+    if (npc.noQuest) { npc.qmark?.setVisible(false); return } // PNJ de seuil : pas de marqueur (le bâtiment en porte un)
     const mark = this.questMark(npc.name)
     if (!mark) { npc.qmark?.setVisible(false); return }
     const ready = mark === '?'
@@ -4351,7 +4721,8 @@ export default class GameScene extends Phaser.Scene {
       // PNJ d'un bâtiment enterable : DÉCALÉ d'1 tuile à CÔTÉ de la porte → on peut PARLER (près du PNJ) OU
       // ENTRER (en marchant sur la porte), jamais les deux en même temps. La tuile de porte (v.nx,v.ny) reste libre.
       const ntx = v.enter ? v.nx + 1 : v.nx
-      this.addNpc(ntx, v.ny, v.tex, v.name, v.lines, v.role ?? 'talk')
+      const n = this.addNpc(ntx, v.ny, v.tex, v.name, v.lines, v.role ?? 'talk')
+      if (n && v.noQuest) n.noQuest = true // PNJ de seuil (Mira à l'auberge) : pas de quête ici, elles se donnent à l'intérieur
     }
     // PNJ baladeurs de la prairie : cliquables / "Parler (E)" comme les autres, MAIS ils errent
     // (corps physique désactivé -> pas de mur fantôme là où le sprite n'est plus ; on les traverse).
@@ -4429,6 +4800,7 @@ export default class GameScene extends Phaser.Scene {
   basicAttack() {
     const p = this.player
     if (!p) return
+    if (this.inInterior) return // zone sûre : aucune attaque dans un intérieur (taverne, auberge, apothicaire, dortoir)
     if (this.sailBlocked()) return // pas d'attaque en navigation
     const w = p.equipped?.weapon
     if (w?.ranged) this.throwWeapon(w) // arme à LANCER (couteau/shuriken)
@@ -4620,7 +4992,7 @@ export default class GameScene extends Phaser.Scene {
    * la boule la prend pour cible et la suit jusqu'au contact.
    */
   shootForward() {
-    if (this.uiBusy()) return
+    if (this.uiBusy() || this.inInterior) return // pas de tir dans un intérieur
     const p = this.player
     if (p.unarmed) return this.doAttack(true) // SANS ARME : le caster « passe en mêlée » (coup faible) au lieu de tirer
     this._brokenWarnShown = false // arme en main -> on réarme l'avertissement "sans arme"
@@ -4639,7 +5011,7 @@ export default class GameScene extends Phaser.Scene {
    * "Pas prêt" (cooldown) / "Mana !" (mana insuffisant). On ne consomme rien si le sort ne part pas.
    */
   castSpell() {
-    if (this.uiBusy() || this.gameOver) return
+    if (this.uiBusy() || this.gameOver || this.inInterior) return // pas de sort dans un intérieur
     if (this.sailBlocked()) return // pas de sort en navigation
     const p = this.player
     const sp = p.spell
@@ -4664,7 +5036,7 @@ export default class GameScene extends Phaser.Scene {
   /** 2e COMPÉTENCE (touche 2), déverrouillée au niveau `spell2.level` (10). Mêmes règles que castSpell
    *  (cooldown propre `nextSpell2At`, coût mana). */
   castSpell2() {
-    if (this.uiBusy() || this.gameOver) return
+    if (this.uiBusy() || this.gameOver || this.inInterior) return // pas de sort dans un intérieur
     if (this.sailBlocked()) return
     const p = this.player
     const sp = p.spell2
@@ -4690,7 +5062,7 @@ export default class GameScene extends Phaser.Scene {
   /** COMPÉTENCE DE PANOPLIE (touche 3) : disponible seulement si la panoplie de classe est COMPLÈTE
    *  (p.activeSet, 4 pièces). Cooldown long + coût mana. Plus forte que les sorts 1/2. (Brief §5/§7) */
   castSpell3() {
-    if (this.uiBusy() || this.gameOver) return
+    if (this.uiBusy() || this.gameOver || this.inInterior) return // pas de sort dans un intérieur
     if (this.sailBlocked()) return
     const p = this.player
     if (p.hp <= 0) return
@@ -5367,6 +5739,7 @@ export default class GameScene extends Phaser.Scene {
    */
   fireProjectile(tx, ty, target) {
     const p = this.player
+    if (this.inInterior) return // pas de tir (clic droit inclus) dans un intérieur
     if (this.sailBlocked()) return // pas de tir en navigation
     if (!p.abilities.ranged) return // classe sans sort à distance (Guerrier/Tank)
     if (p.attacking || p.hp <= 0) return
@@ -5877,11 +6250,11 @@ export default class GameScene extends Phaser.Scene {
     let nearDoor = null
     const pb = p.body
     for (const e of this.buildingEntrances || []) {
-      if ((e.id !== 'tavern' && e.id !== 'apothecary' && e.id !== 'inn') || !e.zone) continue
+      if (!e.zone) continue // tout bâtiment avec un carré d'entrée est enterable (tavern/apothicaire/auberge/forge/marchand/maison/banque)
       const zb = e.zone.body
       if (pb.x + pb.width > zb.x && pb.x < zb.x + zb.width && pb.y + pb.height > zb.y && pb.y < zb.y + zb.height) { nearDoor = e; break }
     }
-    if (nearDoor && !this.uiBusy() && !this.inInterior) { if (this._promptDismissed !== nearDoor.id) this.enterInterior(nearDoor.id) }
+    if (nearDoor && !this.uiBusy() && !this.inInterior) { if (this._promptDismissed !== nearDoor.id) this.enterInterior(nearDoor.id, nearDoor) }
     else if (!nearDoor) { this._promptDismissed = null }
     this.updateHeldWeapon() // arme tenue en main (cachée pendant l'attaque, revient après)
     this.updateBoat() // barque sous le héros quand il navigue (A3)
@@ -5934,6 +6307,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.updateDayNight(time) // cycle jour/nuit (20 min) : voile de nuit + dayDarkness
     this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
+    this.updateFoodBuff(time) // buff de repas/élixir : régén PV/s + expiration (retire ATQ/DÉF)
     this.updateSnowfall(biome) // chute de neige (particules) dans le biome neige
     this.updateWeather(time, biome, p) // CYCLE pluie (biomes tempérés) + feuilles en forêt + traînée d'herbe au pas
     this.updateCampfires(time) // foyers posés : animation + extinction (zone-refuge de température)
@@ -5972,6 +6346,7 @@ export default class GameScene extends Phaser.Scene {
     Audio.setAmbientLevel('amb_waves', Math.pow(this.ambLevel, 1.3))
 
     this.updateNpcs(time, delta) // villageois (statiques) + PNJ baladeurs de la prairie
+    this.updateBuildingQuestMarks() // ! / ? au-dessus de l'auberge quand Mira a une quête (les quêtes se donnent à la réception)
 
     // indice "Parler (E)" du marchand quand on est proche (les villageois parlent tout seuls)
     this.merchantHint.setVisible(this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= HINT_RANGE)
@@ -6011,6 +6386,24 @@ export default class GameScene extends Phaser.Scene {
     const d = this.add.sprite(x, y + 6, 'fx_dust').setDepth(y - 1).setScale(0.8).setAlpha(0.7).setTint(tint)
     d.play('fx-dust')
     d.once('animationcomplete', () => d.destroy())
+  }
+
+  /** BUFF DE REPAS / ÉLIXIR : applique la régénération PV/s tant que le buff est actif, et à l'expiration
+   *  le remet à zéro + recalcule les stats (retire le +ATQ/+DÉF). Le +ATQ/+DÉF lui-même est lu dans recomputeStats. */
+  updateFoodBuff(time) {
+    const p = this.player
+    const fb = p?.foodBuff
+    if (!fb || !fb.until) return
+    if (time >= fb.until) { // buff expiré -> on l'efface et on recalcule (sinon le +ATQ/+DÉF resterait dans les stats)
+      p.foodBuff = { atk: 0, def: 0, regen: 0, until: 0 }
+      p.recomputeStats()
+      this.scene.get('UIScene')?.showToast?.('Effet du repas dissipé', '#c9b48a')
+      return
+    }
+    if (fb.regen > 0 && time >= (this._nextFoodRegen || 0)) { // régén : une bouffée de soin par seconde (1 chiffre vert/s, pas de spam)
+      this._nextFoodRegen = time + 1000
+      if (p.hp < p.maxHp) p.heal(fb.regen)
+    }
   }
 
   /** TEMPÉRATURE : fait dériver la jauge du joueur vers l'extrême du biome (neige=froid, désert=chaud),
@@ -6361,7 +6754,6 @@ export default class GameScene extends Phaser.Scene {
       b.hp = b.maxHp
       if (b.leashX != null) b.setPosition(b.leashX, b.leashY)
     }
-    p.setPosition(this.cx * TILE, this.cy * TILE)
     p.hp = p.maxHp
     p.mana = p.maxMana // mana pleine au respawn
     p.nextSpellAt = 0
@@ -6372,6 +6764,16 @@ export default class GameScene extends Phaser.Scene {
     p.moveTarget = null
     this.gameOver = false
     this.physics.resume()
+    // POINT DE REPOS : si le héros a dormi au dortoir, il se RÉVEILLE DANS SON LIT (intérieur dortoir) au lieu de la place du village.
+    if (p.respawnHome) {
+      const innE = this.buildingEntrances?.find((e) => e.id === 'inn')
+      this._villageReturn = innE ? { x: innE.x, y: innE.y } : { x: this.cx * TILE, y: this.cy * TILE } // sortir de l'auberge -> devant sa porte
+      this._savedZoom = this._savedZoom || this.cameras.main.zoom
+      this.goInterior('dorm', { spawn: 'restSpawn', exitTo: 'inn' }) // réapparition allongé sur son lit (puis on ressort dortoir->réception->village)
+      this.saveGame()
+      return
+    }
+    p.setPosition(this.cx * TILE, this.cy * TILE)
     this.cameras.main.centerOn(p.x, p.y)
     this.saveGame() // persiste le sac de mort + le respawn
   }
