@@ -127,6 +127,8 @@ export const ITEMS = {
   legend_armor: { id: 'legend_armor', name: 'Armure du Dragon', slot: 'armor', icon: 'eq_dragon', rarity: 'legendary', price: 560, stats: { hp: 90, defense: 18 }, dur: 240 },
   legend_focus: { id: 'legend_focus', name: 'Cristal Cosmique', slot: 'focus', icon: 'rel_cosmic', rarity: 'legendary', price: 560, spellPower: 0.6, spellDuration: 0.4, stats: { manaRegen: 4 } },
   legend_ring: { id: 'legend_ring', name: 'Anneau Cosmique', slot: 'ring', icon: 'eq_ring_ruby', rarity: 'legendary', price: 560, stats: { mana: 120, attack: 8, manaRegen: 5 } },
+  // RÉCOMPENSE UNIQUE DE DARGOTH (drop GARANTI à sa mort, jamais ailleurs) : anneau légendaire UNIVERSEL le plus puissant du jeu.
+  sceau_dargoth: { id: 'sceau_dargoth', name: 'Sceau de Dargoth', slot: 'ring', icon: 'eq_ring_ruby', iconTint: 0xff6a2a, rarity: 'legendary', price: 1200, unique: true, stats: { attack: 16, hp: 70, mana: 90, defense: 7, manaRegen: 4 } },
 
   // ===== PIÈCES DE PANOPLIE (champ `set`) — marquage VERT ÉMERAUDE, BOSS only (jamais marchand/butin normal).
   // 4 par classe (arme/armure/relique/anneau). Voir SETS pour les bonus 2/4 pièces. =====

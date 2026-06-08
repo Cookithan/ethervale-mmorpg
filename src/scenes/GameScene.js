@@ -6289,6 +6289,14 @@ export default class GameScene extends Phaser.Scene {
     this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', gold))
     this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))
     this.trySetPieceDrop(mon) // pièce de PANOPLIE (selon biome/raid + classe) avec pity anti-malchance
+    if (mon.dargoth) { // FINAL : Sceau de Dargoth (légendaire UNIQUE) GARANTI si non encore possédé
+      const pl = this.player
+      const owns = (id) => pl.inventory?.some((it) => it?.id === id) || Object.values(pl.equipped || {}).some((it) => it?.id === id) || (pl.bankItems || []).some((it) => it?.id === id)
+      if (!owns('sceau_dargoth')) {
+        this.drops.add(new Drop(this, mon.x, mon.y - 20, 'equip', 0, cloneItem(ITEMS.sceau_dargoth)))
+        this.scene.get('UIScene')?.showToast?.('✦ Le Sceau de Dargoth est tombé !', '#ff9a3a')
+      }
+    }
 
     // annonce + respawn long (boss de monde : ~8-10 min)
     this.scene.get('UIScene')?.showToast?.(`⚔ ${mon.displayName} vaincu !`, '#ffd86b')
@@ -6308,6 +6316,17 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     const PREFIX = { warrior: 'war', tank: 'tank', mage: 'mage', healer: 'heal' }[p.className]
     if (!PREFIX) return
+    if (mon.dargoth) { // DARGOTH : pièce de panoplie GARANTIE (priorité à un slot encore manquant)
+      const owned = (s) => { const it = ITEMS[`set_${PREFIX}_${s}`]; return !it || p.equipped[it.slot]?.id === it.id || p.inventory.some((i) => i?.id === it.id) }
+      const missing = ['armor', 'relic', 'ring', 'weapon'].filter((s) => !owned(s))
+      const pool = missing.length ? missing : ['armor', 'relic', 'ring', 'weapon']
+      const it = ITEMS[`set_${PREFIX}_${pool[Math.floor(Math.random() * pool.length)]}`]
+      if (it && p.equipped[it.slot]?.id !== it.id && !p.inventory.some((i) => i?.id === it.id)) {
+        this.drops.add(new Drop(this, mon.x - 14, mon.y - 14, 'equip', 0, cloneItem(it)))
+        this.scene.get('UIScene')?.showToast?.(`✦ Pièce de panoplie : ${it.name} !`, '#3ddc84')
+      }
+      return
+    }
     let slot = null
     if (mon.bossBiome === 'forest') slot = 'armor'
     else if (mon.bossBiome === 'desert') slot = 'relic'
@@ -6375,8 +6394,8 @@ export default class GameScene extends Phaser.Scene {
   /** Renvoie une COPIE d'un ÉQUIPEMENT de rareté `tier`. `biasClass` (smart loot MIX) : 60 % du temps on
    *  restreint aux objets utilisables par la classe (les ARMES surtout ; armure/focus/anneau restent universels). */
   equipmentOfTier(tier, biasClass = null) {
-    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged && !it.set && !it.craftedOnly && !it.eliteOnly) // slot = équipement ; lancer/set/forgé/élite = exclus du butin normal
-    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged && !it.set && !it.craftedOnly && !it.eliteOnly) // garde-fou
+    let pool = Object.values(ITEMS).filter((it) => it.rarity === tier && it.slot && !it.ranged && !it.set && !it.craftedOnly && !it.eliteOnly && !it.unique) // slot = équipement ; lancer/set/forgé/élite/UNIQUE = exclus du butin normal
+    if (pool.length === 0) pool = Object.values(ITEMS).filter((it) => it.slot && !it.ranged && !it.set && !it.craftedOnly && !it.eliteOnly && !it.unique) // garde-fou
     if (biasClass && Math.random() < 0.6) {
       const usable = pool.filter((it) => !it.classes || it.classes.includes(biasClass))
       if (usable.length) pool = usable
