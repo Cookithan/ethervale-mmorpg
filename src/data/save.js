@@ -63,6 +63,7 @@ export function makeSave(player, character) {
     counterBag: player.counterBag, // sac rapatrié en attente sur le comptoir de l'apothicaire
     sargerSlain: player.sargerSlain, // gauntlet de Sargèr : Gardiens abattus
     dargothUnlocked: player.dargothUnlocked, // sceau de Dargoth brisé (définitif)
+    gameCompleted: player.gameCompleted, // quête principale achevée (Dargoth vaincu) -> badge écran de sélection
 
     deathBag: player.deathBag, // sac de mort en attente de récupération (A1)
     deathsSinceRecovery: player.deathsSinceRecovery,

@@ -6,6 +6,7 @@ import IntroScene from './scenes/IntroScene.js'
 import CharacterScene from './scenes/CharacterScene.js'
 import GameScene from './scenes/GameScene.js'
 import UIScene from './scenes/UIScene.js'
+import EpilogueScene from './scenes/EpilogueScene.js'
 
 const config = {
   type: Phaser.AUTO,
@@ -22,7 +23,7 @@ const config = {
       debug: false, // mettre à true pour visualiser les colliders (boîtes) — utile pour régler les hitbox
     },
   },
-  scene: [BootScene, MenuScene, SelectScene, IntroScene, CharacterScene, GameScene, UIScene],
+  scene: [BootScene, MenuScene, SelectScene, IntroScene, CharacterScene, GameScene, UIScene, EpilogueScene],
 }
 
 // eslint-disable-next-line no-new

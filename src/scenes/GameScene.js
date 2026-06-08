@@ -421,6 +421,9 @@ export default class GameScene extends Phaser.Scene {
     // et sous le HUD qui est dans UIScene). Opacité/couleur pilotées par updateDayNight. Inactif en preview.
     this.dayDarkness = 0
     this.nightOverlay = this.add.rectangle(0, 0, MAP_W * TILE, MAP_H * TILE, 0x070d28, 1).setOrigin(0, 0).setDepth(9000).setAlpha(0)
+    // AMBIANCE MAUDITE de SARGÈR : voile pourpre fixé à l'écran, monte en fondu quand le héros foule l'île (atmosphère oppressante).
+    this.cursedVeil = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x2a0d3a, 0).setOrigin(0, 0).setScrollFactor(0).setDepth(8600)
+    this._cursedVeilA = 0
     // REFUGE : le village + la prairie ne subissent PAS la nuit. On PERCE un trou dans le voile via un
     // masque radial inversé (plein jour au cœur, fondu doux vers la nuit au bord de la prairie).
     if (!this.textures.exists('nightHole')) {
@@ -6296,6 +6299,11 @@ export default class GameScene extends Phaser.Scene {
         this.drops.add(new Drop(this, mon.x, mon.y - 20, 'equip', 0, cloneItem(ITEMS.sceau_dargoth)))
         this.scene.get('UIScene')?.showToast?.('✦ Le Sceau de Dargoth est tombé !', '#ff9a3a')
       }
+      if (!pl.gameCompleted) { // 1re chute de Dargoth -> ÉPILOGUE + badge « terminé » (rejouable ensuite sans épilogue)
+        pl.gameCompleted = true
+        this.saveGame()
+        this.time.delayedCall(2600, () => { this.scene.pause(); this.scene.launch('EpilogueScene') }) // épilogue après avoir vu Dargoth tomber + le butin
+      }
     }
 
     // annonce + respawn long (boss de monde : ~8-10 min)
@@ -6656,6 +6664,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.updateDayNight(time) // cycle jour/nuit (20 min) : voile de nuit + dayDarkness
+    this.updateCursedAmbiance() // voile pourpre de Sargèr (fondu selon présence sur l'île)
     this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
     this.updateFoodBuff(time) // buff de repas/élixir : régén PV/s + expiration (retire ATQ/DÉF)
     this.updateSnowfall(biome) // chute de neige (particules) dans le biome neige
@@ -6996,6 +7005,15 @@ export default class GameScene extends Phaser.Scene {
       const night = 1 + 1.3 * (this.dayDarkness ?? 0) // halo plus marqué la nuit (le voile assombrit le reste)
       f.glow.setAlpha((0.10 + 0.05 * Math.sin(t)) * night).setScale(1 + 0.06 * Math.sin(t * 1.3))
     }
+  }
+
+  /** AMBIANCE MAUDITE : le voile pourpre de Sargèr monte/descend EN FONDU selon que le héros foule l'île. */
+  updateCursedAmbiance() {
+    if (!this.cursedVeil) return
+    const p = this.player
+    const on = p && this.isCursedIsland(Math.floor(p.x / TILE), Math.floor(p.y / TILE))
+    this._cursedVeilA += ((on ? 0.24 : 0) - this._cursedVeilA) * 0.04 // fondu doux
+    this.cursedVeil.setAlpha(this._cursedVeilA)
   }
 
   /** CYCLE JOUR/NUIT : fait varier l'opacité (et la teinte) du voile de nuit sur DAY_CYCLE_MS.

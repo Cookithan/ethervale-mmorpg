@@ -82,6 +82,7 @@ export default class SelectScene extends Phaser.Scene {
       const fx = lx - w / 2 + 30
       const frame = this.add.rectangle(fx, y, 44, 44, 0x10151f, 1).setStrokeStyle(2, 0xc8923c).setDepth(11)
       if (this.textures.exists('face_' + hero)) this.add.image(fx, y, 'face_' + hero).setDepth(11)
+      if (s.gameCompleted) this.add.text(fx + 16, y - 16, '★', { fontFamily: 'Georgia, serif', fontSize: '16px', fontStyle: 'bold', color: '#ffd24a', stroke: '#3a2606', strokeThickness: 3 }).setOrigin(0.5).setDepth(12) // badge : Dargoth vaincu (jeu terminé)
       // nom (gros) + classe · niveau (dessous)
       const tName = this.add.text(lx - w / 2 + 60, y - 9, s.character?.name ?? 'Héros', { fontFamily: 'Georgia, serif', fontSize: '17px', fontStyle: 'bold', color: '#ffe9b8' }).setOrigin(0, 0.5).setDepth(11)
       const tSub = this.add.text(lx - w / 2 + 60, y + 11, `${cls?.name ?? '?'} · Niv.${s.level ?? 1}`, { fontFamily: 'monospace', fontSize: '12px', color: '#bcd4ee' }).setOrigin(0, 0.5).setDepth(11)
@@ -180,6 +181,7 @@ export default class SelectScene extends Phaser.Scene {
     })
     reg(this.add.text(px, feetY + 38, s.character?.name ?? 'Héros', { fontFamily: 'Georgia, serif', fontSize: '30px', fontStyle: 'bold', color: '#ffe9b8', stroke: '#000', strokeThickness: 6 }).setOrigin(0.5, 0).setDepth(12))
     reg(this.add.text(px, feetY + 74, `${cls?.name ?? '?'}  ·  Niveau ${s.level ?? 1}`, { fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold', color: '#d8c596', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5, 0).setDepth(12))
+    if (s.gameCompleted) reg(this.add.text(px, feetY + 98, '★ Légende d’Ergas — Dargoth vaincu', { fontFamily: 'Georgia, serif', fontSize: '14px', fontStyle: 'bold', color: '#ffd24a', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5, 0).setDepth(12))
     this.previewButton(reg, px - 84, ch * 0.88, 162, 'Jouer', () => this.play(c), 0x2c5a2f)
     this.previewButton(reg, px + 84, ch * 0.88, 162, '✖ Supprimer', () => this.confirmDelete(c), 0x7a2c2c)
   }

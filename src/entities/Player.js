@@ -135,6 +135,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.counterBag = null // sac de mort RAPATRIÉ par l'apothicaire, posé sur son comptoir, à prendre (E) — {gold, items}
     this.sargerSlain = [] // gauntlet de Sargèr : index des Gardiens déjà abattus (persistant)
     this.dargothUnlocked = false // les 3 Gardiens abattus -> sceau de Dargoth brisé (définitif pour ce perso)
+    this.gameCompleted = false // Dargoth vaincu -> quête principale achevée (badge « terminé » sur l'écran de sélection)
     // SAC DE MORT (A1) : à la mort, or + sac tombent ici {gold, items, x, y} ; 1 seul à la fois.
     this.deathBag = null
     this.deathsSinceRecovery = 0 // (legacy, plus utilisé) — le sac se renouvelle à CHAQUE mort, plus de perte définitive
@@ -197,6 +198,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.counterBag?.items) for (const it of this.counterBag.items) if (it) refreshItemDef(it)
     this.sargerSlain = s.sargerSlain ?? [] // gauntlet de Sargèr : Gardiens déjà abattus
     this.dargothUnlocked = s.dargothUnlocked ?? false // sceau de Dargoth brisé
+    this.gameCompleted = s.gameCompleted ?? false // quête principale achevée (Dargoth vaincu)
     this.deathBag = s.deathBag ?? null
     this.deathsSinceRecovery = s.deathsSinceRecovery ?? 0
     this.respawnHome = s.respawnHome ?? false // point de repos (dortoir) persistant
