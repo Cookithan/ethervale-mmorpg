@@ -212,6 +212,10 @@ const BIOME_BOSSES = {
 // Entourée d'océan, AUCUN gué -> VERROUILLÉE sans barque (end-game). On n'en voit qu'un bout au dézoom d'accueil.
 const CURSED_ISLE = { ox: 300, oy: 65, rx: 96, ry: 82 } // [offset tuiles depuis le centre d'Ergas, demi-axes ellipse]
 const SARGER_MIN_LEVEL = 30 // niveau MINIMUM pour fouler Sargèr (une malédiction repousse les plus faibles dans le détroit)
+// SARGÈR — sous-zones = MIROIR CORROMPU d'Ergas. Teinte (multiply sur le sol sombre BLOB.cursed) par sous-zone :
+// ghost = bourg fantôme (prairie), blight = Bois Blêmes (forêt), frost = Nécropole Gelée (neige), ash = Dunes de Cendre (désert).
+const CURSED_SUB_TINT = { ghost: 0xb0a4bc, blight: 0x86a072, frost: 0xc2cee0, ash: 0xc6ad92, ink: 0x9a9ad0 }
+const CURSED_SUB_NAME = { ghost: 'Bourg Fantôme', blight: 'Bois Blêmes', frost: 'Nécropole Gelée', ash: 'Dunes de Cendre', ink: 'Rivages d’Encre' }
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
 // DÉLAI entre deux quêtes (respiration) : la 1re est immédiate ; ensuite délai croissant, plafonné.
@@ -1451,6 +1455,10 @@ export default class GameScene extends Phaser.Scene {
           const r = Phaser.Math.Clamp((this.noise2D(tx * TINT_PATCH, ty * TINT_PATCH) + 1) / 2, 0, 1)
           if (b === 'desert') t.tint = r < 0.42 ? 0xe6a45c : r < 0.72 ? 0xf3c684 : 0xffe6b0
           else if (b === 'snow') t.tint = r < 0.42 ? 0xbfcfe2 : r < 0.72 ? 0xe2ebf5 : 0xffffff
+          else if (b === 'cursed') { // SARGÈR : sous-zones = miroir corrompu d'Ergas (teinte par sous-zone + nuances)
+            const base = CURSED_SUB_TINT[this.cursedSub(tx, ty)]
+            t.tint = r < 0.4 ? lerpHex(base, 0x101014, 0.28) : r < 0.72 ? base : lerpHex(base, 0xffffff, 0.12)
+          }
         }
       }
     }
@@ -1567,6 +1575,13 @@ export default class GameScene extends Phaser.Scene {
       }
     }
     return best
+  }
+
+  /** SARGÈR : sous-zone corrompue d'une tuile = MIROIR du biome d'Ergas à la position symétrique (« face cachée »).
+   *  prairie->ghost (Bourg Fantôme), forêt->blight (Bois Blêmes), neige->frost (Nécropole), désert->ash (Dunes de Cendre). */
+  cursedSub(tx, ty) {
+    const eb = this.biomeAt(tx - CURSED_ISLE.ox, ty - CURSED_ISLE.oy) // biome d'Ergas à la position miroir
+    return { prairie: 'ghost', forest: 'blight', snow: 'frost', desert: 'ash' }[eb] || 'blight'
   }
 
   /** Petites ÎLES détachées au large (archipel). Générées par DIRECTION : pour chaque angle on

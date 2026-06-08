@@ -57,6 +57,9 @@ function biomeAt(tx, ty) {
   return best
 }
 const BC = { prairie: [150, 200, 90], forest: [56, 116, 52], snow: [222, 236, 246], desert: [220, 198, 128], cursed: [150, 70, 200] }
+// SARGÈR : sous-zones miroir corrompu (couleurs d'aperçu)
+const SUBC = { ghost: [150, 130, 162], blight: [92, 120, 72], frost: [168, 182, 200], ash: [156, 138, 116] }
+function cursedSub(tx, ty) { const eb = biomeAt(tx - CURSED.ox, ty - CURSED.oy); return ({ prairie: 'ghost', forest: 'blight', snow: 'frost', desert: 'ash' })[eb] || 'blight' }
 function isArch(tx, ty) { for (const [ix, iy, r] of ARCH) if (Math.hypot(tx - ix, ty - iy) <= r + noise2D(tx, ty)) return true; return false }
 function isIsland(tx, ty) { return isCursed(tx, ty) || isArch(tx, ty) }
 function rawOcean(tx, ty) {
@@ -82,7 +85,8 @@ for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
   let col
   if (isArch(tx, ty)) col = [150, 150, 150]         // archipel = gris
   else if (!isCursed(tx, ty) && rawOcean(tx, ty)) col = [38, 92, 150] // océan = bleu
-  else col = BC[biomeAt(tx, ty)]                     // terre PAR BIOME (Ergas + Sargèr=cursed)
+  else if (isCursed(tx, ty)) col = SUBC[cursedSub(tx, ty)] // SARGÈR : sous-zone miroir corrompu
+  else col = BC[biomeAt(tx, ty)]                     // Ergas : par biome
   put(tx, ty, col)
 }
 function mark(cx, cy, col, s = 2) { for (let dy = -s; dy <= s; dy++) for (let dx = -s; dx <= s; dx++) put(cx + dx, cy + dy, col) }
