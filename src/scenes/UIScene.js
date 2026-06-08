@@ -1919,12 +1919,18 @@ export default class UIScene extends Phaser.Scene {
     const mh = g.mapH
     // CADRAGE sur l'île : on n'affiche pas toute la grille d'océan, juste les terres + une marge
     // (bornes `landBounds` calculées dans GameScene.setupMinimap), zoomées pour remplir l'écran.
-    const lb = g.landBounds
+    // CADRE sur l'ÎLE OÙ EST LE JOUEUR (Ergas ou Sargèr) -> carte centrée + nette (ne pas étaler sur les 2 îles)
+    const tile = g.worldW / g.mapW
+    const ptx = Math.floor(g.player.x / tile), pty = Math.floor(g.player.y / tile)
+    const onSarger = g.cursedBounds && g.isCursedIsland(ptx, pty)
+    const lb = onSarger ? g.cursedBounds : (g.ergasBounds ?? g.landBounds)
+    this._mapOnSarger = onSarger
     const pad = 12
     const minX = lb ? Math.max(0, lb.minX - pad) : 0
     const minY = lb ? Math.max(0, lb.minY - pad) : 0
     const maxX = lb ? Math.min(mw, lb.maxX + pad) : mw
     const maxY = lb ? Math.min(mh, lb.maxY + pad) : mh
+    const inFrame = (tx, ty) => tx >= minX && tx <= maxX && ty >= minY && ty <= maxY // marqueurs : ignorer ceux de l'AUTRE île (hors cadre)
     const boxW = maxX - minX
     const boxH = maxY - minY
     const availW = cw * 0.86
@@ -1982,15 +1988,17 @@ export default class UIScene extends Phaser.Scene {
     if (this.textures.exists('fogtex')) reg(this.add.image(ox, oy, 'fogtex').setOrigin(0, 0).setScale(cell).setCrop(minX, minY, boxW, boxH).setDepth(301.8))
     reg(this.add.rectangle(leftX + mapPxW / 2, topY + mapPxH / 2, mapPxW, mapPxH).setStrokeStyle(2, GOLD).setDepth(302))
 
-    // marqueur VILLAGE
-    const vx = ox + g.cx * cell
-    const vy = oy + g.cy * cell
-    reg(this.add.star(vx, vy, 5, 3, 6, 0xffe066).setDepth(303).setStrokeStyle(1, 0x5a4a10))
-    reg(this.add.text(vx, vy - 10, 'Village', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
+    // marqueur VILLAGE (sur Ergas -> masqué quand on cadre Sargèr)
+    if (inFrame(g.cx, g.cy)) {
+      const vx = ox + g.cx * cell
+      const vy = oy + g.cy * cell
+      reg(this.add.star(vx, vy, 5, 3, 6, 0xffe066).setDepth(303).setStrokeStyle(1, 0x5a4a10))
+      reg(this.add.text(vx, vy - 10, 'Village', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
+    }
 
     // marqueur SAC DE MORT (A1) : gros POINT BLEU pulsant + contour blanc -> très repérable
     const bag = g.player?.deathBag
-    if (bag) {
+    if (bag && inFrame(bag.x / g.tile, bag.y / g.tile)) {
       const bx = ox + (bag.x / g.tile) * cell
       const by = oy + (bag.y / g.tile) * cell
       const halo = reg(this.add.circle(bx, by, 7, 0x2f8bff, 0.5).setDepth(304))
@@ -2003,7 +2011,7 @@ export default class UIScene extends Phaser.Scene {
     // marqueurs des REPAIRES DE BOSS (plusieurs par zone) : un ☠ par repaire, nom court du boss
     for (const [biome, lairs] of Object.entries(g.bossLairs ?? {})) {
       lairs.forEach((lair, i) => {
-        if (!g.isExplored(lair.tx, lair.ty)) return // brouillard : repaire caché tant que la zone n'est pas explorée
+        if (!g.isExplored(lair.tx, lair.ty) || !inFrame(lair.tx, lair.ty)) return // caché si non exploré OU sur l'autre île
         const bx = ox + lair.tx * cell
         const by = oy + lair.ty * cell
         const name = (g.bossDefs?.[biome]?.[i]?.name ?? 'Boss').split(',')[0] // "Gankai, le ..." -> "Gankai"
@@ -2014,7 +2022,7 @@ export default class UIScene extends Phaser.Scene {
 
     // PNJ dispersés (petits points clairs) — masqués tant que leur zone n'est pas explorée
     for (const npc of g.wildNpcs ?? []) {
-      if (!g.isExplored(npc.tx, npc.ty)) continue // brouillard
+      if (!g.isExplored(npc.tx, npc.ty) || !inFrame(npc.tx, npc.ty)) continue // brouillard / autre île
       reg(this.add.circle(ox + npc.tx * cell, oy + npc.ty * cell, 2.5, 0xffe9a8).setDepth(303).setStrokeStyle(1, 0x6a5212))
     }
 
@@ -2023,7 +2031,7 @@ export default class UIScene extends Phaser.Scene {
       const mg = reg(this.add.graphics().setDepth(303.5))
       g.monsters.getChildren().forEach((m) => {
         if (!m.active) return
-        if (!g.isExplored(m.x / g.tile, m.y / g.tile)) return // brouillard : pas de mob révélé hors zone explorée
+        if (!g.isExplored(m.x / g.tile, m.y / g.tile) || !inFrame(m.x / g.tile, m.y / g.tile)) return // brouillard / autre île
         const mx = ox + (m.x / g.tile) * cell
         const my = oy + (m.y / g.tile) * cell
         if (m.isBoss) {
@@ -2044,8 +2052,10 @@ export default class UIScene extends Phaser.Scene {
       reg(this.add.circle(dotX, dotY, 4, 0x53e0ff).setDepth(304).setStrokeStyle(1.5, 0x06243a))
     }
 
-    // titre + aide + légende
-    reg(this.add.text(cw / 2, topY - 24, 'Carte du monde', { fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(303))
+    // titre (nom de l'île cadrée) + FLÈCHE vers l'autre île (Sargèr est à l'EST d'Ergas)
+    reg(this.add.text(cw / 2, topY - 24, this._mapOnSarger ? 'Sargèr — l’Île Maudite' : 'Ergas', { fontFamily: 'Georgia, serif', fontSize: '24px', fontStyle: 'bold', color: this._mapOnSarger ? '#c79bff' : '#ffe066', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setDepth(303))
+    const toRight = !this._mapOnSarger // depuis Ergas -> Sargèr à DROITE (est) ; depuis Sargèr -> Ergas à GAUCHE
+    reg(this.add.text(toRight ? leftX + mapPxW - 4 : leftX + 4, topY + 12, toRight ? 'Sargèr  ⟶' : '⟵  Ergas', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#c7a3ff', stroke: '#000', strokeThickness: 3 }).setOrigin(toRight ? 1 : 0, 0.5).setDepth(303))
     reg(this.add.text(cw / 2, topY + mapPxH + 20, 'M / Échap : fermer', { fontFamily: 'monospace', fontSize: '12px', color: '#bcd' }).setOrigin(0.5).setDepth(303))
     const legend = [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Maudit', COLOR.cursed], ['Océan', COLOR.ocean]]
     let lx = cw / 2 - (legend.length * 78) / 2

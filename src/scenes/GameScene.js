@@ -163,6 +163,7 @@ const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMEN
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
+const DEBUG_GIVE_BOAT = true // TEST : donne la barque au lancement (pour atteindre Sargèr à l'est sans payer 3000 or). Repasser à false après test.
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -390,6 +391,7 @@ export default class GameScene extends Phaser.Scene {
     const spawnX = validSpawn ? sx : vSpawnX
     const spawnY = validSpawn ? sy : vSpawnY
     this.player = new Player(this, spawnX, spawnY, { character: this.character, save: this.saveData })
+    if (DEBUG_GIVE_BOAT) this.player.hasBoat = true // TEST : barque offerte pour atteindre Sargèr (cf. flag en tête de fichier)
     // le pseudo au-dessus du héros est dessiné par UIScene (scène non-zoomée) pour rester net/stable
     // barque (A3) : sprite affiché SOUS le héros quand il navigue sur l'eau (caché par défaut)
     this.boatSprite = this.add.image(spawnX, spawnY, 'boat').setOrigin(0.5, 0.42).setScale(0.5).setVisible(false)
@@ -715,7 +717,9 @@ export default class GameScene extends Phaser.Scene {
       const b = Math.max(0, Math.min(255, Math.round((hex & 255) * f)))
       return (r << 16) | (gg << 8) | b
     }
-    let minX = MAP_W; let minY = MAP_H; let maxX = 0; let maxY = 0
+    // bornes SÉPARÉES par île (Ergas vs Sargèr) -> la carte M cadre l'île où se trouve le joueur (centrée + nette)
+    const eb = { minX: MAP_W, minY: MAP_H, maxX: 0, maxY: 0 } // Ergas (continent + archipel)
+    const cb = { minX: MAP_W, minY: MAP_H, maxX: 0, maxY: 0 } // Sargèr (île maudite)
     for (let ty = 0; ty < MAP_H; ty++) {
       for (let tx = 0; tx < MAP_W; tx++) {
         const ocean = this.isOcean(tx, ty)
@@ -723,11 +727,13 @@ export default class GameScene extends Phaser.Scene {
         if (ocean) {
           base = COL.ocean
         } else {
-          base = COL[this.biomeAt(tx, ty)] ?? COL.forest
-          if (tx < minX) minX = tx
-          if (ty < minY) minY = ty
-          if (tx > maxX) maxX = tx
-          if (ty > maxY) maxY = ty
+          const bm = this.biomeAt(tx, ty)
+          base = COL[bm] ?? COL.forest
+          const bnd = bm === 'cursed' ? cb : eb // range la tuile dans les bornes de SON île
+          if (tx < bnd.minX) bnd.minX = tx
+          if (ty < bnd.minY) bnd.minY = ty
+          if (tx > bnd.maxX) bnd.maxX = tx
+          if (ty > bnd.maxY) bnd.maxY = ty
         }
         // VARIATION par tuile (3 paliers de bruit) -> relief/texture au lieu d'aplats unis
         const n = tileNoise(tx, ty, 9)
@@ -752,7 +758,9 @@ export default class GameScene extends Phaser.Scene {
     g.fillRect(this.cx - 1, this.cy - 1, 2, 2)
     g.generateTexture('mmtex', MAP_W, MAP_H)
     g.destroy()
-    this.landBounds = { minX, minY, maxX, maxY } // pour cadrer la carte du monde (M) sur l'île
+    this.ergasBounds = eb // bornes d'Ergas (continent)
+    this.cursedBounds = (cb.maxX >= cb.minX) ? cb : null // bornes de Sargèr (null si pas encore générée)
+    this.landBounds = eb // défaut : la carte M cadre ERGAS ; buildWorldMap bascule sur Sargèr quand le joueur y est
   }
 
   // ---------- brouillard de guerre (carte M + minimap) ----------

@@ -43,6 +43,20 @@ function isCursed(tx, ty) {
   coast = Math.max(-0.28, Math.min(0.5, coast))
   return r <= 1 + coast
 }
+function noiseB(tx, ty) { const wx = tx + Math.sin(ty * 0.037 + 4) * 9, wy = ty + Math.sin(tx * 0.041 + 1.5) * 9; return (Math.sin(wx * 0.052 + 0.3) + Math.sin(wy * 0.063 + 2.7) + Math.sin((wx - wy) * 0.045 + 1.1)) / 3 }
+const cx = icx + 16, cy = icy - 2, ZONE_WARP = 16, VILLAGE_CLEAR_R = 20 // village (VILLAGE_OFF_X/Y) + constantes de zones
+function villageClearR(ang) { return VILLAGE_CLEAR_R * (1 + 0.2 * Math.sin(ang * 2 + 1) + 0.12 * Math.sin(ang * 3 + 2.4) + 0.07 * Math.sin(ang * 5 + 0.7)) }
+const ZS = [['forest', cx, cy], ['forest', icx - 32, icy + 6], ['forest', icx + 62, icy - 8], ['forest', icx + 4, icy + 8], ['snow', icx - 52, icy - 50], ['snow', icx + 2, icy - 64], ['snow', icx + 54, icy - 48], ['snow', icx - 78, icy - 30], ['snow', icx + 34, icy - 62], ['desert', icx - 58, icy + 52], ['desert', icx + 6, icy + 68], ['desert', icx + 60, icy + 50], ['desert', icx + 74, icy + 32], ['desert', icx - 24, icy + 56]]
+function biomeAt(tx, ty) {
+  if (isCursed(tx, ty)) return 'cursed'
+  const dv = Math.hypot(tx - cx, ty - cy)
+  if (dv < villageClearR(Math.atan2(ty - cy, tx - cx)) + noise2D(tx, ty) * 2.6) return 'prairie'
+  const wx = tx + noise2D(tx, ty) * ZONE_WARP, wy = ty + noiseB(tx, ty) * ZONE_WARP
+  let best = 'forest', bd = Infinity
+  for (const z of ZS) { const dd = (wx - z[1]) ** 2 + (wy - z[2]) ** 2; if (dd < bd) { bd = dd; best = z[0] } }
+  return best
+}
+const BC = { prairie: [150, 200, 90], forest: [56, 116, 52], snow: [222, 236, 246], desert: [220, 198, 128], cursed: [150, 70, 200] }
 function isArch(tx, ty) { for (const [ix, iy, r] of ARCH) if (Math.hypot(tx - ix, ty - iy) <= r + noise2D(tx, ty)) return true; return false }
 function isIsland(tx, ty) { return isCursed(tx, ty) || isArch(tx, ty) }
 function rawOcean(tx, ty) {
@@ -66,10 +80,9 @@ function put(tx, ty, col) {
 }
 for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
   let col
-  if (isCursed(tx, ty)) col = [150, 70, 200]       // Sargèr = violet
-  else if (isArch(tx, ty)) col = [150, 150, 150]    // archipel = gris
-  else if (rawOcean(tx, ty)) col = [38, 92, 150]    // océan = bleu
-  else col = [78, 150, 70]                          // Ergas = vert
+  if (isArch(tx, ty)) col = [150, 150, 150]         // archipel = gris
+  else if (!isCursed(tx, ty) && rawOcean(tx, ty)) col = [38, 92, 150] // océan = bleu
+  else col = BC[biomeAt(tx, ty)]                     // terre PAR BIOME (Ergas + Sargèr=cursed)
   put(tx, ty, col)
 }
 function mark(cx, cy, col, s = 2) { for (let dy = -s; dy <= s; dy++) for (let dx = -s; dx <= s; dx++) put(cx + dx, cy + dy, col) }
