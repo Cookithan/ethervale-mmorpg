@@ -2097,6 +2097,60 @@ designs.recep_enc_D = () => {
   ops.glowT(11.5, 1.5, 60, 0xffd9a0, 0.24)  // halo porte dortoir (haut-droite)
 }
 
+// ===== APERÇUS des 4 nouveaux intérieurs (forge/marchand/maison/banque) — calqués sur buildInterior =====
+designs.forge = () => {
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2, bL = 1, bR = COLS - 1
+  ops.floor(92, 0x5a5048); ops.wallRing(0x4a4a4a, g0, g1); ops.wallShadow()
+  ops.furn('penz_furn', 9, 7, 1, 3, 1.3, 0.6); ops.glowT(1.8, 2.0, 150, 0xff5533, 0.42); ops.glowT(1.8, 3.0, 115, 0xffaa44, 0.24); ops.item(37, 3.0, 2.6) // fournaise (poêle) + chaudron de trempe
+  ops.furn('penz_furn', 4, 14, 2, 1, COLS - 3.3, 0.4); ops.furn('penz_furn', 0, 0, 2, 2, COLS - 3.3, 1.0); ops.item(62, COLS - 2.8, 1.4); ops.item(26, COLS - 1.9, 1.4) // outils suspendus + établi à outils (commode)
+  for (const row of [5.6, 6.0]) { ops.furn('penz_furn', 8, 14, 1, 1, bL, row); for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row); ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row) }
+  ops.item(37, cxm - 1.5, 5.6); ops.item(62, cxm + 0.4, 5.6); ops.item(26, cxm + 2.0, 5.5)
+  ops.item(62, 1.5, ROWS - 1.5, 1.3); ops.item(62, COLS - 1.5, ROWS - 1.5, 1.2) // caisses de charbon (coins)
+  ops.glowT(cxm, 7.0, 154, 0xffaa44, 0.16); ops.glowT(COLS - 2.6, 2.2, 102, 0xffcf8a, 0.18)
+  ops.doorf(1, doorCx + 0.5, ROWS - 0.6); ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+}
+designs.merchant = () => {
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2, bL = 1, bR = COLS - 1
+  ops.floor(92, 0xb5895a); ops.woodWallRing(92, 0x6e4a28, g0, g1, 1); ops.wallShadow()
+  ;[1.5, 5.5, 9.5].forEach((c, i) => {
+    ops.furn('penz_furn', 6, 4, 3, 3, c, 0.275)
+    ops.item([6, 56, 54][i], c + 0.5, 0.775, 0.9, [0xff7050, null, 0xffb050][i]); ops.item([40, 57, 42][i], c + 1.4, 0.775, 0.9, [0x8050d0, null, null][i]); ops.item([49, 58, 61][i], c + 2.3, 0.775, 0.88)
+  })
+  for (const row of [5.6, 6.0]) { ops.furn('penz_furn', 8, 14, 1, 1, bL, row); for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row); ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row) }
+  ops.item(24, cxm - 2.5, 5.65); ops.item(26, cxm - 1.6, 5.55); ops.item(54, cxm + 0.4, 5.6); ops.item(6, cxm + 1.5, 5.6, 0.9, 0xff7050); ops.item(49, cxm + 2.6, 5.6)
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.0); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 7.0)
+  ops.item(15, 2.5, ROWS - 1.5, 1.3); ops.item(14, COLS - 2.5, ROWS - 1.5, 1.2)
+  ops.glowT(cxm, 7.2, 154, 0xffcf8a, 0.18); ops.glowT(2, 2.4, 102, 0xffd9a0, 0.16); ops.glowT(COLS - 2, 2.4, 102, 0xffd9a0, 0.16)
+  ops.doorf(1, doorCx + 0.5, ROWS - 0.6); ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+}
+designs.house = () => {
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2
+  ops.floor(92, 0xb5895a); ops.woodWallRing(92, 0x6b4c28, g0, g1, 1); ops.wallShadow()
+  ops.furn('penz_furn', 9, 7, 1, 3, 1.0, 0.8); ops.glowT(1.5, 2.2, 80, 0xffb060, 0.28); ops.item(37, 2.2, 2.6) // foyer (poêle) + chaudron
+  ops.bed('nin_bed_red', COLS - 3.5, 0.8) // vrai lit Ninja
+  ops.furn('penz_furn', 10, 2, 3, 2, cxm - 1.5, 5.6) // tapis
+  ops.furn('penz_furn', 5, 2, 2, 2, cxm - 1, 6.0) // table
+  ops.furn('penz_furn', 5, 0, 1, 2, cxm - 0.5, 4.4); ops.furn('penz_furn', 7, 0, 1, 2, cxm - 0.5, 7.5) // chaises face/dos
+  ops.item(61, cxm, 6.5, 0.9) // pain
+  ops.furn('penz_furn', 3, 2, 2, 2, COLS - 3, 6.2); ops.item(58, COLS - 2.5, 6.4, 0.9); ops.item(57, COLS - 1.6, 6.4, 0.9) // étagère
+  ops.item(15, 1.5, ROWS - 1.5, 1.3)
+  ops.glowT(cxm, 6.5, 150, 0xffba70, 0.14); ops.glowT(COLS - 2.4, 6.4, 70, 0xffce7a, 0.12)
+  ops.doorf(1, doorCx + 0.5, ROWS - 0.6); ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+}
+designs.bank = () => {
+  const g0 = Math.floor(COLS / 2) - 1, g1 = Math.floor(COLS / 2), doorCx = g0 + 1, cxm = COLS / 2, bL = 2, bR = COLS - 1
+  ops.floor(92, 0x6e6880); ops.wallRing(0x6a6a82, g0, g1); ops.wallShadow()
+  ops.furn('penz_furn', 2, 12, 2, 3, 1.0, 0.6); ops.glowT(2.0, 1.8, 90, 0x6a9aff, 0.16) // coffre-fort (frigo métal)
+  ops.furn('penz_furn', 3, 2, 2, 2, COLS - 3.5, 1.6) // étagère trésor
+  ops.item(29, COLS - 3.0, 2.0, 0.9, 0xffd700); ops.item(29, COLS - 2.0, 2.0, 0.9, 0xffed4e); ops.item(57, COLS - 2.5, 2.8, 0.9, 0xffd700) // urnes/bocal dorés
+  for (const row of [5.6, 6.0]) { ops.furn('penz_furn', 8, 14, 1, 1, bL, row); for (let c = bL + 1; c < bR - 1; c++) ops.furn('penz_furn', 9, 14, 1, 1, c, row); ops.furn('penz_furn', 11, 14, 1, 1, bR - 1, row) }
+  ops.item(24, bL + 0.6, 5.65); ops.item(26, bL + 1.4, 5.55); ops.item(29, cxm + 1.0, 5.6, 0.9, 0xffd700)
+  ops.furn('penz_furn', 6, 7, 1, 3, 1, 7.0); ops.furn('penz_furn', 6, 7, 1, 3, COLS - 2, 7.0)
+  ops.item(15, 2.5, ROWS - 1.5, 1.3); ops.item(14, COLS - 2.5, ROWS - 1.5, 1.2)
+  ops.glowT(cxm, 7.2, 120, 0xffd700, 0.18); ops.glowT(COLS - 2.5, 2.2, 70, 0xffd700, 0.12)
+  ops.doorf(1, doorCx + 0.5, ROWS - 0.6); ops.furn('penz_furn', 8, 3, 2, 1, doorCx - 1, ROWS - 1.4)
+}
+
 const which = process.argv[2] || 'tavern_current'
 const out = process.argv[3] || '_room.png'
 const S = process.argv[4] != null ? +process.argv[4] : 4

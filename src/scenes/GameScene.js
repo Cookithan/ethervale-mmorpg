@@ -3912,15 +3912,16 @@ export default class GameScene extends Phaser.Scene {
       // === FORGE d'Aldric : fournaise rougeoyante + établi (comptoir) + étagère d'outils ===
       const cxm = cols / 2, bL = 1, bR = cols - 1
       const aglow = (x, y, s, t, a) => objs.push(this.add.image(ox + x * TILE, oy + y * TILE, 'int_glow').setScale(s).setTint(t).setAlpha(a).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 11))
-      pp(6, 7, 1, 3, ox + 1.5 * TILE, oy + 1.0 * TILE, D + 10); solid(ox + 1.6 * TILE, oy + 1.2 * TILE, 0.8 * TILE, 2.4 * TILE) // fournaise (colonne) — rougeoyante par le halo
-      aglow(2.0, 2.4, 2.4, 0xff5533, 0.40); aglow(2.0, 3.4, 1.8, 0xffaa44, 0.24)
-      pp(6, 4, 3, 3, ox + (cols - 4.2) * TILE, oy + 1.4 * TILE - 18, D + 8); solid(ox + (cols - 4.2) * TILE, oy + 1.4 * TILE - 18, 3 * TILE, 3 * TILE) // étagère d'outils
-      si(24, ox + (cols - 3.6) * TILE, oy + 1.9 * TILE - 18, D + 10); si(26, ox + (cols - 2.7) * TILE, oy + 1.9 * TILE - 18, D + 10); si(54, ox + (cols - 1.8) * TILE, oy + 1.9 * TILE - 18, D + 10)
+      pp(9, 7, 1, 3, ox + 1.3 * TILE, oy + 0.6 * TILE, D + 10); solid(ox + 1.35 * TILE, oy + 1.0 * TILE, 0.9 * TILE, 2.2 * TILE) // fournaise (poêle) — rougeoyante par le halo
+      aglow(1.8, 2.0, 2.4, 0xff5533, 0.42); aglow(1.8, 3.0, 1.8, 0xffaa44, 0.24); si(37, ox + 3.0 * TILE, oy + 2.6 * TILE, D + 12) // chaudron de trempe
+      pp(4, 14, 2, 1, ox + (cols - 3.3) * TILE, oy + 0.4 * TILE, D + 9) // outils suspendus au mur
+      pp(0, 0, 2, 2, ox + (cols - 3.3) * TILE, oy + 1.0 * TILE, D + 8); solid(ox + (cols - 3.3) * TILE, oy + 1.0 * TILE, 2 * TILE, 2 * TILE) // commode à outils
+      si(62, ox + (cols - 2.8) * TILE, oy + 1.4 * TILE, D + 12); si(26, ox + (cols - 1.9) * TILE, oy + 1.4 * TILE, D + 12)
       npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE - 4, cfg.npcTex, 0).setDepth(D + 11) // Aldric derrière l'établi
       for (const row of [5.6, 6.0]) { pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13); for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13); pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13) }
-      si(24, ox + (cxm - 1.5) * TILE, oy + 5.65 * TILE, D + 16); si(26, ox + (cxm + 0.4) * TILE, oy + 5.6 * TILE, D + 16); si(54, ox + (cxm + 2.0) * TILE, oy + 5.6 * TILE, D + 16) // marteau/pinces/lingot
+      si(37, ox + (cxm - 1.5) * TILE, oy + 5.6 * TILE, D + 16); si(62, ox + (cxm + 0.4) * TILE, oy + 5.6 * TILE, D + 16); si(26, ox + (cxm + 2.0) * TILE, oy + 5.5 * TILE, D + 16) // chaudron/caisse/bougie sur l'établi
       solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE - 6)
-      si(15, ox + 1.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.3, 0x6a7a8a); si(15, ox + (cols - 1.5) * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.2, 0x4a4a4a)
+      si(62, ox + 1.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.3); si(62, ox + (cols - 1.5) * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.2) // caisses de charbon (coins)
       aglow(cxm, 7.0, 2.4, 0xffaa44, 0.16); aglow(cols - 2.6, 2.2, 1.6, 0xffcf8a, 0.18)
     } else if (id === 'merchant') {
       // === MARCHAND : mur d'étagères de marchandises + grand comptoir + Tobias ===
@@ -3942,13 +3943,12 @@ export default class GameScene extends Phaser.Scene {
       // === MAISON : foyer + lit + table à manger + étagère (cosy) — le résident est près de la table ===
       const cxm = cols / 2
       const glow = (gx, gy, rpx, color, alpha) => objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, 'int_glow').setDisplaySize(rpx * 2, rpx * 2).setTint(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
-      pp(6, 7, 1, 3, ox + 1.0 * TILE, oy + 1.0 * TILE, D + 10); solid(ox + 1.1 * TILE, oy + 1.2 * TILE, 0.8 * TILE, 2.4 * TILE); glow(1.5, 2.4, 80, 0xffb060, 0.26) // foyer
-      pp(0, 4, 2, 2, ox + (cols - 3.5) * TILE, oy + 1.2 * TILE, D + 9); solid(ox + (cols - 3.3) * TILE, oy + 1.6 * TILE, 1.6 * TILE, 1.6 * TILE) // lit
-      pp(8, 3, 2, 1, ox + (cols - 3.5) * TILE, oy + 3.4 * TILE, D + 2)
+      pp(9, 7, 1, 3, ox + 1.0 * TILE, oy + 0.8 * TILE, D + 10); solid(ox + 1.05 * TILE, oy + 1.2 * TILE, 0.9 * TILE, 2.2 * TILE); glow(1.5, 2.2, 80, 0xffb060, 0.28); si(37, ox + 2.2 * TILE, oy + 2.6 * TILE, D + 12) // foyer (poêle) + chaudron
+      objs.push(this.add.image(ox + (cols - 3.5) * TILE, oy + 0.8 * TILE, 'nin_bed_red').setOrigin(0, 0).setDepth(D + 9)); solid(ox + (cols - 3.3) * TILE, oy + 1.4 * TILE, 1.6 * TILE, 2.0 * TILE) // vrai lit Ninja
       pp(10, 2, 3, 2, ox + (cxm - 1.5) * TILE, oy + 5.6 * TILE, D + 2) // tapis sous la table
       pp(5, 2, 2, 2, ox + (cxm - 1) * TILE, oy + 6.0 * TILE, D + 10); solid(ox + (cxm - 0.7) * TILE, oy + 6.4 * TILE, 1.4 * TILE, 1.0 * TILE) // table
-      pp(5, 0, 1, 2, ox + (cxm - 0.5) * TILE, oy + 4.3 * TILE, D + 9); pp(7, 0, 1, 2, ox + (cxm - 0.5) * TILE, oy + 7.8 * TILE, D + 11) // chaise HAUT (vue de FACE) + chaise BAS (vue de DOS, devant la table)
-      si(42, ox + cxm * TILE, oy + 6.5 * TILE, D + 13, 0.9) // pain sur la table
+      pp(5, 0, 1, 2, ox + (cxm - 0.5) * TILE, oy + 4.4 * TILE, D + 9); pp(7, 0, 1, 2, ox + (cxm - 0.5) * TILE, oy + 7.5 * TILE, D + 11) // chaise HAUT (vue de FACE) + chaise BAS (vue de DOS, devant la table)
+      si(61, ox + cxm * TILE, oy + 6.5 * TILE, D + 13, 0.9) // pain sur la table
       npc = this.add.sprite(ox + (cxm + 2.2) * TILE, oy + 6.3 * TILE, cfg.npcTex, 0).setDepth(D + 11) // résident à côté de la table
       pp(3, 2, 2, 2, ox + (cols - 3) * TILE, oy + 6.2 * TILE, D + 10); solid(ox + (cols - 3) * TILE, oy + 6.6 * TILE, 1.4 * TILE, 1.2 * TILE) // étagère
       si(58, ox + (cols - 2.5) * TILE, oy + 6.4 * TILE, D + 12, 0.9); si(57, ox + (cols - 1.6) * TILE, oy + 6.4 * TILE, D + 12, 0.9)
@@ -3958,12 +3958,12 @@ export default class GameScene extends Phaser.Scene {
       // === BANQUE : coffre-fort + comptoir de guichet + Cornélius + or ===
       const cxm = cols / 2, bL = 2, bR = cols - 1
       const glow = (gx, gy, rpx, color, alpha) => objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, 'int_glow').setDisplaySize(rpx * 2, rpx * 2).setTint(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
-      pp(6, 4, 3, 3, ox + 1.0 * TILE, oy + 1.4 * TILE - 18, D + 8); solid(ox + 1.0 * TILE, oy + 1.4 * TILE - 18, 3 * TILE, 3 * TILE); glow(2.5, 1.8, 90, 0x6a9aff, 0.16) // coffre-fort
+      pp(2, 12, 2, 3, ox + 1.0 * TILE, oy + 0.6 * TILE, D + 8); solid(ox + 1.0 * TILE, oy + 1.0 * TILE, 2 * TILE, 2.6 * TILE); glow(2.0, 1.8, 90, 0x6a9aff, 0.16) // coffre-fort (frigo métal)
       pp(3, 2, 2, 2, ox + (cols - 3.5) * TILE, oy + 1.6 * TILE, D + 10); solid(ox + (cols - 3.5) * TILE, oy + 1.6 * TILE, 2 * TILE, 2 * TILE) // étagère à trésor
-      si(54, ox + (cols - 3.0) * TILE, oy + 2.0 * TILE, D + 12, 0.85, 0xffd700); si(54, ox + (cols - 2.0) * TILE, oy + 2.0 * TILE, D + 12, 0.85, 0xffed4e); si(54, ox + (cols - 2.5) * TILE, oy + 2.8 * TILE, D + 12, 0.8, 0xffd700)
+      si(29, ox + (cols - 3.0) * TILE, oy + 2.0 * TILE, D + 12, 0.9, 0xffd700); si(29, ox + (cols - 2.0) * TILE, oy + 2.0 * TILE, D + 12, 0.9, 0xffed4e); si(57, ox + (cols - 2.5) * TILE, oy + 2.8 * TILE, D + 12, 0.9, 0xffd700) // urnes/bocal dorés
       npc = this.add.sprite(ox + cxm * TILE, oy + 4.8 * TILE - 4, cfg.npcTex, 0).setDepth(D + 11) // Cornélius derrière le guichet
       for (const row of [5.6, 6.0]) { pp(8, 14, 1, 1, ox + bL * TILE, oy + row * TILE, D + 13); for (let c = bL + 1; c < bR - 1; c++) pp(9, 14, 1, 1, ox + c * TILE, oy + row * TILE, D + 13); pp(11, 14, 1, 1, ox + (bR - 1) * TILE, oy + row * TILE, D + 13) }
-      si(24, ox + (bL + 0.6) * TILE, oy + 5.65 * TILE, D + 16); si(26, ox + (bL + 1.4) * TILE, oy + 5.55 * TILE, D + 16); si(54, ox + (cxm + 1.0) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0xffd700)
+      si(24, ox + (bL + 0.6) * TILE, oy + 5.65 * TILE, D + 16); si(26, ox + (bL + 1.4) * TILE, oy + 5.55 * TILE, D + 16); si(29, ox + (cxm + 1.0) * TILE, oy + 5.6 * TILE, D + 16, 0.9, 0xffd700)
       solid(ox + bL * TILE, oy + 5.6 * TILE, (bR - bL) * TILE, 1.4 * TILE - 6)
       pp(6, 7, 1, 3, ox + 1 * TILE, oy + 7.0 * TILE, D + 10); pp(6, 7, 1, 3, ox + (cols - 2) * TILE, oy + 7.0 * TILE, D + 10)
       solid(ox + 1.3 * TILE, oy + 8.4 * TILE, 0.5 * TILE, 1.2 * TILE); solid(ox + (cols - 1.7) * TILE, oy + 8.4 * TILE, 0.5 * TILE, 1.2 * TILE)
