@@ -61,6 +61,8 @@ export function makeSave(player, character) {
     bankGold: player.bankGold, // coffre : or à l'abri de la mort
     bankItems: player.bankItems, // coffre : objets stockés (cases supplémentaires)
     counterBag: player.counterBag, // sac rapatrié en attente sur le comptoir de l'apothicaire
+    sargerSlain: player.sargerSlain, // gauntlet de Sargèr : Gardiens abattus
+    dargothUnlocked: player.dargothUnlocked, // sceau de Dargoth brisé (définitif)
 
     deathBag: player.deathBag, // sac de mort en attente de récupération (A1)
     deathsSinceRecovery: player.deathsSinceRecovery,

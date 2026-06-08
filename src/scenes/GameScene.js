@@ -194,9 +194,12 @@ const BIOME_BOSSES = {
     { type: 'giantslime', name: 'Givralk, la Gelée Polaire' }, // solo
     { type: 'giantslime2', name: 'Cryos, la Gelée Ancienne' }, // solo
   ],
+  // GAUNTLET DE SARGÈR : Dargoth au CŒUR de l'île, SCELLÉ tant que ses 3 GARDIENS (en anneau) ne sont pas vaincus.
   cursed: [
-    { type: 'giantflam', name: 'Dargoth, Seigneur Maudit' }, // solo (île maudite verrouillée)
-    { type: 'giantspirit', name: 'Nyl, l’Âme Damnée' }, // solo
+    { type: 'giantflam', name: 'Dargoth, Seigneur Maudit', dargoth: true }, // FINAL — au centre, verrouillé par les gardiens
+    { type: 'giantspirit', name: 'Nyl, l’Âme Damnée', guardian: true }, // gardien
+    { type: 'redsamurai', name: 'Akaoni le Damné', guardian: true }, // gardien (version maudite du Samouraï Rouge)
+    { type: 'tengured', name: 'Fujin le Damné', guardian: true }, // gardien (version maudite du Tengu Rouge)
   ],
   // CÔTE : boss à DISTANCE qui surgit au bord de l'océan (repaire = tuile de terre au rivage, cf. computeBossLairs)
   coast: [
@@ -2739,12 +2742,16 @@ export default class GameScene extends Phaser.Scene {
     // CURSED = ÎLE MAUDITE (la boucle saute les îles) : repaires disposés autour du centre de l'île.
     const ccx = this.icx + CURSED_ISLE.ox
     const ccy = this.icy + CURSED_ISLE.oy
-    const cn = BIOME_BOSSES.cursed.length
-    this.bossLairs.cursed = []
-    for (let i = 0; i < cn; i++) {
-      const a = (i / cn) * Math.PI * 2
-      this.bossLairs.cursed.push({ tx: Math.round(ccx + Math.cos(a) * 14), ty: Math.round(ccy + Math.sin(a) * 14) })
-    }
+    // GAUNTLET : Dargoth au CENTRE de Sargèr ; ses gardiens répartis en ANNEAU elliptique (mi-rayon de l'île).
+    const cl = BIOME_BOSSES.cursed
+    const guardians = cl.filter((b) => !b.dargoth)
+    const rgx = CURSED_ISLE.rx * 0.5, rgy = CURSED_ISLE.ry * 0.5 // anneau à mi-rayon -> bien en terre ferme
+    let gi = 0
+    this.bossLairs.cursed = cl.map((b) => {
+      if (b.dargoth) return { tx: Math.round(ccx), ty: Math.round(ccy) } // Dargoth = cœur de l'île
+      const a = (gi++ / guardians.length) * Math.PI * 2 - Math.PI / 2 // gardiens en anneau (1er en haut)
+      return { tx: Math.round(ccx + Math.cos(a) * rgx), ty: Math.round(ccy + Math.sin(a) * rgy) }
+    })
 
     // CÔTE : repaire du Kraken = tuile de TERRE au bord de l'océan (rivage), la plus LOIN du village
     // possible (un cap au bout d'une contrée), avec assez de terre ferme au centre pour l'arène.
@@ -2903,6 +2910,8 @@ export default class GameScene extends Phaser.Scene {
     const boss = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, cfg.type, { level, boss: true, name: cfg.name })
     boss.bossBiome = biome
     boss.bossIndex = index // pour le respawn ciblé
+    boss.dargoth = !!cfg.dargoth // FINAL de Sargèr (scellé tant que les gardiens vivent)
+    boss.guardian = !!cfg.guardian // gardien du gauntlet de Sargèr (à abattre pour libérer Dargoth)
     boss.homeX = tile.tx * TILE + 8 // ancre de patrouille = son repaire
     boss.homeY = tile.ty * TILE + 8
     boss.arenaR = cfg.arenaR ?? ARENA_RADIUS // rayon de l'arène scellée (réglable par boss)
@@ -5106,6 +5115,7 @@ export default class GameScene extends Phaser.Scene {
    *  Le recul est appliqué AVANT takeDamage (qui peut détruire le monstre -> body disparu). */
   hitMonster(mon, amount, fromX, fromY, knock = 150) {
     if (!mon || !mon.active) return
+    if (mon.dargoth && !this.player.dargothUnlocked) { this.dargothSealedFeedback(mon); return } // INVULNÉRABLE tant que les 3 Gardiens veillent
     // recul AVANT les dégâts (takeDamage peut détruire le monstre -> body disparu). Les BOSS ne sont
     // JAMAIS repoussés (ce sont des murs) ; les mobs ET les élites le sont normalement.
     if (knock > 0 && !mon.isBoss) {
@@ -6203,6 +6213,35 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Mort d'un BOSS de biome : butin garanti (épique + or + soin), annonce, respawn long. */
+  /** GAUNTLET DE SARGÈR : un gardien est tombé -> mémorise (persistant dans la save) ; les 3 abattus -> Dargoth s'éveille. */
+  onGuardianSlain(mon) {
+    const p = this.player
+    p.sargerSlain ||= []
+    if (!p.sargerSlain.includes(mon.bossIndex)) p.sargerSlain.push(mon.bossIndex)
+    const total = BIOME_BOSSES.cursed.filter((b) => b.guardian).length
+    const ui = this.scene.get('UIScene')
+    if (!p.dargothUnlocked && p.sargerSlain.length >= total) {
+      p.dargothUnlocked = true
+      ui?.showToast?.('Les Gardiens sont tombés — Dargoth s’éveille au cœur de Sargèr !', '#ff7a3a')
+    } else if (!p.dargothUnlocked) {
+      ui?.showToast?.(`Gardien vaincu (${p.sargerSlain.length}/${total}) — brise le sceau de Dargoth.`, '#c7a3ff')
+    }
+    this.saveGame()
+  }
+
+  /** Frapper Dargoth avant d'avoir abattu ses 3 gardiens : éclat de sceau + rappel (anti-spam ~2,5 s). */
+  dargothSealedFeedback(mon) {
+    const now = this.time.now
+    if (this._dargothTellAt && now < this._dargothTellAt) return
+    this._dargothTellAt = now + 2500
+    const total = BIOME_BOSSES.cursed.filter((b) => b.guardian).length
+    const left = Math.max(1, total - (this.player.sargerSlain?.length || 0))
+    this.scene.get('UIScene')?.showToast?.(`Un sceau protège Dargoth — abats les ${left} Gardien${left > 1 ? 's' : ''} restant${left > 1 ? 's' : ''}.`, '#c7a3ff')
+    const ring = this.add.circle(mon.x, mon.y, 28, 0xc86ef0, 0).setStrokeStyle(3, 0xc86ef0, 0.9).setDepth(mon.y + 6)
+    this.tweens.add({ targets: ring, scale: 2, alpha: 0, duration: 360, onComplete: () => ring.destroy() })
+    this.playDenied?.()
+  }
+
   onBossKilled(mon) {
     this.monsters.getChildren().slice().forEach((m) => { // despawn de tous les adds invoqués par ce boss
       if (m.active && m.summonedBy === mon) { const fx = this.add.circle(m.x, m.y, 6, 0xb060ff, 0.7).setDepth(m.y + 2); this.tweens.add({ targets: fx, scale: 3, alpha: 0, duration: 280, onComplete: () => fx.destroy() }); m.despawn() }
@@ -6211,6 +6250,7 @@ export default class GameScene extends Phaser.Scene {
     if (i >= 0) this.bosses.splice(i, 1)
     if (this.activeBoss === mon) this.activeBoss = null
     if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
+    if (mon.guardian) this.onGuardianSlain(mon) // GAUNTLET : gardien de Sargèr tombé -> progresse vers le sceau de Dargoth
     Audio.playVictory(this, 'mus_victory') // jingle de victoire (coupe le thème de combat, puis la zone reprend)
     this.questKill(mon) // progression d'une quête « battre un boss » (cible = clé du boss, count 1)
 

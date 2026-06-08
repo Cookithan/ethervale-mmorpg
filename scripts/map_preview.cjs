@@ -72,8 +72,14 @@ for (let ty = 0; ty < MAP_H; ty++) for (let tx = 0; tx < MAP_W; tx++) {
   else col = [78, 150, 70]                          // Ergas = vert
   put(tx, ty, col)
 }
-function mark(cx, cy, col) { for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) put(cx + dx, cy + dy, col) }
+function mark(cx, cy, col, s = 2) { for (let dy = -s; dy <= s; dy++) for (let dx = -s; dx <= s; dx++) put(cx + dx, cy + dy, col) }
 mark(icx, icy, [255, 70, 70])                          // centre Ergas = rouge
-mark(icx + CURSED.ox, icy + CURSED.oy, [255, 230, 0])  // centre Sargèr = jaune
+// GAUNTLET de Sargèr : Dargoth au centre (rouge vif) + 3 gardiens (jaune)
+if (CURSED.rx != null) {
+  const ccx = icx + CURSED.ox, ccy = icy + CURSED.oy
+  mark(ccx, ccy, [255, 40, 40], 3) // Dargoth = centre
+  const rgx = CURSED.rx * 0.5, rgy = CURSED.ry * 0.5
+  for (let gi = 0; gi < 3; gi++) { const a = (gi / 3) * Math.PI * 2 - Math.PI / 2; mark(Math.round(ccx + Math.cos(a) * rgx), Math.round(ccy + Math.sin(a) * rgy), [255, 230, 0], 3) }
+}
 fs.writeFileSync('Brief/_map.png', encode(oW, oH, o))
 console.log('Brief/_map.png', oW + 'x' + oH, '| Sargèr centre', icx + CURSED.ox, icy + CURSED.oy)
