@@ -273,6 +273,10 @@ const DESERT_SHRUBS = [220] // désert : buisson SEC brun (sans collision) — p
 const STUMPS = [192, 193, 194, 195, 196, 197] // forêt : souches + troncs couchés (collision)
 const FERNS = [268, 269, 271, 272] // forêt : fougères / herbes hautes (sans collision)
 const CRYSTALS = [336, 337, 338, 339, 340, 341, 342] // maudites : cristaux + rochers à minerai (collision)
+// SARGÈR (props par sous-zone du miroir corrompu) — frames nature.png réutilisés
+const TOMBSTONES = [360, 361, 362] // Nécropole Gelée : dalles dressées en pierres tombales (substitut, teinte pierre)
+const RUBBLE = [192, 193, 197] // Bourg Fantôme : souches/gravats (collision)
+const ASH_VENT = [319] // Dunes de Cendre : évent de cendre (bouche sombre, sans collision)
 const SNOW_ROCKS = [292, 298, 322, 323] // neige : rochers enneigés / congères (collision)
 const SNOW_TUFTS = [320, 321] // neige : herbes givrées (sans collision)
 
@@ -461,6 +465,7 @@ export default class GameScene extends Phaser.Scene {
     this.spawnBiomeProps() // props par biome (cactus, cristaux, souches, congères...)
     this.scatterDesertProps() // déco étoffée du désert : palmiers nains + rochers de grès
     this.scatterSnowProps() // déco étoffée de la neige : sapins de neige variés (grille uniforme)
+    this.scatterCursedProps() // SARGÈR : déco par sous-zone du miroir corrompu (Bois Blêmes / Nécropole / Cendre / Bourg Fantôme)
     this.physics.add.collider(this.player, this.obstacles)
     // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
     // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
@@ -2154,25 +2159,9 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Arbres propres aux biomes : sapins enneigés (neige), arbres morts (maudit + désert sec). */
-  spawnBiomeTrees() {
-    const place = (tx, ty, frames) => {
-      if (tx < 1 || ty < 1 || tx > MAP_W - 3 || ty > MAP_H - 3) return
-      if (this.onPath(tx, ty, 2)) return
-      if (this.onWater(tx, ty, 2)) return
-      if (this.nearBossLair(tx, ty)) return // clairière d'arène = sans arbre
-      if (!this.isDecorCore(tx, ty)) return // pas d'arbre de biome collé à une frontière
-      if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty, frames)
-    }
-    for (let x = 1; x < MAP_W - 2; x += 2) {
-      for (let y = 1; y < MAP_H - 2; y += 2) {
-        const b = this.biomeAt(x, y)
-        // neige : sapins répartis en grille jittered dans scatterSnowProps (couverture uniforme + remplit les arènes)
-        if (b === 'cursed' && Phaser.Math.Between(0, 100) < 32) place(x, y, TREE_DEAD)
-        // désert : arbres morts répartis en grille jittered dans scatterDesertProps (couverture uniforme, sans amas/trous)
-      }
-    }
-  }
+  /** (vidé) Les arbres de biome sont gérés par les passes DÉDIÉES : désert -> scatterDesertProps,
+   *  neige -> scatterSnowProps, Sargèr/maudit -> scatterCursedProps (miroir corrompu par sous-zone). */
+  spawnBiomeTrees() {}
 
   addTree(tx, ty, frames = TREE, destructible = false) {
     const px = tx * TILE
@@ -2352,10 +2341,68 @@ export default class GameScene extends Phaser.Scene {
           if (roll < 40) solid(tx, ty, SNOW_ROCKS)
           else if (roll < 75) flora(tx, ty, SNOW_TUFTS)
           break
-        case 'cursed': // cristaux + rochers à minerai + arbustes secs
-          if (roll < 38) solid(tx, ty, CRYSTALS)
-          else if (roll < 58) flora(tx, ty, DESERT_SHRUBS)
-          break
+        // 'cursed' (Sargèr) : déco par SOUS-ZONE dans scatterCursedProps (miroir corrompu) — plus ici
+      }
+    }
+  }
+
+  /** SARGÈR — déco par SOUS-ZONE (miroir corrompu d'Ergas) : arbres morts destructibles (grille jittered) +
+   *  props solides/flore TEINTÉS par sous-zone (Bois Blêmes / Nécropole Gelée / Dunes de Cendre / Bourg Fantôme).
+   *  Réutilise reserve()/onPath/onWater/nearBossLair (clairières d'arène préservées) + addTree(destructible). */
+  scatterCursedProps() {
+    const cb = this.cursedBounds
+    if (!cb) return
+    this._ghostWisps = [] // points fixes (Bourg Fantôme) où pulsent des âmes (cf. updateCursedAmbiance)
+    const solid = (tx, ty, frames, tint = 0xffffff) => { // collision (this.obstacles)
+      if (this.nearSpawn(tx, ty, 4) || this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1) || this.nearBossLair(tx, ty)) return
+      if (!this.reserve(tx, ty, 1, 1)) return
+      const px = tx * TILE + 8, py = ty * TILE + 8
+      const im = this.add.image(px, py, 'nature', Phaser.Utils.Array.GetRandom(frames)).setDepth(py)
+      if (tint !== 0xffffff) im.setTint(tint)
+      const rect = this.add.rectangle(px, py + 3, 12, 8)
+      this.physics.add.existing(rect, true)
+      this.obstacles.add(rect)
+    }
+    const flora = (tx, ty, frames, tint = 0xffffff) => { // sans collision
+      if (this.occupied.has(this.key(tx, ty)) || this.onPath(tx, ty, 1) || this.onWater(tx, ty, 1) || this.nearBossLair(tx, ty)) return
+      const im = this.add.image(tx * TILE + 8, ty * TILE + 8, 'nature', Phaser.Utils.Array.GetRandom(frames)).setDepth(ty * TILE + 4)
+      if (tint !== 0xffffff) im.setTint(tint)
+    }
+    const deadTree = (tx, ty, frames = TREE_DEAD) => { // arbre mort DESTRUCTIBLE (onde de choc d'arène le pulvérise)
+      if (this.onPath(tx, ty, 2) || this.onWater(tx, ty, 2) || this.nearBossLair(tx, ty) || this.nearSpawn(tx, ty, 5)) return
+      if (this.reserve(tx, ty, 2, 2)) this.addTree(tx, ty, frames, true)
+    }
+    // ARBRES MORTS : grille STEP-5 jittered, densité par sous-zone
+    const STEP = 5
+    for (let gy = cb.minY; gy <= cb.maxY; gy += STEP) for (let gx = cb.minX; gx <= cb.maxX; gx += STEP) {
+      const tx = gx + Phaser.Math.Between(-1, 2), ty = gy + Phaser.Math.Between(-1, 2)
+      if (!this.isCursedIsland(tx, ty)) continue
+      const sub = this.cursedSub(tx, ty), r = Phaser.Math.Between(0, 100)
+      if (sub === 'blight' && r < 60) deadTree(tx, ty)
+      else if (sub === 'frost' && r < 45) deadTree(tx, ty, Phaser.Math.Between(0, 1) ? TREE_SNOW : TREE_DEAD)
+      else if (sub === 'ash' && r < 45) deadTree(tx, ty)
+      else if (sub === 'ghost' && r < 20) deadTree(tx, ty) // clairsemé (hub-miroir)
+    }
+    // PROPS AU SOL : balayage par tuile sur l'emprise de Sargèr
+    for (let ty = cb.minY; ty <= cb.maxY; ty++) for (let tx = cb.minX; tx <= cb.maxX; tx++) {
+      if (!this.isCursedIsland(tx, ty)) continue
+      const sub = this.cursedSub(tx, ty), roll = Phaser.Math.Between(0, 1000)
+      if (sub === 'blight') { // Bois Blêmes : souches + fougères malades + champignons
+        if (roll < 60) solid(tx, ty, STUMPS, 0x8a9a78)
+        else if (roll < 150) flora(tx, ty, FERNS, 0x7f9a64)
+        else if (roll < 175) solid(tx, ty, [317, 318], 0x86a060)
+      } else if (sub === 'frost') { // Nécropole Gelée : os/débris + pierres tombales + herbes givrées
+        if (roll < 110) solid(tx, ty, SNOW_ROCKS, 0xc6d2e2)
+        else if (roll < 160) solid(tx, ty, TOMBSTONES, 0x9aa6b8)
+        else if (roll < 300) flora(tx, ty, SNOW_TUFTS)
+      } else if (sub === 'ash') { // Dunes de Cendre : rochers calcinés + arbustes secs + évents
+        if (roll < 130) solid(tx, ty, ROCKS, 0x3a3236)
+        else if (roll < 190) flora(tx, ty, DESERT_SHRUBS, 0x7a6a4a)
+        else if (roll < 210) flora(tx, ty, ASH_VENT)
+      } else { // ghost (Bourg Fantôme) : clairsemé — gravats + buissons fanés + âmes
+        if (roll < 45) solid(tx, ty, RUBBLE, 0x8a8290)
+        else if (roll < 120) flora(tx, ty, BUSHES, 0xa89cb0)
+        else if (roll < 130 && this._ghostWisps.length < 6) this._ghostWisps.push({ x: tx * TILE + 8, y: ty * TILE + 8 })
       }
     }
   }
@@ -6679,7 +6726,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     this.updateDayNight(time) // cycle jour/nuit (20 min) : voile de nuit + dayDarkness
-    this.updateCursedAmbiance() // voile pourpre de Sargèr (fondu selon présence sur l'île)
+    this.updateCursedAmbiance(time) // voile pourpre TEINTÉ + brouillard de sol de Sargèr
     this.updateTemperature(biome, time, delta) // froid neige / chaud désert : dérive + ralenti + dégâts
     this.updateFoodBuff(time) // buff de repas/élixir : régén PV/s + expiration (retire ATQ/DÉF)
     this.updateSnowfall(biome) // chute de neige (particules) dans le biome neige
@@ -7022,13 +7069,29 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** AMBIANCE MAUDITE : le voile pourpre de Sargèr monte/descend EN FONDU selon que le héros foule l'île. */
-  updateCursedAmbiance() {
+  /** AMBIANCE MAUDITE : voile pourpre TEINTÉ par sous-zone + brouillard de sol dérivant (Sargèr). */
+  updateCursedAmbiance(time) {
     if (!this.cursedVeil) return
     const p = this.player
-    const on = p && this.isCursedIsland(Math.floor(p.x / TILE), Math.floor(p.y / TILE))
+    const ptx = Math.floor(p.x / TILE), pty = Math.floor(p.y / TILE)
+    const on = p && this.isCursedIsland(ptx, pty)
     this._cursedVeilA += ((on ? 0.24 : 0) - this._cursedVeilA) * 0.04 // fondu doux
     this.cursedVeil.setAlpha(this._cursedVeilA)
+    if (on) {
+      const sub = this.cursedSub(ptx, pty)
+      this.cursedVeil.setFillStyle(lerpHex(0x2a0d3a, CURSED_SUB_TINT[sub] ?? 0x2a0d3a, 0.22)) // cast de sous-zone (mauve/vert/glace/cendre)
+      if (!this.cursedFog && this.cursedBounds) { // brouillard de sol créé à la 1re visite (1 TileSprite -> perf)
+        const cb = this.cursedBounds
+        this.cursedFog = this.add.tileSprite(cb.minX * TILE, cb.minY * TILE, (cb.maxX - cb.minX) * TILE, (cb.maxY - cb.minY) * TILE, 'fog_clouds').setOrigin(0, 0).setDepth(-7).setAlpha(0)
+      }
+      if (this.cursedFog) {
+        this.cursedFog.tilePositionX = (time ?? 0) * 0.004 // dérive lente
+        const fa = sub === 'frost' ? 0.2 : sub === 'ash' ? 0.07 : 0.12 // plus épais en Nécropole, ténu aux Dunes
+        this.cursedFog.alpha += (fa - this.cursedFog.alpha) * 0.04
+      }
+    } else if (this.cursedFog && this.cursedFog.alpha > 0.002) {
+      this.cursedFog.alpha += (0 - this.cursedFog.alpha) * 0.05 // s'estompe en quittant l'île
+    }
   }
 
   /** CYCLE JOUR/NUIT : fait varier l'opacité (et la teinte) du voile de nuit sur DAY_CYCLE_MS.
