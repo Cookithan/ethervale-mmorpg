@@ -18,6 +18,7 @@ const BIOME_SPAWN = {
   forest: { mult: 1.3, gap: 10 }, // jungle : densité un cran au-dessus, mais espacée
   desert: { mult: 1.1, gap: 12 }, // plus aéré
   snow: { mult: 1.1, gap: 12 },
+  cursed: { mult: 1.7, gap: 6 }, // SARGÈR (donjon end-game) : DENSE + serré -> on pull des packs (group-required)
 }
 // Budget de mobs par biome proportionnel à sa surface jouable (aucune zone vide/surchargée),
 // puis placés en ISOLÉS bien espacés (pas de camps -> pas de zones vides, élites jamais en nid).
@@ -132,6 +133,14 @@ const MONSTERS_BY_BIOME = {
   snow: ['owl', 'bear', 'bluebat'],
   cursed: ['skull', 'spirit', 'flam'],
 }
+// SARGÈR : types de mob PAR SOUS-ZONE (miroir corrompu) -> chaque région a ses habitants
+const MONSTERS_BY_SUB = {
+  ghost: ['skull', 'spirit'], // revenants du bourg
+  blight: ['spirit', 'flam'], // esprits + démons des bois pourris
+  frost: ['skull', 'spirit'], // givre-liches
+  ash: ['flam', 'skull'], // cendres ardentes
+}
+const CURSED_ELITE_CHANCE = 12 // % d'élite ★ sur Sargèr (1 mob sur ~8 = group-required, façon Île Intemporelle)
 
 // MONDE type CONTINENT en ZONES (façon WoW) : le continent est un PATCHWORK de zones de biome
 // (forêt/neige/désert) défini par Voronoi sur des graines (cf. this.zoneSeeds dans create), avec des
@@ -2560,15 +2569,15 @@ export default class GameScene extends Phaser.Scene {
   spawnMonsters() {
     // Budget de population par biome ∝ sa surface jouable (échantillon 1 tuile sur 4) :
     // aucune zone vide ni surchargée. Prairie (sûre) et cursed (verrouillé) hors-jeu.
-    const land = { forest: 0, desert: 0, snow: 0 }
+    const land = { forest: 0, desert: 0, snow: 0, cursed: 0 } // cursed (Sargèr) = peuplé comme un donjon end-game
     for (let tx = 2; tx < MAP_W - 2; tx += 2)
       for (let ty = 2; ty < MAP_H - 2; ty += 2) {
         if (this.isOcean(tx, ty)) continue
         const b = this.biomeAt(tx, ty)
         if (land[b] !== undefined) land[b]++
       }
-    const total = land.forest + land.desert + land.snow || 1
-    for (const biome of ['forest', 'desert', 'snow']) {
+    const total = land.forest + land.desert + land.snow + land.cursed || 1
+    for (const biome of ['forest', 'desert', 'snow', 'cursed']) {
       const conf = BIOME_SPAWN[biome] || { mult: 1, gap: MONSTER_GAP }
       const budget = Math.round((MONSTER_COUNT * land[biome] * conf.mult) / total)
       this.populateBiome(biome, budget, conf.gap)
@@ -2580,7 +2589,7 @@ export default class GameScene extends Phaser.Scene {
   populateBiome(biome, budget, gap = MONSTER_GAP) {
     if (budget <= 0) return
     for (let placed = 0, guard = 0; placed < budget && guard < budget * 20; guard++) {
-      const t = this.findTileInBiome(biome, { gap })
+      const t = this.findTileInBiome(biome, { gap, awayFrom: biome === 'cursed' && this.sargerOutpost ? [this.sargerOutpost] : null, awayDist: 10 }) // hub de Sargèr = zone sûre
       if (!t) continue // un échec ne doit PAS abandonner tout le budget (forêt dense)
       this.placeMonsterAt(t.tx, t.ty, biome, {})
       placed++
@@ -2693,12 +2702,12 @@ export default class GameScene extends Phaser.Scene {
   /** Crée et enregistre un monstre à (tx,ty) : type imposé ou tiré du biome, niveau = base du
    *  biome ±1, élite éventuelle (tirage SHINY au spawn initial). Renvoie le monstre. */
   placeMonsterAt(tx, ty, biome, { type = null, elite = null } = {}) {
-    const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
+    const cursed = biome === 'cursed'
+    const pool = cursed ? (MONSTERS_BY_SUB[this.cursedSub(tx, ty)] || MONSTERS_BY_BIOME.cursed) : (MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES))
     const typeKey = type || Phaser.Utils.Array.GetRandom(pool)
-    const isElite = elite !== null ? elite : Phaser.Math.Between(1, 100) <= SHINY_CHANCE
-    let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) // élite = multiplicateur à plat (Monster.js), pas +niveau
-    level = Phaser.Math.Clamp(level, 1, MONSTER_MAX_LEVEL)
-    const name = isElite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}` : null
+    const isElite = elite !== null ? elite : Phaser.Math.Between(1, 100) <= (cursed ? CURSED_ELITE_CHANCE : SHINY_CHANCE)
+    const level = cursed ? MONSTER_MAX_LEVEL : Phaser.Math.Clamp(this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1), 1, MONSTER_MAX_LEVEL) // Sargèr = end-game (niv max)
+    const name = isElite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}${cursed ? ' Damné' : ''}` : null
     const m = new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite: isElite, name })
     this.monsters.add(m)
     return m
@@ -2746,16 +2755,13 @@ export default class GameScene extends Phaser.Scene {
         }
       }
       if (tooClose) continue
-      const pool = MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES)
+      const cursed = biome === 'cursed' // SARGÈR (donjon) : types par sous-zone, niveau MAX, élites fréquentes même au respawn
+      const pool = cursed ? (MONSTERS_BY_SUB[this.cursedSub(tx, ty)] || MONSTERS_BY_BIOME.cursed) : (MONSTERS_BY_BIOME[biome] || Object.keys(MONSTER_TYPES))
       const typeKey = Phaser.Utils.Array.GetRandom(pool)
-      // élite : forcée (respawn d'élite) si demandé ; sinon tirage seulement au spawn INITIAL
-      // (les respawns normaux ne créent jamais d'élite -> elles restent rares dans le temps)
-      const elite = forceElite !== null ? forceElite : initial && Phaser.Math.Between(1, 100) <= SHINY_CHANCE
-      // niveau = base du biome (1-5) + variation ±1 -> diversité sur un même type d'ennemi.
-      // (déterministe au spawn initial car PRNG seedé ; varié sur les respawns.)
-      let level = this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1) // élite = multiplicateur à plat (Monster.js), pas +niveau
-      level = Phaser.Math.Clamp(level, 1, MONSTER_MAX_LEVEL)
-      const name = elite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}` : null
+      // élite : forcée si demandé ; sinon tirage au spawn INITIAL ET sur Sargèr (l'île reste un donjon dense d'élites)
+      const elite = forceElite !== null ? forceElite : (initial || cursed) && Phaser.Math.Between(1, 100) <= (cursed ? CURSED_ELITE_CHANCE : SHINY_CHANCE)
+      const level = cursed ? MONSTER_MAX_LEVEL : Phaser.Math.Clamp(this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1), 1, MONSTER_MAX_LEVEL)
+      const name = elite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}${cursed ? ' Damné' : ''}` : null
       this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite, name }))
       return true
     }
@@ -3688,6 +3694,7 @@ export default class GameScene extends Phaser.Scene {
     const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy
     const ox = ccx - 58, oy = ccy // débarcadère ouest (hors gauntlet, là où on accoste)
     if (!this.isCursedIsland(ox, oy)) return
+    this.sargerOutpost = { tx: ox, ty: oy } // hub : zone SÛRE (aucun mob ne spawn à proximité)
     // FEU DE CAMP VIVANT (refuge) — calqué sur spawnVillageCampfire
     const fx = ox * TILE + 8, fy = oy * TILE + 8, D = (oy + 1) * TILE
     const glow = this.add.circle(fx, fy + 2, 22, 0xff8a2a, 0.16).setBlendMode(Phaser.BlendModes.ADD).setDepth(oy * TILE - 1)
