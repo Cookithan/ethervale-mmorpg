@@ -1943,7 +1943,8 @@ export default class UIScene extends Phaser.Scene {
     const ox = leftX - minX * cell // -> ox + tx*cell = position écran (cadrée) de la tuile tx
     const oy = topY - minY * cell
 
-    const COLOR = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72, cursed: 0x7c4a63 }
+    const COLOR = { ocean: 0x274b78, prairie: 0x9bcf5a, forest: 0x3e8b41, snow: 0xe9f1ff, desert: 0xd9bd72, cursed: 0x7c4a63,
+      ghost: 0x8a7a92, blight: 0x4a6840, frost: 0x9aa8b8, ash: 0x8c7560 } // SARGÈR : sous-zones du miroir corrompu (carte lisible, pas du violet uni)
     const gfx = reg(this.add.graphics().setDepth(301))
     // fond océan (sur la zone cadrée seulement)
     gfx.fillStyle(COLOR.ocean, 1).fillRect(leftX, topY, mapPxW, mapPxH)
@@ -1951,7 +1952,9 @@ export default class UIScene extends Phaser.Scene {
     for (let ty = minY; ty < maxY; ty += S) {
       for (let tx = minX; tx < maxX; tx += S) {
         if (g.isOcean(tx, ty)) continue // déjà peint en océan
-        gfx.fillStyle(COLOR[g.biomeAt(tx, ty)] ?? COLOR.forest, 1)
+        const bm = g.biomeAt(tx, ty)
+        const col = bm === 'cursed' ? (COLOR[g.cursedSub(tx, ty)] ?? COLOR.cursed) : (COLOR[bm] ?? COLOR.forest) // Sargèr coloriée par SOUS-ZONE
+        gfx.fillStyle(col, 1)
         gfx.fillRect(ox + tx * cell, oy + ty * cell, cell * S + 0.6, cell * S + 0.6)
       }
     }
@@ -2058,7 +2061,9 @@ export default class UIScene extends Phaser.Scene {
     const otherLabel = toRight ? '☠ Sargèr, l’île maudite (niv. 30)  ⟶' : '⟵  Ergas'
     reg(this.add.text(toRight ? leftX + mapPxW - 4 : leftX + 4, topY + 12, otherLabel, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#c7a3ff', stroke: '#000', strokeThickness: 3 }).setOrigin(toRight ? 1 : 0, 0.5).setDepth(303))
     reg(this.add.text(cw / 2, topY + mapPxH + 20, 'M / Échap : fermer', { fontFamily: 'monospace', fontSize: '12px', color: '#bcd' }).setOrigin(0.5).setDepth(303))
-    const legend = [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Maudit', COLOR.cursed], ['Océan', COLOR.ocean]]
+    const legend = this._mapOnSarger // sur Sargèr : légende des SOUS-ZONES corrompues
+      ? [['Bourg Fantôme', COLOR.ghost], ['Bois Blêmes', COLOR.blight], ['Nécropole', COLOR.frost], ['Dunes de Cendre', COLOR.ash], ['Océan', COLOR.ocean]]
+      : [['Prairie', COLOR.prairie], ['Forêt', COLOR.forest], ['Neige', COLOR.snow], ['Désert', COLOR.desert], ['Maudit', COLOR.cursed], ['Océan', COLOR.ocean]]
     let lx = cw / 2 - (legend.length * 78) / 2
     const ly = topY + mapPxH + 40
     for (const [name, col] of legend) {
