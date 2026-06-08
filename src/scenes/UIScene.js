@@ -1169,9 +1169,20 @@ export default class UIScene extends Phaser.Scene {
       hit.on('pointerdown', () => { if (afford) this.orderItem(item); else { this.playDenied(); this.showToast(`Il te manque ${item.price - p.gold} or`, '#e0a866') } })
     })
     // PIED : aide à gauche + petit lien DISCRET « étoffer la carte » à droite (toute la progression vit ici)
+    // SERVICE Ylva : rapatrier le sac de mort (où qu'il soit) contre -1 niveau + 50 or -> VRAI BOUTON au-dessus du pied
+    if (apo && p.deathBag) {
+      const ok = p.gold >= 50 && p.level >= 2
+      const by = y0 + H - 58, bw = W - 56
+      const bg = reg(this.add.rectangle(cw / 2, by, bw, 26, ok ? 0x3a2a52 : 0x2a2038, 1).setStrokeStyle(2, ok ? th.frame : 0x4a3a5a))
+      reg(this.add.text(cw / 2, by, '🎒 Rapatrier mon sac  ·  −1 niveau + 50 or', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: ok ? th.chalk : '#8a7a98' }).setOrigin(0.5))
+      const z = reg(this.add.rectangle(cw / 2, by, bw, 26, 0xffffff, 0.001).setInteractive({ useHandCursor: true }))
+      z.on('pointerover', () => bg.setFillStyle(0x4a3768, 1))
+      z.on('pointerout', () => bg.setFillStyle(ok ? 0x3a2a52 : 0x2a2038, 1))
+      z.on('pointerdown', () => { if (this.game_.apothecaryRecoverBag()) { Audio.sfx('ui_accept', { detune: 0 }); this.buildShop() } })
+    }
+    // PIED : divider + lien « Étoffer la carte » centré (agrandi, lisible)
     reg(this.add.rectangle(x0 + 14, y0 + H - 32, W - 28, 1, th.frame, 0.3).setOrigin(0, 0))
-    reg(this.add.text(x0 + 18, y0 + H - 17, th.help, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'italic', color: '#9a8c78' }).setOrigin(0, 0.5))
-    this.drawMenuUpgrade(reg, x0 + W - 18, y0 + H - 17, p, cfg, level, th)
+    this.drawMenuUpgrade(reg, cw / 2, y0 + H - 15, p, cfg, level, th)
     // étincelle discrète après amélioration de la carte
     if (this._shopRenovateFlash) {
       this._shopRenovateFlash = false
@@ -1221,12 +1232,12 @@ export default class UIScene extends Phaser.Scene {
   /** Petit lien DISCRET « Étoffer la carte » en pied de menu (toute la progression de la boutique tient ici).
    *  Hybride : exige le NIVEAU de perso ET l'or. Au palier max : mention inerte « Carte complète ». */
   drawMenuUpgrade(reg, x, y, p, cfg, level, th) {
-    if (level >= SHOP_MAX_TIER) { reg(this.add.text(x, y, 'Carte complète ★', { fontFamily: 'monospace', fontSize: '10px', color: '#9a8c78' }).setOrigin(1, 0.5)); return }
+    if (level >= SHOP_MAX_TIER) { reg(this.add.text(x, y, 'Carte complète ★', { fontFamily: 'monospace', fontSize: '13px', color: '#9a8c78' }).setOrigin(0.5)); return }
     const cost = cfg.costs[level - 1], req = cfg.minLevel[level - 1]
     const ready = p.level >= req && p.gold >= cost
     const label = p.level < req ? `Étoffer la carte — niv. ${req}` : `Étoffer la carte — ${cost} or`
-    const t = reg(this.add.text(x, y, `${ready ? '✦ ' : ''}${label}`, { fontFamily: 'monospace', fontSize: '10px', color: ready ? th.accent : '#8b94a6' }).setOrigin(1, 0.5))
-    const hit = reg(this.add.rectangle(x - t.width - 4, y - 9, t.width + 8, 18, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+    const t = reg(this.add.text(x, y, `${ready ? '✦ ' : ''}${label}`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: ready ? th.accent : '#8b94a6' }).setOrigin(0.5))
+    const hit = reg(this.add.rectangle(x - t.width / 2 - 4, y - 11, t.width + 8, 22, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
     hit.on('pointerdown', () => {
       if (ready) this.renovateShop()
       else { this.playDenied(); this.showToast(p.level < req ? `Niveau ${req} de personnage requis` : `Il te manque ${cost - p.gold} or`, '#e0a866') }

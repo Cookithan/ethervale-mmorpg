@@ -405,6 +405,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.voidNextAt = 0; this.voidSpots = null // flaques persistantes
     this.addsNextAt = 0 // invocation d'adds
     this.attackGraceUntil = 0 // répit d'ouverture posé par wake() (anti one-shot au réveil)
+    this.globalAbilityCd = 0 // TEMPS MORT après CHAQUE capacité -> empêche d'enchaîner A->B->C sans répit
+    this._wasAttacking = false // suivi de la transition (capacité en cours -> idle) pour poser le temps mort
     this.summonedBy = null; this.isAdd = false // marqueurs d'add (sbire invoqué par un boss)
     // ATTAQUE SPÉCIALE DES MOBS normaux (def.mobAtk : lunge/shoot/zone) — moteur léger, distinct des boss
     this.mobPhase = 'idle' // idle | telegraph | dash | recover
@@ -623,6 +625,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.attackPhase !== 'idle') return false
     const now = this.scene.time.now
     if (now < this.attackGraceUntil) return false // répit d'ouverture après le réveil (anti one-shot)
+    if (now < this.globalAbilityCd) return false // TEMPS MORT entre deux capacités (pas d'enchaînement instantané)
     if (this.stunnedUntil && now < this.stunnedUntil) return false
     if (this.fearUntil && now < this.fearUntil) return false
     if (now < this.transUntil) return false
@@ -1141,6 +1144,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.combatEngaged) {
       const has = (k) => def[k] && this.phaseAbilities.has(k)
       const busy = this.attackPhase !== 'idle'
+      if (this._wasAttacking && !busy) this.globalAbilityCd = time + 650 // une capacité vient de FINIR -> répit ~0,65 s avant d'en démarrer une autre (anti-enchaînement)
+      this._wasAttacking = busy
       if (!busy) this.attackOwner = null
       const ABIL = [
         ['charge', () => this.updateBossCharge(time, player, dx, dy, dist)],

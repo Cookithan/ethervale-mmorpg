@@ -134,7 +134,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.bankItems = [] // objets stockés au coffre (cases supplémentaires)
     // SAC DE MORT (A1) : à la mort, or + sac tombent ici {gold, items, x, y} ; 1 seul à la fois.
     this.deathBag = null
-    this.deathsSinceRecovery = 0 // remourir sans récupérer remplace l'ancien sac ; 3 = tout perdu
+    this.deathsSinceRecovery = 0 // (legacy, plus utilisé) — le sac se renouvelle à CHAQUE mort, plus de perte définitive
     this.respawnHome = false // a dormi au dortoir -> réapparaît dans son lit à la mort (sinon place du village)
     this.shopLevels = { apothecary: 1, tavern: 1 } // niveaux de rénovation des boutiques de lieu (1..4, par perso)
     this.foodBuff = { atk: 0, def: 0, regen: 0, until: 0 } // buff de repas/élixir en cours (temps absolu `until`)
@@ -497,6 +497,24 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
     if (this.level > startLevel) Audio.sfx('sfx_levelup', { vol: 0.7, detune: 0 }) // jingle de montée de niveau (1 fois)
     if (this.level >= this.maxLevel) this.xp = 0
+  }
+
+  /** Retire UN niveau (service de rapatriement du sac par l'apothicaire) : annule les gains du niveau perdu
+   *  (PV/mana/déf/atq) et repart au début du niveau inférieur. Renvoie false si déjà niveau 1. */
+  deLevel() {
+    if (this.level <= 1) return false
+    this.level--
+    this.baseMaxHp -= this.hpPerLevel
+    this.baseDefense -= this.defPerLevel
+    this.baseMana -= this.manaPerLevel
+    this.baseAttack -= 4
+    this.xpToNext = xpForLevel(this.level)
+    this.xp = 0 // repart au début du niveau inférieur
+    this.recomputeStats()
+    this.hp = Math.min(this.hp, this.maxHp) // PV/mana plafonnés au nouveau max (réduit)
+    this.mana = Math.min(this.mana, this.maxMana)
+    this.invVersion++
+    return true
   }
 
   /** Repousse le héros (recul) : vélocité imposée + input ignoré pendant `ms` (ex. contact du feu de camp). */

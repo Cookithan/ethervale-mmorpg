@@ -395,6 +395,10 @@ export default class GameScene extends Phaser.Scene {
     this.lockedTarget = null
     // anneau de sélection PLAT sous les pieds de la cible (ne couvre pas le sprite, même pour un gros boss)
     this.targetReticle = this.add.ellipse(0, 0, 24, 11, 0xff5050, 0).setStrokeStyle(2, 0xff6464).setVisible(false)
+    // ASTUCE de combat : rappel « Tab = cibler le boss » affiché tant qu'un boss est engagé et NON verrouillé.
+    this.bossLockHint = this.add.text(this.scale.width / 2, this.scale.height - 118, '⌖  Tab : cibler le boss', {
+      fontFamily: FONT, fontSize: '11px', color: '#cfe8ff', backgroundColor: '#0b0f17cc', padding: { x: 8, y: 4 }, stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5, 1).setScrollFactor(0).setDepth(45000).setVisible(false)
 
     // --- décors ---
     this.obstacles = this.physics.add.staticGroup()
@@ -413,14 +417,15 @@ export default class GameScene extends Phaser.Scene {
       const cx = ctex.getContext()
       const grd = cx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2)
       grd.addColorStop(0, 'rgba(255,255,255,1)') // cœur du VILLAGE = plein jour (aucune nuit)
-      grd.addColorStop(0.8, 'rgba(255,255,255,1)') // village pleinement éclairé jusqu'à ~ses bords
-      grd.addColorStop(1, 'rgba(255,255,255,0)') // fondu TRÈS court au bord du village -> tout le reste (prairie incluse) = nuit
+      grd.addColorStop(0.9, 'rgba(255,255,255,1)') // TOUTE l'herbe foncée du village éclairée jusqu'à son bord
+      grd.addColorStop(1, 'rgba(255,255,255,0)') // fondu TRÈS court au bord -> tout le reste (prairie) = nuit
       cx.fillStyle = grd
       cx.fillRect(0, 0, S, S)
       ctex.refresh()
     }
+    // ELLIPSE calée sur l'esplanade d'herbe foncée du village (plaza, demi-axes 12×10 tuiles) -> seules ces cases sont éclairées la nuit
     this.nightHoleImg = this.add.image((this.icx + VILLAGE_OFF_X) * TILE, (this.icy + VILLAGE_OFF_Y) * TILE, 'nightHole')
-      .setDisplaySize(VILLAGE_LIGHT_R * 2, VILLAGE_LIGHT_R * 2).setVisible(false)
+      .setDisplaySize(26 * TILE, 22 * TILE).setVisible(false)
     const nightMask = this.nightHoleImg.createBitmapMask()
     nightMask.invertAlpha = true // le voile est RETIRÉ là où le masque est opaque (= sur le village/prairie)
     this.nightOverlay.setMask(nightMask)
@@ -3529,12 +3534,13 @@ export default class GameScene extends Phaser.Scene {
     const x = this.cx * TILE + 8
     const y = this.cy * TILE + 8
     const depth = (this.cy + 1) * TILE // tri Y : le héros passe devant quand il est au sud
-    // halo chaud (additif) qui respire
-    const glow = this.add.circle(x, y + 2, 30, 0xff8a2a, 0.14).setBlendMode(Phaser.BlendModes.ADD).setDepth(this.cy * TILE - 1)
-    this.tweens.add({ targets: glow, scale: 1.12, alpha: 0.22, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
-    // bûches/pierres (base) + flamme animée par-dessus (plus petite)
+    // halo chaud (additif) qui respire — PETIT cercle décoratif
+    const glow = this.add.circle(x, y + 2, 18, 0xff8a2a, 0.13).setBlendMode(Phaser.BlendModes.ADD).setDepth(this.cy * TILE - 1)
+    this.tweens.add({ targets: glow, scale: 1.1, alpha: 0.2, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    // bûches/pierres (base) + flamme animée par-dessus
     this.add.image(x, y + 4, 'campfire').setOrigin(0.5, 0.85).setDepth(depth)
-    this.add.sprite(x, y - 1, 'fire_anim').setOrigin(0.5, 0.8).setScale(0.85).setDepth(depth + 1).play('fire-anim')
+    const flame = this.add.sprite(x, y - 1, 'fire_anim').setOrigin(0.5, 0.8).setScale(0.85).setDepth(depth + 1).play('fire-anim')
+    this._villageFire = { glow, flame } // réfs : sous la PLUIE -> petit feu + halo coupé (cf. updateWeather)
     // COLLISION SOLIDE + RECUL FORT : au contact du feu, le héros est violemment repoussé vers l'extérieur.
     const col = this.add.rectangle(x, y + 4, 15, 11)
     this.physics.add.existing(col, true)
@@ -5158,8 +5164,8 @@ export default class GameScene extends Phaser.Scene {
     const ret = this.targetReticle
     if (!ret) return
     if (t) {
-      // anneau plat sous les pieds : largeur ~ celle de la cible (plafond ÉLEVÉ pour bien cercler un BOSS), aux pieds
-      const w = Phaser.Math.Clamp((t.displayWidth || 16) * 0.95, 16, t.isBoss ? 110 : 44)
+      // anneau plat sous les pieds : largeur ~ celle de la cible (plafond modéré pour un BOSS), aux pieds
+      const w = Phaser.Math.Clamp((t.displayWidth || 16) * 0.7, 16, t.isBoss ? 64 : 44)
       const pulse = 1 + 0.08 * Math.sin(time / 200)
       ret.setScale((w / 24) * pulse)
       ret.setPosition(t.x, t.y + (t.displayHeight || 16) * 0.42).setVisible(true).setDepth(t.y + 1)
@@ -6474,6 +6480,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateBoat() // barque sous le héros quand il navigue (A3)
     this.updateQuicksand(time) // sables mouvants du désert : aspiration + dégâts (après player.update)
     this.updateTarget(time) // réticule de la cible verrouillée + libération si elle meurt
+    if (this.bossLockHint) { const b = this.activeArena?.boss; this.bossLockHint.setVisible(!!b && b.active && this.lockedTarget !== b) } // astuce « Tab » tant que le boss n'est pas ciblé
     this.revealFog(p.x, p.y) // brouillard de guerre : dévoile la carte/minimap autour du joueur
     this.updateFogFade(delta) // fondu de découverte : l'opacité des zones fraîchement vues passe de 100 à 0 sur ~2 s
     // récupération du sac de mort (A1) : il faut d'abord s'en éloigner (armement), puis remarcher dessus
@@ -6747,6 +6754,12 @@ export default class GameScene extends Phaser.Scene {
         this._weatherUntil = time + (this.raining ? Phaser.Math.Between(30000, 45000) : Phaser.Math.Between(200000, 280000))
         this._rainPhaseAt = 0 // relance le tirage d'intensité (pas d'annonce texte)
       }
+      // FEU DU VILLAGE sous la PLUIE : petit feu (flamme réduite) + halo décoratif coupé (plus de lumière)
+      if (this._villageFire && this._villageFire._wet !== !!this.raining) {
+        this._villageFire._wet = !!this.raining
+        this._villageFire.flame.setScale(this._villageFire._wet ? 0.42 : 0.85)
+        this._villageFire.glow.setVisible(!this._villageFire._wet)
+      }
       const showRain = !!this.raining && biome !== 'snow' && biome !== 'desert' && !p.sailing // pluie partout sauf désert + neige
       const e = this.rainEmitter
       const v = this.cameras.main.worldView
@@ -6937,10 +6950,10 @@ export default class GameScene extends Phaser.Scene {
     // SAC DE MORT (A1) : or + sac tombent à l'endroit de la mort. On GARDE équipement + niveau.
     const gold = p.gold
     const items = p.inventory.slice()
-    p.deathsSinceRecovery = (p.deathsSinceRecovery || 0) + 1
-    this.clearDeathBagSprite() // un seul sac : l'ancien (non récupéré) est perdu
-    const lost = p.deathsSinceRecovery >= 3 // 3e mort sans récupération -> tout est définitivement perdu
-    if (!lost && (gold > 0 || items.length > 0)) {
+    // LE SAC SE RENOUVELLE À CHAQUE MORT : l'ancien sac non récupéré est REMPLACÉ par celui de cette mort
+    // (plus de perte définitive au bout de 3 morts -> on a TOUJOURS un sac à récupérer après la dernière mort).
+    this.clearDeathBagSprite()
+    if (gold > 0 || items.length > 0) {
       p.deathBag = { gold, items, x: p.x, y: p.y }
       this.spawnDeathBagSprite()
     } else {
@@ -6951,7 +6964,7 @@ export default class GameScene extends Phaser.Scene {
     p.invVersion++
 
     // l'UIScene affiche un voile bref (ce qu'on a laissé, avec icônes), puis appelle respawnAtVillage()
-    this.events.emit('died', { gold, items, lost })
+    this.events.emit('died', { gold, items, lost: false })
   }
 
   /** Réapparition au village après le voile de mort (PV pleins). Appelé par UIScene. */
@@ -7032,5 +7045,19 @@ export default class GameScene extends Phaser.Scene {
     this.scene.get('UIScene')?.showToast?.('Sac récupéré : ' + (parts.join(' + ') || 'rien'), '#7cfc9a')
     Audio.sfx('sfx_loot', { vol: 0.6, detune: 0 })
     this.saveGame()
+  }
+
+  /** SERVICE APOTHICAIRE : Ylva rapatrie le sac de mort (où qu'il soit) contre 1 NIVEAU (PV/mana/etc. réduits) + 50 or. */
+  apothecaryRecoverBag() {
+    const p = this.player
+    const ui = this.scene.get('UIScene')
+    if (!p.deathBag) { ui?.showToast?.('Aucun sac à rapatrier.', '#e0a866'); return false }
+    if (p.level <= 1) { ui?.showToast?.('Niveau trop bas pour ce service (min. 2).', '#e0a866'); this.playDenied?.(); return false }
+    if (p.gold < 50) { ui?.showToast?.('Il te faut 50 or pour ce service.', '#e0a866'); this.playDenied?.(); return false }
+    p.gold -= 50
+    p.deLevel() // -1 niveau (annule les gains : PV/mana/déf/atq)
+    this.recoverDeathBag() // rend le sac (or + objets) + sauvegarde
+    ui?.showToast?.('Ylva a rapatrié ton sac (−1 niveau, −50 or).', '#8ef0a0')
+    return true
   }
 }
