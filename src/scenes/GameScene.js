@@ -46,9 +46,9 @@ function makeSeededRandom(seed) {
 const TILE = 16
 // grille TOTALE agrandie : le continent est une ÎLE elliptique CENTRÉE, entourée d'OCÉAN de
 // tous les côtés (marges nettes à gauche/droite ET haut/bas). Cf. isOcean/buildOcean.
-// Grille agrandie de +50% par dimension (360x220 -> 540x330) : le continent (ISLAND_RX/RY FIXE) reste
-// centré sur icx/icy et de même taille -> tout le surplus de grille devient de l'OCÉAN autour.
-const MAP_W = 540
+// Grille agrandie : le continent ERGAS (ISLAND_RX/RY FIXE) reste centré sur icx/icy. La largeur (640) loge
+// en plus, à l'EST, l'île maudite SARGÈR pleine taille (même ellipse 96x82) séparée par un détroit d'océan.
+const MAP_W = 640
 const MAP_H = 330
 const ISLAND_RX = 96 // demi-largeur du continent (tuiles) -> marge océan gauche/droite = icx - RX
 const ISLAND_RY = 82 // demi-hauteur du continent (tuiles) -> marge océan haut/bas = icy - RY
@@ -203,10 +203,10 @@ const BIOME_BOSSES = {
     { type: 'squidred', name: 'Vorakh, le Kraken des Récifs' }, // solo, tire des orbes à esquiver
   ],
 }
-// ÎLE MAUDITE (end-game) : GRANDE île détachée loin au SUD-OUEST, au-delà des mers. Biome `cursed` +
-// boss Dargoth. Entourée d'océan, AUCUN gué -> VERROUILLÉE tant que la nage n'existe pas. Placée hors
-// du cadre d'accueil (centré sur le village) -> on n'en voit qu'un BOUT au dézoom = secret end-game.
-const CURSED_ISLE = { ox: -100, oy: 60, r: 28 } // [offset tuiles depuis le centre de l'île, rayon]
+// ÎLE MAUDITE SARGÈR (end-game) : seconde île PLEINE TAILLE (même ellipse 96x82 qu'Ergas), détachée loin à
+// l'EST au-delà d'un large détroit d'océan. Biome `cursed` + les 4 boss maudits (gauntlet) dont Dargoth.
+// Entourée d'océan, AUCUN gué -> VERROUILLÉE sans barque (end-game). On n'en voit qu'un bout au dézoom d'accueil.
+const CURSED_ISLE = { ox: 300, oy: 65, rx: 96, ry: 82 } // [offset tuiles depuis le centre d'Ergas, demi-axes ellipse]
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
 // DÉLAI entre deux quêtes (respiration) : la 1re est immédiate ; ensuite délai croissant, plafonné.
@@ -1575,11 +1575,17 @@ export default class GameScene extends Phaser.Scene {
     return false
   }
 
-  /** Vrai si la tuile est sur l'ÎLE MAUDITE (île détachée au large, biome cursed, end-game verrouillé). */
+  /** Vrai si la tuile est sur l'ÎLE MAUDITE SARGÈR (2e continent pleine taille à l'est, biome cursed, end-game).
+   *  Ellipse (demi-axes rx/ry) + côte irrégulière (lobes + bruit), phases distinctes d'Ergas -> silhouette propre. */
   isCursedIsland(tx, ty) {
     const cx = this.icx + CURSED_ISLE.ox
     const cy = this.icy + CURSED_ISLE.oy
-    return Math.hypot(tx - cx, ty - cy) <= CURSED_ISLE.r + this.noise2D(tx, ty)
+    const dx = tx - cx, dy = ty - cy
+    const r = Math.hypot(dx / CURSED_ISLE.rx, dy / CURSED_ISLE.ry) // rayon dans l'ellipse normalisée (1 = côte de base)
+    const a = Math.atan2(dy, dx)
+    let coast = 0.13 * Math.sin(a * 2 - 0.4) + 0.10 * Math.sin(a * 3 + 1.1) + 0.06 * Math.sin(a * 5 + 2.0) + 0.15 * this.noise2D(tx, ty)
+    coast = Phaser.Math.Clamp(coast, -0.28, 0.5)
+    return r <= 1 + coast
   }
 
   /** Vrai si la tuile est dans l'OCÉAN : tout ce qui est HORS du continent (et pas une petite île).
