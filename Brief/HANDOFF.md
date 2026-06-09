@@ -1,7 +1,19 @@
-# HANDOFF — « Island of Ergas » (état 2026-06-09)
+# HANDOFF — « Island of Ergas » (état 2026-06-10)
 
 > **PROCHAIN CLAUDE : lis ce fichier EN PREMIER, puis l'index mémoire `MEMORY.md`.**
 > Ce doc dit exactement où on en est et ce qu'il reste.
+
+---
+
+## ⚡ DERNIÈRE SESSION (2026-06-10) — JUICE de combat + fixes donjon-grottes — ⚠️ NON COMMITÉ
+HEAD inchangé = `85508f0`. **Tout est dans le working tree, build OK (`npx vite build` EXIT=0), RIEN n'a été commité.** Fichiers modifiés : `GameScene.js`, `Player.js`, `BootScene.js`, `UIScene.js`, `scripts/map_preview.cjs` (+ non-suivis : donjon-grottes assets `public/assets/deco/{aband/,chest.png,dungeon_props.png}`, `scripts/{extract_props,hamlet_preview,tile_grid}.cjs`). Détail mémoire = [[combat-juice-dungeon-fixes]].
+
+1. **JUICE de combat** (validé en chantier) — tout via `hitMonster` : **coups critiques** (consts `CRIT_CHANCE=0.05`, `CRIT_MUL=1.6`, `HITSTOP_MS=55` en tête de GameScene), `hitSpark()` (étincelle d'impact en primitives), `deathPop()` (éclat de mort, ×1.7 + shake pour élite), `hitstop()` (gel physique ~55 ms, garde anti-cumul, désactivable), `flashHurt()` **proportionnel** (`Player.lastHurtFrac`), `updateLowHpVignette()` (voile rouge pulsant <25 % PV).
+2. **Donjon-grottes instanciées (`cave_a`/`cave_b`, WIP non testé)** — **mort instantanée corrigée** : trashLevel 7/8→**5/6** + garde `Math.min(...,MONSTER_MAX_LEVEL)` ; **projectiles bloqués par les murs** (colliders dans `buildDungeon`) ; **invuln d'apparition 1.8 s** ; coffre lumineux `unlockDungeonChest()` (violet→doré). ⚠️ **Toute la feature donjon-grottes (~494 l.) reste à TESTER en jeu.**
+3. **Métiers & artisanat étendu** = chantier choisi puis **ABANDONNÉ par l'utilisateur** (aucun code écrit). **Ne PAS reproposer** sans demande explicite.
+4. **Décision** : le **MULTIJOUEUR se fera à la TOUTE FIN** — « pour l'instant que solo » (Colyseus avait été pré-choisi pour plus tard, cf. §4).
+
+**TODO immédiat prochaine session** : (a) tester en jeu le donjon-grottes + le juice ; (b) si OK, faire la « flag dance » (`DEBUG_GIVE_BOAT=false`) et **commiter** ce gros lot (juice + donjon-grottes) — pour l'instant c'est tout en working tree.
 
 ---
 
@@ -35,7 +47,8 @@ Tout Sargèr v2 est **build-OK mais peu/pas validé au navigateur** (gros volume
 5. Pas de **crash** résiduel. (Un crash a déjà été corrigé : feu de l'avant-poste poussé dans `this.campfires` sans `glow` → `updateCampfires` plantait. **Leçon : toute entrée de `this.campfires` doit avoir x/y/radius/until/sprite/flame/glow/seed, sinon crash à la 1re frame.**)
 
 ## 4. PROCHAINS CHANTIERS POSSIBLES (au choix de l'utilisateur — DEMANDER)
-- **MULTIJOUEUR** = LE gros chantier visé (refonte : serveur autoritaire **Colyseus** + sync + prédiction + auth/saves **Supabase** + refactor simulation/rendu + hébergement). Débloque les RAIDS (Tengu des Glaces, Samouraï Sylvestre, Dragon) + le contenu group-required de Sargèr. **Ce N'EST PAS un petit ajout** (nouvelle fondation). L'utilisateur avait choisi « finir le solo d'abord » → Sargèr est fait. Le multi est la suite logique.
+- **MULTIJOUEUR** = LE gros chantier visé (refonte : serveur autoritaire **Colyseus** [pré-choisi] + sync + prédiction + auth/saves **Supabase** + refactor simulation/rendu + hébergement). Débloque les RAIDS (Tengu des Glaces, Samouraï Sylvestre, Dragon) + le contenu group-required de Sargèr. **Ce N'EST PAS un petit ajout** (nouvelle fondation). ⚠️ **DÉCISION 2026-06-10 : le multi se fera à la TOUTE FIN — « pour l'instant que solo ».** Ne pas démarrer le réseau sans demande explicite.
+- ⛔ **Métiers & artisanat étendu (récolte/niveaux)** : proposé puis **ABANDONNÉ** par l'utilisateur (2026-06-10). Ne pas reproposer.
 - **Polish Sargèr** : équilibrage après tests, le dragon (cf. §3.3), packs d'élites en paires plus serrés, plus d'offres au Reliquaire (panoplie maudite dédiée), ambiance sonore/météo propre à Sargèr, particules d'âmes/braises (émetteur prévu mais non fait — voir spec `Brief/_sarger/deco.txt` section ambianceFx C/D + `this._ghostWisps` déjà rempli mais non utilisé).
 - **Contenu Ergas** : déco fine du bourg (assets CC0 à FOURNIR par l'utilisateur), cosmétiques.
 - **Bugs/équilibrage** signalés en testant.

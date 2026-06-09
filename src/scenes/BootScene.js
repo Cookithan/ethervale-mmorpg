@@ -86,6 +86,14 @@ export default class BootScene extends Phaser.Scene {
     this.load.spritesheet('wx_leaf', 'assets/fx/p_leaf.png', { frameWidth: 8, frameHeight: 7 })
     this.load.spritesheet('wx_grass', 'assets/fx/p_grass.png', { frameWidth: 12, frameHeight: 13 })
     this.load.image('moneybag', 'assets/items/moneybag.png') // sac de mort (14×15) déposé à l'endroit de la mort (A1)
+    // VILLAGE ABANDONNÉ (Ninja TilesetVillageAbandoned, CC0) : structures extraites en PNG autonomes (cf. scripts/extract_props.cjs)
+    // -> hameau en ruine de la forêt + 2 entrées de grotte (donjons instanciés)
+    for (const k of ['cave_green', 'cave_orange', 'house_win', 'house_door', 'tower', 'cabin', 'manor', 'house_big', 'idol', 'stones', 'tree_a', 'tree_b', 'stump', 'log_v', 'bush', 'fence', 'logs'])
+      this.load.image('ab_' + k, `assets/deco/aband/${k}.png`)
+    // coffre au trésor (Ninja, 32×16 = 2 frames : 0=fermé, 1=ouvert) -> butin des donjons
+    this.load.spritesheet('chest', 'assets/deco/chest.png', { frameWidth: 16, frameHeight: 16 })
+    // props de donjon (Ninja TilesetDungeon, 12×4 frames 16px) : barils/crânes/gemmes/torches pour la déco de grotte
+    this.load.spritesheet('dungeon_props', 'assets/deco/dungeon_props.png', { frameWidth: 16, frameHeight: 16 })
 
     // nature (arbres, rochers...) en spritesheet 16x16 pour placer des tuiles
     this.load.spritesheet('nature', 'assets/tiles/nature.png', {
@@ -601,6 +609,15 @@ export default class BootScene extends Phaser.Scene {
       g.fillStyle(0xffd24d, 1) // cœur
       g.fillTriangle(10, 17, 14, 17, 12, 10)
       g.generateTexture('campfire', 24, 24)
+      g.destroy()
+    }
+
+    // 'cave_floor' : sol de grotte 16×16 (roche sombre + moucheture discrète, quasi-uniforme pour ne pas montrer le tuilage)
+    if (!this.textures.exists('cave_floor')) {
+      const g = this.make.graphics({ x: 0, y: 0, add: false })
+      g.fillStyle(0x2c2823, 1); g.fillRect(0, 0, 16, 16) // base roche brun-gris sombre
+      for (let i = 0; i < 10; i++) { const x = 2 + Math.floor(Math.random() * 12), y = 2 + Math.floor(Math.random() * 12); g.fillStyle(Math.random() < 0.5 ? 0x332e28 : 0x241f1b, 0.8); g.fillRect(x, y, 1 + (Math.random() < 0.3 ? 1 : 0), 1) } // moucheture (loin des bords)
+      g.generateTexture('cave_floor', 16, 16)
       g.destroy()
     }
 

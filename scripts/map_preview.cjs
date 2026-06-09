@@ -98,5 +98,12 @@ if (CURSED.rx != null) {
   const rgx = CURSED.rx * 0.5, rgy = CURSED.ry * 0.5
   for (let gi = 0; gi < 3; gi++) { const a = (gi / 3) * Math.PI * 2 - Math.PI / 2; mark(Math.round(ccx + Math.cos(a) * rgx), Math.round(ccy + Math.sin(a) * rgy), [255, 230, 0], 3) }
 }
+// HAMEAU ABANDONNÉ (forêt d'Ergas) + 2 grottes-donjons — tester le placement à la vue
+const HAMLET = { tx: 154, ty: 116 }
+const CAVES = [{ tx: 147, ty: 110 }, { tx: 162, ty: 122 }]
+mark(HAMLET.tx, HAMLET.ty, [255, 130, 0], 3) // hameau = orange
+for (const c of CAVES) mark(c.tx, c.ty, [40, 40, 40], 2) // grottes = noir
+console.log('HAMEAU', HAMLET, '->', biomeAt(HAMLET.tx, HAMLET.ty), 'dist village', Math.round(Math.hypot(HAMLET.tx - cx, HAMLET.ty - cy)), 'ocean?', rawOcean(HAMLET.tx, HAMLET.ty))
+for (const c of CAVES) console.log('GROTTE', c, '->', biomeAt(c.tx, c.ty), 'ocean?', rawOcean(c.tx, c.ty))
 fs.writeFileSync('Brief/_map.png', encode(oW, oH, o))
 console.log('Brief/_map.png', oW + 'x' + oH, '| Sargèr centre', icx + CURSED.ox, icy + CURSED.oy)

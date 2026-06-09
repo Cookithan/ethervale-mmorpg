@@ -2071,6 +2071,14 @@ export default class UIScene extends Phaser.Scene {
       })
     }
 
+    // GROTTES-DONJONS (Ergas, forêt ouest) — masquées tant que non explorées
+    for (const c of g.caveEntrances ?? []) {
+      if (!g.isExplored(c.tx, c.ty) || !inFrame(c.tx, c.ty)) continue
+      const cx2 = ox + c.tx * cell, cy2 = oy + c.ty * cell
+      reg(this.add.text(cx2, cy2, '◆', { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#9a7ad6', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5).setDepth(303))
+      reg(this.add.text(cx2, cy2 - 8, 'Donjon', { fontFamily: 'monospace', fontSize: '9px', color: '#b59ad6', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(303))
+    }
+
     // PNJ dispersés (petits points clairs) — masqués tant que leur zone n'est pas explorée
     for (const npc of g.wildNpcs ?? []) {
       if (!g.isExplored(npc.tx, npc.ty) || !inFrame(npc.tx, npc.ty)) continue // brouillard / autre île

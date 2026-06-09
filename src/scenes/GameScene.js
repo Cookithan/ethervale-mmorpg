@@ -154,6 +154,9 @@ const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île ->
 const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
 const MONSTER_MAX_LEVEL = 6 // mobs niv 1 (village) -> 6 (zones lointaines = end-game) ; PV ×2/niv, dégâts ×1.6/niv (cf. Monster.js)
+const CRIT_CHANCE = 0.05 // proba d'un COUP CRITIQUE sur tout dégât direct du joueur (épée/tir/sorts d'impact ; pas les DoT)
+const CRIT_MUL = 1.6 // un critique multiplie les dégâts par ça (+ feedback : chiffre orange, étincelle, micro-shake, recul accru)
+const HITSTOP_MS = 55 // micro-gel d'impact (« hitstop ») sur critique/kill : donne du poids aux coups (0 = désactivé)
 // TEMPÉRATURE (froid neige / chaud désert) : jauge -100…+100. Dérive vers l'extrême du biome, revient à
 // 0 ailleurs. |temp| élevé -> ralenti progressif puis dégâts. Atténuée par les items coldResist/heatResist.
 const TEMP_MAX = 100
@@ -173,6 +176,7 @@ const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la temp�
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
 const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque + touche G téléport Sargèr + gate désactivé (test end-game).
+const DEBUG_TP_HAMLET = true // OUTIL DEV : true -> touche H téléporte au hameau abandonné « Ombrebois » (forêt ouest) pour tester. REMETTRE false avant commit.
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -372,6 +376,9 @@ export default class GameScene extends Phaser.Scene {
     this.pois = [{ tx: this.cx, ty: this.cy }, ...Object.values(this.bossLairs).flat()]
     // 15 PNJ dispersés sur la map (calculés tôt -> les petits chemins s'y greffent)
     this.computeWildNpcs()
+    // HAMEAU ABANDONNÉ (forêt ouest) + 2 grottes-donjons : centre calculé TÔT -> sa clairière est réservée
+    // avant le semis d'arbres (scatterForestTrees/Undergrowth la sautent via inHamletClearing).
+    this.computeHamlet()
 
     // --- couches de sol ---
     // fond herbe plein derrière la tilemap : masque les interstices d'1px entre tuiles
@@ -477,6 +484,8 @@ export default class GameScene extends Phaser.Scene {
     this.scatterCursedProps() // SARGÈR : déco par sous-zone du miroir corrompu (Bois Blêmes / Nécropole / Cendre / Bourg Fantôme)
     this.spawnGhostRuins() // SARGÈR : ruine-miroir du village d'Ergas (annulus autour du gauntlet)
     this.spawnSargerOutpost() // SARGÈR : avant-poste des survivants (hub ouest : feu + repos + forge + lore)
+    this.spawnSargerHouses() // SARGÈR : maisons en ruine moussues éparpillées (renforce le Bourg Fantôme)
+    this.spawnDungeonCaves() // ERGAS : 2 grottes-donjons SEULES dans la forêt ouest (plus de hameau/déco)
     this.physics.add.collider(this.player, this.obstacles)
     // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
     // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
@@ -489,6 +498,7 @@ export default class GameScene extends Phaser.Scene {
       this.spawnMonsters()
       this.spawnBosses() // boss de biome (repaires fixes au fond de chaque zone)
       this.spawnCursedRares() // SARGÈR : 5 rares nommés ♦ qui rôdent par sous-zone (mini-boss group-required)
+      // (plus de mobs hantés autour du hameau : le hameau est CALME ; tout le danger est À L'INTÉRIEUR des grottes-donjons)
     }
     this.physics.add.collider(this.monsters, this.obstacles)
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
@@ -665,6 +675,12 @@ export default class GameScene extends Phaser.Scene {
         this.player.setPosition((this.icx + CURSED_ISLE.ox - 50) * TILE + 8, (this.icy + CURSED_ISLE.oy) * TILE + 8)
         this.scene.get('UIScene')?.showToast?.('TEST : téléporté sur Sargèr (Dargoth à l\'est)', '#c79bff')
       })
+      if (DEBUG_TP_HAMLET) this.input.keyboard.on('keydown-H', () => { // TEST : H = téléporte au hameau abandonné « Ombrebois » (forêt ouest)
+        if (this.inDungeon || this.inInterior || !this.hamlet) return
+        this.player.setPosition((this.hamlet.tx + 1) * TILE + 8, (this.hamlet.ty + 1) * TILE + 8)
+        this.cameras.main.centerOn(this.player.x, this.player.y)
+        this.scene.get('UIScene')?.showToast?.('TEST : téléporté en forêt ouest (grottes-donjons au NO/SE)', '#cdbd96')
+      })
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
         if (this.uiBusy()) return
@@ -733,7 +749,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.gameOver || !this.player || !this.charId) return // pas de slot (aperçu) -> on ne sauvegarde pas
     if (this.exploredCells) this.player.exploredFog = [...this.exploredCells] // brouillard : cellules explorées (carte révélée)
     const save = makeSave(this.player, this.character)
-    if (this.inInterior && this._villageReturn) { save.x = Math.round(this._villageReturn.x); save.y = Math.round(this._villageReturn.y) } // dans un intérieur (hors-map) -> sauve la position VILLAGE, jamais hors-map
+    if ((this.inInterior || this.inDungeon) && this._villageReturn) { save.x = Math.round(this._villageReturn.x); save.y = Math.round(this._villageReturn.y) } // intérieur/donjon (hors-map) -> sauve la position MONDE, jamais hors-map
     saveCharacter(this.charId, save) // sauvegarde dans LE slot du perso courant
   }
 
@@ -2244,6 +2260,7 @@ export default class GameScene extends Phaser.Scene {
       if (tx < 1 || ty < 1 || tx > MAP_W - 4 || ty > MAP_H - 5) return
       if (this.nearSpawn(tx, ty, 6)) return
       if (lairs.some((l) => Math.hypot(tx - l.tx, ty - l.ty) < 4)) return
+      if (this.inHamletClearing(tx, ty)) return // clairière du hameau abandonné : pas d'arbres
       for (let dx = 0; dx < 3; dx++) {
         for (let dy = 0; dy < 4; dy++) {
           if (this.biomeAt(tx + dx, ty + dy) !== 'forest' || this.onPath(tx + dx, ty + dy, 1) || this.onWater(tx + dx, ty + dy, 1)) return
@@ -2269,6 +2286,7 @@ export default class GameScene extends Phaser.Scene {
     for (let y = 2; y < MAP_H - 2; y++) {
       for (let x = 2; x < MAP_W - 2; x++) {
         if (this.biomeAt(x, y) !== 'forest' || this.nearSpawn(x, y, 6)) continue
+        if (this.inHamletClearing(x, y)) continue // clairière du hameau : pas de sous-bois (déco propre du hameau à la place)
         const roll = Phaser.Math.Between(0, 100)
         if (roll < 8) place(x, y, FERNS, -4) // fougères / hautes herbes
         else if (roll < 13) place(x, y, BUSHES, -4) // buissons
@@ -2797,7 +2815,7 @@ export default class GameScene extends Phaser.Scene {
     const cands = {}
     for (let ty = 8; ty < MAP_H - 8; ty += 3) {
       for (let tx = 8; tx < MAP_W - 8; tx += 3) {
-        if (Math.hypot(tx - this.cx, ty - this.cy) < 36) continue // pas à côté du village
+        if (Math.hypot(tx - this.cx, ty - this.cy) < 44) continue // pas à côté du village (buffer élargi : le joueur frais ne tombe plus sur un boss au bord de la prairie)
         if (this.isOcean(tx, ty) || this.isIsland(tx, ty)) continue
         const b = this.biomeAt(tx, ty)
         if (!BIOME_BOSSES[b] || b === 'cursed') continue // cursed = île, géré à part
@@ -3092,7 +3110,7 @@ export default class GameScene extends Phaser.Scene {
   makeBossSolid(boss) {
     boss.setImmovable(true)
     if (boss.body) boss.body.pushable = false
-    this.physics.add.collider(
+    return this.physics.add.collider(
       this.player, boss,
       () => this.onBossContact(boss),
       () => !this.player.dashing && !boss.charging && !boss.slamming, // dash joueur / charge / saut-slam = traversée
@@ -3756,6 +3774,100 @@ export default class GameScene extends Phaser.Scene {
     this.addNpc(ox + 5, oy - 1, 'npc_inspector', 'Vael, Quartier-maître', ['Rapporte-moi des Éclats Maudits, je te fournirai de quoi survivre.'], 'reliquaire') // vendeur de faction (monnaie Éclats)
   }
 
+  /** Centre du HAMEAU ABANDONNÉ (forêt ouest d'Ergas) + 2 grottes-donjons qui le flanquent.
+   *  Spirale de validation depuis une cible (forêt, sur terre, loin du village et des repaires de boss). */
+  computeHamlet() {
+    this.hamlet = null; this.caves = []
+    if (this.preview) return // pas de hameau dans l'aperçu d'accueil (allège la scène)
+    const lairs = Object.values(this.bossLairs || {}).flat()
+    const ok = (tx, ty) => this.biomeAt(tx, ty) === 'forest' && !this.isOcean(tx, ty) && !this.nearSpawn(tx, ty, 22) && !lairs.some((l) => Math.hypot(tx - l.tx, ty - l.ty) < 9)
+    let center = { tx: 154, ty: 116 } // cible validée à la carte (scripts/map_preview.cjs)
+    if (!ok(center.tx, center.ty)) { // repli en spirale si la cible tombe sur eau/repaire
+      outer: for (let r = 1; r <= 14; r++) for (let a = 0; a < 16; a++) {
+        const tx = Math.round(154 + Math.cos((a / 16) * Math.PI * 2) * r), ty = Math.round(116 + Math.sin((a / 16) * Math.PI * 2) * r)
+        if (ok(tx, ty)) { center = { tx, ty }; break outer }
+      }
+    }
+    this.hamlet = { tx: center.tx, ty: center.ty, r: 10 } // r = rayon de clairière (tuiles)
+    // 2 grottes-donjons flanquant le hameau (NO + SE), chacune avec sa petite clairière
+    this.caves = [
+      { id: 'cave_a', tx: center.tx - 9, ty: center.ty - 7, key: 'ab_cave_green', name: 'Grotte Moussue' },
+      { id: 'cave_b', tx: center.tx + 9, ty: center.ty + 6, key: 'ab_cave_orange', name: 'Tanière Ocre' },
+    ]
+  }
+
+  /** true si (tx,ty) est dans la petite clairière D'UNE GROTTE -> on y dégage arbres/sous-bois (les grottes
+   *  sont seules dans la forêt : plus de hameau/déco autour, juste un espace propre devant l'entrée). */
+  inHamletClearing(tx, ty) {
+    for (const c of this.caves || []) if (Math.hypot(tx - (c.tx + 1.5), ty - (c.ty + 1.5)) < 4.5) return true
+    return false
+  }
+
+  /** Pose une structure-image AUTONOME (PNG extrait, cf. scripts/extract_props.cjs) :
+   *  origine bas-centre, tri en Y, teinte/échelle optionnelles, collision de base optionnelle, tuiles occupées. */
+  placeRuin(tx, ty, key, wT, hT, opts = {}) {
+    const baseY = (ty + hT) * TILE
+    const cxp = (tx + wT / 2) * TILE
+    const im = this.add.image(cxp, baseY, key).setOrigin(0.5, 1).setDepth(baseY + (opts.depthBias || 0))
+    if (opts.tint != null) im.setTint(opts.tint)
+    if (opts.scale) im.setScale(opts.scale)
+    if (opts.solid !== false) { // collision sur la base (2/3 de la largeur), walk-behind au-dessus
+      const cw = (opts.solidW != null ? opts.solidW : wT * TILE - 6)
+      const ch = (opts.solidH != null ? opts.solidH : Math.min(1.4, hT) * TILE)
+      const r = this.add.rectangle(cxp, baseY - ch / 2 - 2, cw, ch)
+      this.physics.add.existing(r, true); this.obstacles.add(r)
+    }
+    for (let dx = -1; dx <= wT; dx++) for (let dy = -1; dy <= hT; dy++) this.occupied.add(this.key(tx + dx, ty + dy))
+    return im
+  }
+
+  /** 2 GROTTES = entrées de donjons instanciés, SEULES dans la forêt d'Ergas (plus de hameau/déco autour :
+   *  juste la grotte + son panneau « Donjon »). Assets Ninja TilesetVillageAbandoned (CC0). */
+  spawnDungeonCaves() {
+    if (this.preview || !this.caves?.length) return
+    this.caveEntrances = []
+    for (const c of this.caves) {
+      const wT = c.id === 'cave_a' ? 4 : 3, hT = 3
+      this.placeRuin(c.tx, c.ty, c.key, wT, hT, { tint: 0xbfc4ba, solidH: 0.8 * TILE }) // masse de la grotte = solide (sauf la bouche)
+      // bouche = carré d'entrée (au bas-centre) -> overlap = entrer dans le donjon
+      const mx = (c.tx + wT / 2) * TILE, my = (c.ty + hT) * TILE - 6
+      const zone = this.add.rectangle(mx, my, 18, 14).setVisible(false)
+      this.physics.add.existing(zone, true)
+      this.caveEntrances.push({ id: c.id, name: c.name, x: mx, y: my, zone, tx: c.tx + wT / 2, ty: c.ty + hT })
+      // lueur sombre vacillante dans la bouche (additif violacé faible) -> attire l'œil sans « néon »
+      const glow = this.add.circle(mx, my, 9, 0x6a4a8a, 0.22).setBlendMode(Phaser.BlendModes.ADD).setDepth(my - 1)
+      this.tweens.add({ targets: glow, alpha: 0.34, scale: 1.2, duration: 1100, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+      // panneau : nom de la grotte + sous-titre « Donjon »
+      this.add.text(mx, (c.ty - 1) * TILE - 9, c.name, { fontFamily: FONT, fontSize: '9px', fontStyle: 'bold', color: '#d7c9a6', stroke: '#1a140c', strokeThickness: 4 }).setOrigin(0.5, 1).setDepth(9500).setResolution(3)
+      this.add.text(mx, (c.ty - 1) * TILE, '⚔ Donjon', { fontFamily: FONT, fontSize: '7px', color: '#b59ad6', stroke: '#160e22', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(9500).setResolution(3)
+    }
+  }
+
+  /** SARGÈR : maisons en ruine moussues (assets TilesetVillageAbandoned) ÉPARPILLÉES sur l'île maudite,
+   *  teintées corrompu -> renforcent le Bourg Fantôme. UNIQUEMENT des maisons (pas d'autres props). */
+  spawnSargerHouses() {
+    if (this.preview) return
+    const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy
+    const okTile = (tx, ty, wT, hT) => { // emprise libre, sur l'île, hors gauntlet
+      for (let dx = -1; dx <= wT; dx++) for (let dy = -1; dy <= hT; dy++) {
+        const x = tx + dx, y = ty + dy
+        if (!this.isCursedIsland(x, y) || this.isOcean(x, y) || this.occupied.has(this.key(x, y))) return false
+      }
+      return Math.hypot(tx + wT / 2 - ccx, ty + hT / 2 - ccy) > 58 // hors Dargoth + Gardiens
+    }
+    const HOUSES = [['ab_manor', 4, 5], ['ab_house_big', 4, 3], ['ab_house_win', 2, 3], ['ab_house_door', 2, 3], ['ab_cabin', 3, 2]]
+    const TINT = 0x6a5a72 // teinte corrompue (violet-gris) cohérente avec les ruines-miroir
+    let placed = 0
+    for (let tries = 0; tries < 600 && placed < 7; tries++) {
+      const [key, wT, hT] = Phaser.Utils.Array.GetRandom(HOUSES)
+      const a = Phaser.Math.FloatBetween(0, Math.PI * 2), rad = Phaser.Math.Between(20, 72)
+      const tx = Math.round(ccx + Math.cos(a) * rad), ty = Math.round(ccy + Math.sin(a) * rad)
+      if (!okTile(tx, ty, wT, hT)) continue
+      this.placeRuin(tx, ty, key, wT, hT, { tint: TINT })
+      placed++
+    }
+  }
+
   spawnVillageCampfire() {
     const x = this.cx * TILE + 8
     const y = this.cy * TILE + 8
@@ -3995,6 +4107,7 @@ export default class GameScene extends Phaser.Scene {
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
   tryInteract() {
     if (this.gameOver) return
+    if (this.inDungeon) { if (!this.uiBusy()) this.dungeonInteract(); return } // dans un donjon : ouvrir le coffre
     if (this.inInterior) { if (!this.uiBusy()) this.interiorInteract(); return } // dans un bâtiment : parler/sortir
     if (this.uiBusy()) return
     const p = this.player
@@ -4141,6 +4254,321 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Entre dans l'intérieur d'un bâtiment depuis le VILLAGE (fondu + téléport hors-map). Déclenché AU contact de la porte. */
+  // ====================== DONJONS INSTANCIÉS (grottes du hameau abandonné) ======================
+  // Salle HORS-MAP distincte des intérieurs (ox/oy = -6000) : combat AUTORISÉ (seul `inInterior` bloque le
+  // combat -> on n'arme que `inDungeon`), caméra qui SUIT le joueur, mobs + mini-boss + coffre. Réutilise le
+  // moteur de monstres/projectiles/butin existant (les mobs vivent dans this.monsters, tagués `inDungeon`).
+
+  /** Config (salles+couloirs en tuiles LOCALES) des 2 donjons. floor = union des rectangles -> connectivité garantie. */
+  dungeonConfig(id) {
+    if (id === 'cave_a') return {
+      name: 'Grotte Moussue', tint: 0x6f7a66, // verdâtre, hanté
+      rooms: [
+        { x: 8, y: 13, w: 8, h: 4 },   // ENTRÉE (bas)
+        { x: 9, y: 8, w: 6, h: 4 },    // salle médiane
+        { x: 2, y: 8, w: 5, h: 4 },    // salle latérale ouest
+        { x: 7, y: 2, w: 10, h: 5 },   // CHAMBRE DU BOSS (haut)
+      ],
+      corridors: [
+        { x: 11, y: 11, w: 2, h: 3 },  // entrée -> médiane
+        { x: 6, y: 9, w: 4, h: 2 },    // médiane -> ouest
+        { x: 11, y: 6, w: 2, h: 3 },   // médiane -> boss
+      ],
+      entry: { x: 12, y: 15 },
+      trashLevel: 5, // ≤ MONSTER_MAX_LEVEL (6) : au-delà, 1.6^(lvl-1) fait exploser les dégâts -> one-shot
+      boss: { type: 'giantspirit', name: '⚜ Spectre d\'Ombrebois', frac: 0.55, level: 9, gold: [120, 200], pos: { x: 11, y: 4 } },
+      chest: { x: 14, y: 3 },
+      trash: [ // espèces hantées (AUCUNE dans la salle d'entrée -> pas de spawn-kill) : médiane + latérale seulement
+        { x: 11, y: 9, type: 'spirit', n: 2 }, { x: 4, y: 9, type: 'spider', n: 2 },
+      ],
+      torches: [[8, 13], [15, 13], [9, 2], [16, 2], [3, 8]],
+      decor: [[14, 14, 'ab_stones'], [3, 11, 'ab_idol'], [16, 5, 'ab_stump']],
+    }
+    return { // cave_b
+      name: 'Tanière Ocre', tint: 0x8a7458, // ocre/terreux, repaire de bêtes
+      rooms: [
+        { x: 2, y: 6, w: 5, h: 5 },    // ENTRÉE (gauche)
+        { x: 9, y: 6, w: 6, h: 5 },    // salle centrale
+        { x: 9, y: 1, w: 5, h: 4 },    // salle nord
+        { x: 17, y: 6, w: 6, h: 5 },   // CHAMBRE DU BOSS (droite)
+      ],
+      corridors: [
+        { x: 6, y: 8, w: 4, h: 2 },    // entrée -> centre
+        { x: 11, y: 4, w: 2, h: 3 },   // centre -> nord
+        { x: 14, y: 8, w: 4, h: 2 },   // centre -> boss
+      ],
+      entry: { x: 4, y: 9 },
+      trashLevel: 6, // ≤ MONSTER_MAX_LEVEL (6) : au-delà, 1.6^(lvl-1) fait exploser les dégâts -> one-shot
+      boss: { type: 'giantracoon', name: '⚜ Griffe-Pourrie, l\'Ourse Affamée', frac: 0.55, level: 10, gold: [140, 220], pos: { x: 19, y: 8 } },
+      chest: { x: 21, y: 7 },
+      trash: [ // AUCUNE dans la salle d'entrée : centre + nord seulement
+        { x: 11, y: 8, type: 'spider', n: 2 }, { x: 11, y: 3, type: 'racoon', n: 2 },
+      ],
+      torches: [[2, 6], [6, 10], [9, 1], [17, 6], [22, 10]],
+      decor: [[13, 10, 'ab_stump'], [9, 1, 'ab_stones'], [21, 6, 'ab_idol']],
+    }
+  }
+
+  /** Entrée dans un donjon (depuis la bouche de grotte du monde). returnPos = où ressortir dans le monde. */
+  enterDungeon(id, ent) {
+    if (this.inDungeon || this.inInterior || this.uiBusy() || this.gameOver || this._transitioning) return
+    this._dungeonReturn = { x: ent.x, y: ent.y + 16 } // ressortir juste DEVANT la bouche
+    this._villageReturn = this._dungeonReturn // pour le guard de saveGame (position monde, jamais hors-map)
+    this._savedZoom = this.cameras.main.zoom
+    this._transitioning = true
+    const cam = this.cameras.main
+    Audio.sfx('ui_accept', { detune: -160 })
+    cam.fadeOut(220, 4, 3, 6)
+    cam.once('camerafadeoutcomplete', () => {
+      this.monsters.getChildren().forEach((m) => { m.aggroed = false }) // libère les slots d'aggro (mobs du monde laissés derrière) -> le trash du donjon peut poursuivre
+      this.buildDungeon(id)
+      this.inDungeon = id
+      this._transitioning = false; this._doorBusy = false
+      const d = this._dungeon
+      const p = this.player
+      p.setCollideWorldBounds(false)
+      p.setPosition(d.entry.x, d.entry.y).setVelocity(0, 0)
+      p.moveTarget = null
+      p.invulnUntil = this.time.now + 1800 // répit d'apparition : pas de spawn-kill par les mobs à distance pendant le fondu d'entrée
+      cam.useBounds = true
+      cam.setBounds(d.bounds.x, d.bounds.y, d.bounds.w, d.bounds.h)
+      cam.setZoom(this._savedZoom || 3)
+      cam.startFollow(p, true)
+      cam.centerOn(p.x, p.y)
+      this.fogGroup?.setVisible(false); this.nightOverlay?.setVisible(false); this.raylight?.setVisible(false)
+      this.snowEmitter?.stop(); this.rainEmitter?.stop()
+      this.scene.get('UIScene')?.showZoneBanner?.(d.cfg.name)
+      cam.fadeIn(260, 4, 3, 6)
+    })
+  }
+
+  /** Construit la salle de donjon HORS-MAP (sol roche, murs pierre sombre + colliders, torches, déco, coffre, mobs). */
+  buildDungeon(id) {
+    const cfg = this.dungeonConfig(id)
+    const ox = -6000, oy = -6000, D0 = 0
+    const objs = [], colliders = []
+    const walls = this.physics.add.staticGroup()
+    // ensemble des tuiles SOL (union des salles + couloirs)
+    const floor = new Set()
+    const addRect = (r) => { for (let x = r.x; x < r.x + r.w; x++) for (let y = r.y; y < r.y + r.h; y++) floor.add(x + ',' + y) }
+    cfg.rooms.forEach(addRect); cfg.corridors.forEach(addRect)
+    // bornes (+2 de marge pour le mur)
+    let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9
+    for (const k of floor) { const [x, y] = k.split(',').map(Number); minx = Math.min(minx, x); miny = Math.min(miny, y); maxx = Math.max(maxx, x); maxy = Math.max(maxy, y) }
+    minx -= 2; miny -= 2; maxx += 2; maxy += 2
+    const W = (maxx - minx + 1) * TILE, H = (maxy - miny + 1) * TILE
+    const lx = (x) => ox + x * TILE, ly = (y) => oy + y * TILE // coin haut-gauche d'une tuile locale
+    const cxp = (x) => ox + x * TILE + 8, cyp = (y) => oy + y * TILE + 8 // centre d'une tuile locale
+    this.ensureInteriorGlow()
+    // FOND noir plein (couvre le hors-map gris)
+    objs.push(this.add.rectangle(0, 0, this.scale.width + 80, this.scale.height + 80, 0x05060a, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(-50))
+    objs.push(this.add.rectangle(ox + minx * TILE, oy + miny * TILE, W, H, 0x0a0c10, 1).setOrigin(0, 0).setDepth(D0))
+    // SOL roche (tileSprite par rectangle de salle/couloir)
+    for (const r of [...cfg.rooms, ...cfg.corridors]) objs.push(this.add.tileSprite(lx(r.x), ly(r.y), r.w * TILE, r.h * TILE, 'cave_floor').setOrigin(0, 0).setDepth(D0 + 5))
+    // MURS = tuiles voisines (8 dir) du sol qui ne sont pas du sol -> image mw_walls sombre + collider
+    const isFloor = (x, y) => floor.has(x + ',' + y)
+    const wallSet = new Set()
+    for (const k of floor) { const [x, y] = k.split(',').map(Number); for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const nx = x + dx, ny = y + dy; if (!isFloor(nx, ny)) wallSet.add(nx + ',' + ny) } }
+    for (const k of wallSet) {
+      const [x, y] = k.split(',').map(Number)
+      objs.push(this.add.image(cxp(x), cyp(y), 'mw_walls', (x + y) % 2 ? 33 : 34).setTint(cfg.tint).setDepth(500 + (y - miny)))
+      const rr = this.add.rectangle(cxp(x), cyp(y), TILE, TILE).setVisible(false)
+      this.physics.add.existing(rr, true); walls.add(rr)
+    }
+    colliders.push(this.physics.add.collider(this.player, walls))
+    // les projectiles (joueur ET mobs) s'arrêtent sur les murs du donjon — sinon les orbes des
+    // mobs à distance traversaient la pierre et frappaient le joueur jusque dans la salle d'entrée.
+    colliders.push(this.physics.add.collider(this.enemyProjectiles, walls, (proj) => proj.kill()))
+    colliders.push(this.physics.add.collider(this.projectiles, walls, (proj) => proj.kill()))
+    // gloom : voile sombre fixé à l'écran + lueurs additives (torches + joueur) qui percent la pénombre
+    const veil = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0x06060e, 0.42).setOrigin(0, 0).setScrollFactor(0).setDepth(8000)
+    objs.push(veil)
+    for (const [tx, ty] of cfg.torches) {
+      const fx = cxp(tx), fy = cyp(ty)
+      objs.push(this.add.sprite(fx, fy - 2, 'fire_anim').setScale(0.6).setDepth(1000 + (ty - miny)).play('fire-anim'))
+      const gl = this.add.image(fx, fy, 'int_glow').setDisplaySize(120, 120).setTint(0xffae5a).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050)
+      objs.push(gl)
+      this.tweens.add({ targets: gl, alpha: 0.62, duration: 900 + tx * 40, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    }
+    const pglow = this.add.image(0, 0, 'int_glow').setDisplaySize(180, 180).setTint(0xbfd0ff).setAlpha(0.32).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050)
+    objs.push(pglow)
+    // DÉCO de ruine moussue + crânes/cristaux
+    for (const [dx, dy, key] of cfg.decor) objs.push(this.add.image(cxp(dx), cyp(dy) + 4, key).setOrigin(0.5, 0.9).setTint(cfg.tint).setDepth(1000 + (dy - miny)))
+    // COFFRE de fin de donjon (fermé, verrouillé tant que le boss vit) — bien VISIBLE dans la pénombre
+    const ch = this.add.sprite(cxp(cfg.chest.x), cyp(cfg.chest.y), 'chest', 0).setOrigin(0.5, 0.8).setScale(1.6).setDepth(1000 + (cfg.chest.y - miny))
+    objs.push(ch)
+    // lueur SOUS le coffre (perce le voile) : sourde quand verrouillé, dorée quand déverrouillé (cf. onDungeonBossKilled)
+    const chGlow = this.add.image(ch.x, ch.y - 2, 'int_glow').setDisplaySize(56, 44).setTint(0x8a6aa8).setAlpha(0.28).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050)
+    objs.push(chGlow)
+    this.tweens.add({ targets: chGlow, alpha: 0.42, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    const chHint = this.add.text(ch.x, ch.y - 20, '', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(60000).setResolution(3).setVisible(false)
+    objs.push(chHint)
+    // EXIT = bouche d'entrée (1 tuile SOUS le spawn) — « armée » seulement après s'être éloigné (pas de sortie instantanée)
+    const exit = { x: cxp(cfg.entry.x), y: cyp(cfg.entry.y) + TILE }
+    objs.push(this.add.text(exit.x, exit.y + 2, '↑ sortie', { fontFamily: FONT, fontSize: '8px', color: '#d7c9a6', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(60000).setResolution(3))
+    objs.push(this.add.image(exit.x, exit.y, 'int_glow').setDisplaySize(60, 40).setTint(0x9fb4d0).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050))
+    this._dungeon = {
+      id, cfg, ox, oy, minx, miny, objs, colliders, walls,
+      bounds: { x: ox + minx * TILE, y: oy + miny * TILE, w: W, h: H },
+      entry: { x: cxp(cfg.entry.x), y: cyp(cfg.entry.y) }, exit, exitArmed: false,
+      chest: { sprite: ch, hint: chHint, glow: chGlow, x: ch.x, y: ch.y, locked: true, opened: false },
+      pglow, mobs: [], boss: null, cleared: false,
+    }
+    this.spawnDungeonContents()
+  }
+
+  /** Peuple le donjon : packs de trash + mini-boss (dans this.monsters/this.bosses, tagués inDungeon). */
+  spawnDungeonContents() {
+    const d = this._dungeon, cfg = d.cfg
+    for (const pack of cfg.trash) {
+      for (let i = 0; i < pack.n; i++) {
+        const a = (i / pack.n) * Math.PI * 2
+        const x = (d.ox + pack.x * TILE + 8) + Math.cos(a) * 10, y = (d.oy + pack.y * TILE + 8) + Math.sin(a) * 10
+        const m = new Monster(this, x, y, pack.type, { level: Math.min(cfg.trashLevel ?? 6, MONSTER_MAX_LEVEL) })
+        m.inDungeon = d.id; m.homeX = x; m.homeY = y; m.leashX = x; m.leashY = y
+        this.monsters.add(m)
+        d.colliders.push(this.physics.add.collider(m, d.walls))
+        d.mobs.push(m)
+      }
+    }
+    // mini-boss
+    const b = cfg.boss
+    const boss = new Monster(this, d.ox + b.pos.x * TILE + 8, d.oy + b.pos.y * TILE + 8, b.type, { level: b.level, boss: true, name: b.name })
+    boss.maxHp = Math.round(boss.maxHp * b.frac); boss.hp = boss.maxHp
+    boss.dungeonBoss = true; boss.inDungeon = d.id; boss.noArena = true
+    boss.homeX = boss.x; boss.homeY = boss.y
+    boss.goldMin = b.gold[0]; boss.goldMax = b.gold[1]
+    this.monsters.add(boss)
+    if (!boss.dragon) d.colliders.push(this.makeBossSolid(boss)) // collider SUIVI -> retiré au démontage (pas de collider fantôme)
+    d.colliders.push(this.physics.add.collider(boss, d.walls))
+    this.bosses.push(boss)
+    d.boss = boss
+  }
+
+  /** Boucle d'update du donjon (combat actif, monde extérieur gelé). */
+  updateDungeon(time, delta) {
+    const p = this.player
+    p.update(time)
+    p.setDepth(1000 + (p.y - this._dungeon.oy) / TILE)
+    const d = this._dungeon
+    if (!d) return
+    if (d.pglow) d.pglow.setPosition(p.x, p.y)
+    // mobs du donjon : IA + combat (on saute les helpers monde keepMonsterOut* qui supposent des coords monde)
+    for (const m of d.mobs) { if (m.active) { m.update(time, p); m.setDepth(1000 + (m.y - d.oy) / TILE) } }
+    if (d.boss && d.boss.active) { d.boss.update(time, p); d.boss.setDepth(1000 + (d.boss.y - d.oy) / TILE) }
+    this.updateVoidZones(time)
+    this.updateTarget(time)
+    this.updateMageClones(time)
+    if (p.charging2) { this.tankChargeFx?.setPosition(p.x, p.y).setDepth(p.y + 61); if (time >= p.chargeUntil) this.endTankCharge() }
+    // barre + musique de boss tant que le mini-boss est engagé
+    this.activeBoss = (d.boss && d.boss.active && d.boss.hp > 0 && d.boss.combatEngaged) ? d.boss : null
+    if (this.activeBoss) { if (!this.bossTrack) this.bossTrack = Phaser.Utils.Array.GetRandom(BOSS_MUSIC); Audio.playMusic(this, this.bossTrack) }
+    else { this.bossTrack = null; Audio.playMusic(this, MUSIC_BY_BIOME.cursed || 'mus_village') }
+    if (p.hp <= 0) { this.teardownDungeon(); this.handleDeath(); return } // mort en donjon : démontage (joueur ramené à la bouche, monde restauré) PUIS mort -> sac au monde, respawn village
+    // coffre : indice + déverrouillage à la mort du boss
+    const c = d.chest
+    if (c && !c.opened) {
+      if (c.locked && d.boss && !d.boss.active) this.unlockDungeonChest() // sécurité (au cas où l'event de mort manquerait)
+      const near = this.dist(p.x, p.y, c.x, c.y) <= 26
+      c.hint.setVisible(near).setText(c.locked ? 'Verrouillé (bats le gardien)' : 'Ouvrir (E)').setPosition(c.x, c.y - 18)
+    }
+    // SORTIE : marcher sur la bouche d'entrée — armée seulement après s'être éloigné (sinon sortie instantanée au spawn)
+    const farFromExit = Math.abs(p.x - d.exit.x) > TILE * 1.6 || Math.abs(p.y - d.exit.y) > TILE * 1.6
+    if (farFromExit) d.exitArmed = true
+    if (d.exitArmed && !this._doorBusy && Math.abs(p.x - d.exit.x) < TILE * 0.8 && Math.abs(p.y - d.exit.y) < TILE * 0.8) {
+      this._doorBusy = true
+      this.exitDungeon(false)
+    }
+  }
+
+  /** E près du coffre déverrouillé -> butin garanti (or + 1 épique + 1 rare classe) + ouverture. */
+  dungeonInteract() {
+    const d = this._dungeon; if (!d) return
+    const c = d.chest
+    if (!c || c.opened) return
+    if (this.dist(this.player.x, this.player.y, c.x, c.y) > 26) return
+    if (c.locked) { this.playDenied?.(); this.scene.get('UIScene')?.showToast?.('Le coffre est scellé tant que le gardien veille.', '#c7a3ff'); return }
+    c.opened = true
+    c.sprite.setFrame(1)
+    c.hint.setVisible(false)
+    Audio.sfx('ui_accept')
+    const cls = this.player.className
+    const gold = Phaser.Math.Between(80, 160) + d.cfg.boss.level * 10
+    this.drops.add(new Drop(this, c.x, c.y + 6, 'gold', gold))
+    this.drops.add(new Drop(this, c.x - 12, c.y + 8, 'equip', 0, this.equipmentOfTier('epic', cls)))
+    this.drops.add(new Drop(this, c.x + 12, c.y + 8, 'equip', 0, this.equipmentOfTier('rare', cls)))
+    const fx = this.add.image(c.x, c.y - 6, 'int_glow').setDisplaySize(60, 60).setTint(0xffe08a).setAlpha(0.8).setBlendMode(Phaser.BlendModes.ADD).setDepth(9000)
+    this.tweens.add({ targets: fx, scale: 2, alpha: 0, duration: 500, onComplete: () => fx.destroy() })
+  }
+
+  /** Déverrouille le coffre du donjon (idempotent) : lueur sourde violette -> dorée. */
+  unlockDungeonChest() {
+    const c = this._dungeon?.chest
+    if (!c || !c.locked) return
+    c.locked = false
+    if (c.glow) {
+      this.tweens.killTweensOf(c.glow)
+      c.glow.setTint(0xffd24d).setAlpha(0.4)
+      this.tweens.add({ targets: c.glow, alpha: 0.62, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    }
+  }
+
+  /** Mini-boss de donjon tombé : jingle + butin (épique+rare+or+cœur) + déverrouille le coffre. */
+  onDungeonBossKilled(mon) {
+    Audio.playVictory(this, 'mus_victory')
+    this.scene.get('UIScene')?.showToast?.(`${mon.displayName ?? mon.name} terrassé ! Le coffre se déverrouille.`, '#ffd24d')
+    this.questKill(mon)
+    const cls = this.player.className
+    this.drops.add(new Drop(this, mon.x, mon.y - 2, 'equip', 0, this.equipmentOfTier('epic', cls)))
+    this.drops.add(new Drop(this, mon.x - 14, mon.y + 4, 'equip', 0, this.equipmentOfTier('rare', cls)))
+    this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', Phaser.Math.Between(mon.goldMin ?? 120, mon.goldMax ?? 200)))
+    this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))
+    if (this._dungeon && this._dungeon.boss === mon) { this.unlockDungeonChest(); this._dungeon.cleared = true }
+  }
+
+  /** Démonte le donjon (objets/colliders/mobs/boss), RESTAURE le monde (caméra/voiles/collision) et ramène
+   *  le joueur DEVANT la bouche de grotte (coords monde valides -> sac de mort récupérable, pas de hors-map). */
+  teardownDungeon() {
+    const d = this._dungeon
+    if (!d) return
+    this.scene.get('UIScene')?.hideInteriorTitle?.()
+    for (const col of d.colliders) this.physics.world.removeCollider(col)
+    for (const m of d.mobs) { try { m.destroy() } catch (e) { /* déjà mort */ } }
+    if (d.boss) { const i = this.bosses.indexOf(d.boss); if (i >= 0) this.bosses.splice(i, 1); try { if (d.boss.active) d.boss.destroy() } catch (e) { /**/ } }
+    this.activeBoss = null; this.bossTrack = null
+    try { d.walls.clear(true, true) } catch (e) { /**/ }
+    for (const o of d.objs) { try { o.destroy() } catch (e) { /**/ } }
+    this._dungeon = null
+    this.inDungeon = null
+    // restauration MONDE
+    const p = this.player
+    p.setCollideWorldBounds(true)
+    const r = this._dungeonReturn || { x: this.cx * TILE, y: this.cy * TILE }
+    p.setPosition(r.x, r.y).setVelocity(0, 0)
+    p.moveTarget = null; p.setDepth(p.y)
+    this._promptDismissed = 'cave' // évite la ré-entrée immédiate dans la bouche
+    const cam = this.cameras.main
+    cam.useBounds = true
+    cam.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
+    cam.setZoom(this._savedZoom || 3); cam.startFollow(this.player, true); cam.centerOn(p.x, p.y)
+    this.fogGroup?.setVisible(true); this.nightOverlay?.setVisible(true); this.raylight?.setVisible(true)
+  }
+
+  exitDungeon(immediate) {
+    if (!this.inDungeon || this._exiting) return
+    const cam = this.cameras.main
+    const finish = () => {
+      this.teardownDungeon()
+      this._exiting = false; this._doorBusy = false
+      if (!immediate) cam.fadeIn(220, 4, 3, 6)
+    }
+    if (immediate) { finish(); return }
+    this._exiting = true
+    Audio.sfx('ui_cancel')
+    cam.fadeOut(200, 4, 3, 6)
+    cam.once('camerafadeoutcomplete', finish)
+  }
+
   enterInterior(id, ent = null) {
     if (this.inInterior || this.uiBusy() || this.gameOver) return
     this._interiorNpcOverride = (id === 'house' && ent && ent.npcName) ? { id, npcName: ent.npcName, npcTex: ent.npcTex, lines: ent.lines } : null // MAISON : résident variable (Aldwin / Elara)
@@ -5365,6 +5793,9 @@ export default class GameScene extends Phaser.Scene {
   hitMonster(mon, amount, fromX, fromY, knock = 150) {
     if (!mon || !mon.active) return
     if (mon.dargoth && !this.player.dargothUnlocked) { this.dargothSealedFeedback(mon); return } // INVULNÉRABLE tant que les 3 Gardiens veillent
+    // COUP CRITIQUE : multiplie les dégâts + feedback renforcé (chiffre orange, étincelle, micro-shake, recul +).
+    const crit = Phaser.Math.FloatBetween(0, 1) < CRIT_CHANCE
+    if (crit) { amount = Math.round(amount * CRIT_MUL); knock = Math.round(knock * 1.4) }
     // recul AVANT les dégâts (takeDamage peut détruire le monstre -> body disparu). Les BOSS ne sont
     // JAMAIS repoussés (ce sont des murs) ; les mobs ET les élites le sont normalement.
     if (knock > 0 && !mon.isBoss) {
@@ -5373,7 +5804,9 @@ export default class GameScene extends Phaser.Scene {
       mon.knockbackUntil = this.time.now + 220 // l'IA ne reprend pas la main pendant le recul
     }
     if (mon.isBoss) mon.wake(this.time.now) // TAPER un boss le réveille (-> arène) + délai avant sa 1re attaque
-    this.floatingDamage(mon, amount, '#fff3b0') // chiffre de dégâts (jaune) au-dessus du monstre, AVANT sa mort éventuelle
+    this.floatingDamage(mon, amount, '#fff3b0', { crit }) // chiffre de dégâts (jaune ; orange « N ! » si critique), AVANT sa mort éventuelle
+    this.hitSpark(mon.x, mon.y, crit) // étincelle d'impact
+    if (crit) this.hitstop() // micro-gel sur critique (un kill enchaînera son propre gel, mais la garde anti-cumul n'en fait qu'un)
     mon.takeDamage(Math.round(amount))
   }
 
@@ -5605,6 +6038,7 @@ export default class GameScene extends Phaser.Scene {
   spellShield() {
     const p = this.player
     const now = this.time.now
+    this.playerDash({ color: 0x9fe0ff }) // DASH de mobilité au lancement (cf. demande « un dash sur la compétence 1 de chaque classe »)
     const heal = p.heal(Math.round(p.maxHp * 0.12 * (p.spellPowerMul ?? 1))) // petit soin immédiat (0.18->0.12 : nerf Soigneuse)
     const shield = Math.max(1, Math.round(p.maxHp * 0.22 * (p.spellPowerMul ?? 1))) // points d'absorption (0.3->0.22 : nerf)
     const dur = Math.round(9000 * (p.spellDurationMul ?? 1))
@@ -5638,6 +6072,39 @@ export default class GameScene extends Phaser.Scene {
     p.shieldHp = 0
     this._shieldBubbleEv?.remove(); this._shieldBubbleEv = null
     if (this._shieldBubble) { const b = this._shieldBubble; this._shieldBubble = null; this.tweens.add({ targets: b, alpha: 0, scale: 2.1, duration: 200, onComplete: () => b.destroy() }) }
+  }
+
+  /** DASH / BLINK de mobilité partagé par les compétences 1 « caster » (Mage = blink instantané, Soigneur =
+   *  bond rapide), avec i-frames. Direction = orientation du héros. Borné au monde OU au donjon courant. */
+  playerDash(opts = {}) {
+    const p = this.player
+    const now = this.time.now
+    const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
+    const ang = Math.atan2(dir[1], dir[0])
+    const color = opts.color ?? 0x9b6bff
+    // bornes : en donjon = bbox du donjon (sinon le clamp monde téléporterait HORS du donjon) ; sinon = monde
+    const b = this.inDungeon && this._dungeon ? this._dungeon.bounds : { x: EDGE_INSET, y: EDGE_INSET, w: this.worldW - 2 * EDGE_INSET, h: this.worldH - 2 * EDGE_INSET }
+    if (opts.instant) { // BLINK (Mage) : téléport court + traînée fantôme
+      const dist = opts.dist ?? 92
+      const nx = Phaser.Math.Clamp(p.x + Math.cos(ang) * dist, b.x + 8, b.x + b.w - 8)
+      const ny = Phaser.Math.Clamp(p.y + Math.sin(ang) * dist, b.y + 8, b.y + b.h - 8)
+      const ghost = this.add.image(p.x, p.y, p.heroKey, p.frame?.name ?? 0).setAlpha(0.5).setTint(color).setDepth(p.depth - 1)
+      this.tweens.add({ targets: ghost, alpha: 0, duration: 240, onComplete: () => ghost.destroy() })
+      p.setPosition(nx, ny).setVelocity(0, 0)
+      p.invulnUntil = now + 200
+      Audio.sfx(SFX.whoosh, { vol: 0.5, detune: 400 })
+      const fx = this.add.circle(p.x, p.y, 10, color, 0.5).setBlendMode(Phaser.BlendModes.ADD).setDepth(p.depth + 2)
+      this.tweens.add({ targets: fx, scale: 2.4, alpha: 0, duration: 280, onComplete: () => fx.destroy() })
+    } else { // DASH (Soigneur) : bond rapide avec i-frames
+      const dur = opts.dur ?? 170
+      p.invulnUntil = now + dur + 100
+      p.dashing = true
+      p.setVelocity(Math.cos(ang) * (opts.spd ?? 460), Math.sin(ang) * (opts.spd ?? 460))
+      Audio.sfx(SFX.whoosh, { vol: 0.5 })
+      const trail = this.add.circle(p.x, p.y, 8, color, 0.4).setBlendMode(Phaser.BlendModes.ADD).setDepth(p.depth - 1)
+      this.tweens.add({ targets: trail, alpha: 0, duration: 220, onComplete: () => trail.destroy() })
+      this.time.delayedCall(dur, () => { p.setVelocity(0, 0); p.dashing = false })
+    }
   }
 
   /** CHARGE (Guerrier) : DASH dans la direction du héros = outil de MOBILITÉ / ESQUIVE (i-frames
@@ -6071,10 +6538,20 @@ export default class GameScene extends Phaser.Scene {
     return this.incant(ms, label, color, onDone)
   }
 
-  // --- SORT 1 (zone) par élément ---
-  spellBlizzard() { return this.mageCast(1100, 'Blizzard…', 0x8fd8ff, () => this.elementalStorm({ color: 0x8fd8ff, tex: 'fx_ice_spike', anim: 'fx-ice-spike', originY: 0.82, detune: 500, onHit: (m) => m.applySlow?.(1300, 0.45) })) }
-  spellFirestorm() { return this.mageCast(1100, 'Tempête de feu…', 0xff5a2a, () => this.elementalStorm({ color: 0xff5a2a, tex: 'fx_explosion', anim: 'fx-explosion', scale: 1.2, tint: false, detune: -200, onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.5)), 3000) })) }
-  spellVoidstorm() { return this.mageCast(1100, "Tempête d'ombre…", 0x9b4dff, () => this.elementalStorm({ color: 0x9b4dff, tex: 'fx_spirit', anim: 'fx-spirit', scale: 1.5, tint: true, detune: -400, onHit: (m) => m.applyWeaken?.(0.5, 4000) })) }
+  /** Compétence 1 du Mage : BLINK (téléport de mobilité) PUIS incantation de la tempête (cf. demande « un dash sur la
+   *  compétence 1 de chaque classe »). Le blink ne part que si la cible/mana sont valides (pas de blink gratuit). */
+  mageCast1(ms, label, color, onDone) {
+    const p = this.player
+    if (p.casting) return false
+    if (!this.currentTarget(340)) { this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a'); return false }
+    this.playerDash({ instant: true, color, dist: 92 }) // BLINK de repositionnement
+    return this.incant(ms, label, color, onDone)
+  }
+
+  // --- SORT 1 (zone) par élément --- (BLINK de mobilité au départ, cf. mageCast1)
+  spellBlizzard() { return this.mageCast1(1100, 'Blizzard…', 0x8fd8ff, () => this.elementalStorm({ color: 0x8fd8ff, tex: 'fx_ice_spike', anim: 'fx-ice-spike', originY: 0.82, detune: 500, onHit: (m) => m.applySlow?.(1300, 0.45) })) }
+  spellFirestorm() { return this.mageCast1(1100, 'Tempête de feu…', 0xff5a2a, () => this.elementalStorm({ color: 0xff5a2a, tex: 'fx_explosion', anim: 'fx-explosion', scale: 1.2, tint: false, detune: -200, onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.5)), 3000) })) }
+  spellVoidstorm() { return this.mageCast1(1100, "Tempête d'ombre…", 0x9b4dff, () => this.elementalStorm({ color: 0x9b4dff, tex: 'fx_spirit', anim: 'fx-spirit', scale: 1.5, tint: true, detune: -400, onHit: (m) => m.applyWeaken?.(0.5, 4000) })) }
   // --- SORT 2 (mono-cible niv 10) par élément ---
   spellPyroblast() { return this.mageCast(950, 'Pyroblast…', 0xff5a2a, () => this.elementalBolt({ color: 0xff5a2a, dmgMul: 3.5, tex: 'fx_explosion', anim: 'fx-explosion', onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.6)), 3000) })) }
   spellFrostlance() { return this.mageCast(950, 'Lance de givre…', 0x8fd8ff, () => this.elementalBolt({ color: 0x8fd8ff, dmgMul: 3.2, tex: 'fx_ice_burst', anim: 'fx-ice-burst', boomScale: 1.6, onHit: (m) => m.applySlow?.(2000, 0.4) })) }
@@ -6438,8 +6915,13 @@ export default class GameScene extends Phaser.Scene {
       this.onBossKilled(mon)
       return
     }
+    const elite = !!mon.elite
+    this.deathPop(mon.x, mon.y, elite ? 0xffd54a : (mon.baseTint ?? 0xffe0b0), elite) // éclat de kill (plus gros + doré pour une élite)
+    this.hitstop(elite ? 95 : HITSTOP_MS) // micro-gel de kill (un peu plus long pour une élite)
+    if (elite) this.cameras.main.shake(150, 0.006) // une élite qui tombe, ça se sent
     this.spawnDrop(mon)
     this.questKill(mon) // progression d'une quête TUER
+    if (mon.inDungeon) return // trash de donjon instancié : butin oui, mais PAS de repop-camp (le donjon ne se repeuple pas en place)
     // respawn de CAMP : le monstre réapparaît dans SON biome, près de là où il est mort
     // (la zone se repeuple comme dans un MMORPG ; fallback ailleurs si l'endroit est pris).
     const near = {
@@ -6520,6 +7002,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.activeBoss === mon) this.activeBoss = null
     if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
     if (mon.isRare) { this.onRareKilled(mon); return } // RARE ♦ de Sargèr : butin allégé + respawn dédié (PAS le butin de boss)
+    if (mon.dungeonBoss) { this.onDungeonBossKilled(mon); return } // mini-boss de donjon (grottes d'Ergas) : butin dédié + coffre
     if (mon.guardian) this.onGuardianSlain(mon) // GAUNTLET : gardien de Sargèr tombé -> progresse vers le sceau de Dargoth
     Audio.playVictory(this, 'mus_victory') // jingle de victoire (coupe le thème de combat, puis la zone reprend)
     this.questKill(mon) // progression d'une quête « battre un boss » (cible = clé du boss, count 1)
@@ -6792,19 +7275,23 @@ export default class GameScene extends Phaser.Scene {
         fontStyle: opts.size ? 'bold' : 'normal',
         color,
         stroke: '#000000',
-        strokeThickness: 3,
+        strokeThickness: opts.crit ? 4 : 3,
       })
       .setOrigin(0.5)
       .setDepth(20000)
+    if (opts.crit) { t.setScale(1.7); this.tweens.add({ targets: t, scale: 1, duration: 170, ease: 'Back.out' }) } // pop de critique (tween de scale séparé du tween de montée)
     this.tweens.add({ targets: t, y: t.y - (opts.rise ?? 14), alpha: 0, duration: opts.duration ?? 800, onComplete: () => t.destroy() })
   }
 
-  /** Chiffre de dégâts qui jaillit au-dessus d'une entité touchée (léger décalage aléatoire anti-chevauchement). */
-  floatingDamage(target, amount, color) {
+  /** Chiffre de dégâts qui jaillit au-dessus d'une entité touchée (léger décalage aléatoire anti-chevauchement).
+   *  `opts.crit` -> chiffre orange « N ! » plus gros qui pop (coup critique). */
+  floatingDamage(target, amount, color, opts = {}) {
     const n = Math.round(amount)
     if (n <= 0 || !target) return
     const top = target.y - (target.displayHeight || 16) / 2 - 2
-    this.floatingText(target.x + Phaser.Math.Between(-5, 5), top, `${n}`, color, { size: 12, rise: 20, duration: 700 })
+    const x = target.x + Phaser.Math.Between(-5, 5)
+    if (opts.crit) this.floatingText(x, top, `${n} !`, '#ff8a2a', { size: 17, rise: 26, duration: 820, crit: true })
+    else this.floatingText(x, top, `${n}`, color, { size: 12, rise: 20, duration: 700 })
   }
 
   onLevelUp() {
@@ -6823,15 +7310,75 @@ export default class GameScene extends Phaser.Scene {
     this.saveGame() // sauvegarde à chaque montée de niveau
   }
 
-  /** Retour visuel quand le héros encaisse : léger flash rouge sur les bords + shake doux. */
+  /** Retour visuel quand le héros encaisse : flash rouge + shake, d'INTENSITÉ proportionnelle à la part de PV
+   *  perdue (`player.lastHurtFrac`) -> une égratignure picote, un gros coup secoue franchement. */
   flashHurt() {
-    this.cameras.main.shake(90, 0.004)
+    const frac = Math.max(0.15, Math.min(1, this.player?.lastHurtFrac ?? 0.4))
+    this.cameras.main.shake(60 + frac * 150, 0.0028 + frac * 0.0075)
     const r = this.add
-      .rectangle(0, 0, this.scale.width, this.scale.height, 0xff0000, 0.18)
+      .rectangle(0, 0, this.scale.width, this.scale.height, 0xff0000, 0.10 + frac * 0.20)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(25000)
-    this.tweens.add({ targets: r, alpha: 0, duration: 200, onComplete: () => r.destroy() })
+    this.tweens.add({ targets: r, alpha: 0, duration: 160 + frac * 170, onComplete: () => r.destroy() })
+  }
+
+  /** Vignette de PV CRITIQUES : voile rouge plein écran qui PULSE sous 25 % de vie (tension + signal anti-mort
+   *  bête). S'efface dès qu'on remonte au-dessus. Voile créé à la volée (réutilisé, jamais recréé). */
+  updateLowHpVignette(time) {
+    const p = this.player
+    if (!p) return
+    const frac = p.hp / Math.max(1, p.maxHp)
+    if (!this._lowHpVeil) {
+      this._lowHpVeil = this.add.rectangle(0, 0, this.scale.width, this.scale.height, 0xff0000, 0).setOrigin(0, 0).setScrollFactor(0).setDepth(24000).setVisible(false)
+    }
+    if (p.hp > 0 && frac < 0.25) {
+      const sev = 1 - frac / 0.25 // 0 à 25 % -> 1 à l'agonie
+      const a = (0.06 + 0.05 * sev) + 0.05 * (0.5 + 0.5 * Math.sin(time / 200)) // base montante + pulsation
+      this._lowHpVeil.setSize(this.scale.width, this.scale.height).setFillStyle(0xff0000, a).setVisible(true)
+    } else if (this._lowHpVeil.visible) {
+      this._lowHpVeil.setVisible(false)
+    }
+  }
+
+  /** Étincelle d'IMPACT à chaque coup porté (pop additif dessiné en primitives, aucune texture requise).
+   *  Critique = orange, plus gros, + anneau de souffle + micro-secousse. */
+  hitSpark(x, y, crit = false) {
+    const col = crit ? 0xffae3a : 0xffffff
+    const flash = this.add.circle(x, y, crit ? 7 : 5, col, 0.9).setDepth(20000).setBlendMode(Phaser.BlendModes.ADD)
+    this.tweens.add({ targets: flash, scale: crit ? 2.4 : 1.7, alpha: 0, duration: crit ? 200 : 150, ease: 'Quad.out', onComplete: () => flash.destroy() })
+    if (crit) {
+      const ring = this.add.circle(x, y, 9, col, 0).setStrokeStyle(2, col, 0.9).setDepth(20000)
+      this.tweens.add({ targets: ring, scale: 2.7, alpha: 0, duration: 260, ease: 'Quad.out', onComplete: () => ring.destroy() })
+      this.cameras.main.shake(70, 0.0035)
+    }
+  }
+
+  /** Micro-gel d'impact (« hitstop ») : fige brièvement la PHYSIQUE (corps/mobs/projectiles) sans toucher aux
+   *  timers de scène (le delayedCall tourne sur l'horloge, qui n'est PAS gelée) -> reprise propre. Garde anti-cumul. */
+  hitstop(ms = HITSTOP_MS) {
+    if (ms <= 0 || this.inInterior) return // pas en intérieur (aucun combat) ; respecte le flag désactivé
+    if (this._hitstopUntil && this.time.now < this._hitstopUntil) return // un gel est déjà en cours -> on ne le ré-arme pas
+    this._hitstopUntil = this.time.now + ms
+    this.physics.world.pause()
+    this.time.delayedCall(ms, () => { this._hitstopUntil = 0; if (!this.gameOver) this.physics.world.resume() }) // on ne relance pas la physique si on est mort (la mort la gère)
+  }
+
+  /** Éclat de MORT d'un mob (satisfaction du kill) : flash + anneau de souffle + quelques éclats qui giclent.
+   *  `tint` = couleur de l'éclat (or pour une élite, sinon poussière chaude) ; `big` = éclat élargi (élite). */
+  deathPop(x, y, tint = 0xffe0b0, big = false) {
+    const m = big ? 1.7 : 1
+    const flash = this.add.circle(x, y, 9 * m, tint, 0.85).setDepth(19000).setBlendMode(Phaser.BlendModes.ADD)
+    this.tweens.add({ targets: flash, scale: 2.2 * m, alpha: 0, duration: 240, ease: 'Quad.out', onComplete: () => flash.destroy() })
+    const ring = this.add.circle(x, y, 6 * m, tint, 0).setStrokeStyle(big ? 3 : 2, tint, 0.85).setDepth(19000)
+    this.tweens.add({ targets: ring, scale: 3 * m, alpha: 0, duration: 300, ease: 'Quad.out', onComplete: () => ring.destroy() })
+    const N = big ? 10 : 6
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.3, 0.3)
+      const dist = Phaser.Math.Between(14, 24) * m
+      const sp = this.add.circle(x, y, 2 * m, tint, 0.9).setDepth(19000).setBlendMode(Phaser.BlendModes.ADD)
+      this.tweens.add({ targets: sp, x: x + Math.cos(a) * dist, y: y + Math.sin(a) * dist, scale: 0.4, alpha: 0, duration: Phaser.Math.Between(220, 340), ease: 'Quad.out', onComplete: () => sp.destroy() })
+    }
   }
 
   update(time, delta) {
@@ -6839,7 +7386,9 @@ export default class GameScene extends Phaser.Scene {
       this.updatePreview(time, delta)
       return
     }
+    this.updateLowHpVignette(time) // tension PV bas (avant le return gameOver : la branche else masque le voile à la mort)
     if (this.gameOver) return
+    if (this.inDungeon) { this.updateDungeon(time, delta); return } // dans un donjon instancié : combat actif, monde gelé
     if (this.inInterior) { this.updateInterior(time, delta); return } // dans un bâtiment : monde extérieur gelé
     this.player.update(time)
     const p = this.player
@@ -6857,6 +7406,14 @@ export default class GameScene extends Phaser.Scene {
     }
     if (nearDoor && !this.uiBusy() && !this.inInterior) { if (this._promptDismissed !== nearDoor.id) this.enterInterior(nearDoor.id, nearDoor) }
     else if (!nearDoor) { this._promptDismissed = null }
+    // ENTRÉE DE GROTTE (donjon instancié) : contact de la bouche -> on bascule dans le donjon
+    let nearCave = null
+    for (const e of this.caveEntrances || []) {
+      const zb = e.zone.body
+      if (pb.x + pb.width > zb.x && pb.x < zb.x + zb.width && pb.y + pb.height > zb.y && pb.y < zb.y + zb.height) { nearCave = e; break }
+    }
+    if (nearCave && !this.uiBusy() && !this.player.sailing) { if (this._promptDismissed !== 'cave') this.enterDungeon(nearCave.id, nearCave) }
+    else if (!nearCave && this._promptDismissed === 'cave') { this._promptDismissed = null }
     this.updateHeldWeapon() // arme tenue en main (cachée pendant l'attaque, revient après)
     this.updateBoat() // barque sous le héros quand il navigue (A3)
     this.updateQuicksand(time) // sables mouvants du désert : aspiration + dégâts (après player.update)

@@ -459,6 +459,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       if (this.shieldHp <= 0) this.scene.onShieldBroken?.(this) // bulle disparaît quand le bouclier casse
     }
     if (dmg > 0) this.hp = Math.max(0, this.hp - dmg)
+    this.lastHurtFrac = Math.min(1, dmg / Math.max(1, this.maxHp)) // part de PV perdue -> intensité du retour visuel (cf. GameScene.flashHurt)
     // chiffre flottant : rouge = dégâts encaissés, bleu = entièrement absorbé par le bouclier
     if (dmg > 0) this.scene.floatingDamage?.(this, dmg, '#ff6b6b')
     else this.scene.floatingText?.(this.x, this.y - 14, 'absorbé', '#9fe0ff', { size: 10, rise: 18 })
