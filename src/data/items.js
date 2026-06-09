@@ -220,6 +220,7 @@ export const ITEMS = {
   mat_bone: { id: 'mat_bone', name: 'Os', type: 'material', icon: 'mat_bone', rarity: 'common', price: 18 },
   mat_essence: { id: 'mat_essence', name: 'Lingot de fer', type: 'material', icon: 'mat_essence', rarity: 'rare', price: 32 },
   mat_crystal: { id: 'mat_crystal', name: 'Cristal', type: 'material', icon: 'mat_crystal', rarity: 'epic', price: 56 },
+  mat_curse: { id: 'mat_curse', name: 'Éclat Maudit', type: 'material', icon: 'mat_crystal', iconTint: 0x9a4ad0, rarity: 'epic', price: 0 }, // MONNAIE de Sargèr (non vendable ; dépensée au Reliquaire de l'avant-poste)
 }
 
 // matériaux exposés à part (ordre d'affichage de la poche de ressources)

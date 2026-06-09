@@ -130,6 +130,7 @@ export default class UIScene extends Phaser.Scene {
       if (this.dialogueOpen) this.closeDialogue()
       else if (this.forgeOpen) this.closeForge()
       else if (this.bankOpen) this.closeBank()
+      else if (this.reliquaireOpen) this.closeReliquaire()
       else if (this.charOpen) this.closeChar()
       else if (this.shopOpen) this.closeShop()
       else if (this.mapOpen) this.closeMap()
@@ -888,6 +889,53 @@ export default class UIScene extends Phaser.Scene {
   }
 
   destroyBank() { this.bankObjects.forEach((o) => o.destroy()); this.bankObjects = [] }
+
+  /** RELIQUAIRE de Sargèr : vendeur de faction (échange Éclats Maudits -> stuff/potions). */
+  openReliquaire() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.forgeOpen) this.closeForge()
+    if (this.shopOpen) this.closeShop()
+    this.reliquaireOpen = true
+    this.reliquaireObjects = []
+    this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
+    this.buildReliquaire()
+  }
+
+  closeReliquaire() {
+    this.reliquaireOpen = false
+    this.reliquaireObjects?.forEach((o) => o.destroy())
+    this.reliquaireObjects = []
+    Audio.sfx('ui_cancel', { detune: 0 })
+    this.scene.resume('GameScene')
+  }
+
+  buildReliquaire() {
+    this.reliquaireObjects?.forEach((o) => o.destroy())
+    this.reliquaireObjects = []
+    const reg = (o) => { this.reliquaireObjects.push(o); return o }
+    const g = this.game_, p = g.player
+    const cw = this.scale.width, ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x05070c, 0.62).setOrigin(0, 0).setDepth(300).setInteractive().on('pointerdown', () => this.closeReliquaire()))
+    const W = 440, H = 326, x0 = cw / 2 - W / 2, y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, 0x231a2e, 0.99).setStrokeStyle(3, 0x9a70d0).setInteractive().setDepth(301))
+    reg(this.add.text(cw / 2, y0 + 24, 'Reliquaire de Sargèr', { fontFamily: 'Georgia, serif', fontSize: '21px', fontStyle: 'bold', color: '#c79bff', stroke: '#1a0a22', strokeThickness: 4 }).setOrigin(0.5).setDepth(302))
+    const have = p.resources?.mat_curse ?? 0
+    reg(this.add.text(cw / 2, y0 + 50, `Éclats Maudits : ${have}`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#d8c6ff' }).setOrigin(0.5).setDepth(302))
+    g.reliquaireOffers().forEach((o, i) => {
+      const ry = y0 + 92 + i * 64, afford = have >= o.cost
+      const row = reg(this.add.rectangle(cw / 2, ry, W - 36, 54, 0x3a2c4e, 1).setStrokeStyle(1, afford ? 0x9a70d0 : 0x4a3a5a).setDepth(301))
+      reg(this.add.text(x0 + 30, ry - 11, o.label, { fontFamily: 'monospace', fontSize: '14px', fontStyle: 'bold', color: afford ? '#efe7ff' : '#9a8ca8' }).setOrigin(0, 0.5).setDepth(302))
+      reg(this.add.text(x0 + 30, ry + 10, o.desc, { fontFamily: 'monospace', fontSize: '10px', color: '#bcaad0' }).setOrigin(0, 0.5).setDepth(302))
+      reg(this.add.text(x0 + W - 30, ry, `${o.cost} ✦`, { fontFamily: 'monospace', fontSize: '15px', fontStyle: 'bold', color: afford ? '#c79bff' : '#7a6a88' }).setOrigin(1, 0.5).setDepth(302))
+      const hit = reg(this.add.rectangle(cw / 2, ry, W - 36, 54, 0xffffff, 0.001).setInteractive({ useHandCursor: true }).setDepth(303))
+      hit.on('pointerover', () => row.setFillStyle(0x52406e, 1))
+      hit.on('pointerout', () => row.setFillStyle(0x3a2c4e, 1))
+      hit.on('pointerdown', () => { if (g.buyFromReliquaire(o.id)) { Audio.sfx('ui_accept', { detune: 0 }); this.buildReliquaire() } })
+    })
+    reg(this.add.text(cw / 2, y0 + H - 16, 'Clic en dehors / Échap : fermer', { fontFamily: 'monospace', fontSize: '10px', color: '#9a8c78' }).setOrigin(0.5).setDepth(302))
+  }
 
   buildBank() {
     this.destroyBank()

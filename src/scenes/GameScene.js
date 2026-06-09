@@ -3753,6 +3753,7 @@ export default class GameScene extends Phaser.Scene {
     this.addNpc(ox - 3, oy + 2, 'npc_monk', 'Sœur Ondine', ['Repose-toi, voyageur — la nuit de Sargèr est longue.', 'Tant que ce feu brûle, les âmes damnées ne nous prennent pas.'], 'rest')
     this.addNpc(ox + 4, oy + 2, 'npc_hunter', 'Forgeron Brisé', ['Mon enclume a survécu à la chute du bourg. Donne ton arme, je la remets d\'aplomb.'], 'forge')
     this.addNpc(ox, oy + 4, 'npc_master', 'Dernier Veilleur', ['Ces ruines, là-bas... c\'était notre bourg. Avant que Dargoth ne tombe du ciel.', 'Abats ses trois Gardiens, et le sceau du Seigneur Maudit cédera. Venge-nous.'], 'talk')
+    this.addNpc(ox + 5, oy - 1, 'npc_inspector', 'Vael, Quartier-maître', ['Rapporte-moi des Éclats Maudits, je te fournirai de quoi survivre.'], 'reliquaire') // vendeur de faction (monnaie Éclats)
   }
 
   spawnVillageCampfire() {
@@ -3988,7 +3989,7 @@ export default class GameScene extends Phaser.Scene {
   /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
   uiBusy() {
     const ui = this.scene.get('UIScene')
-    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.bankOpen || ui.pauseOpen || ui.mapOpen))
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.bankOpen || ui.reliquaireOpen || ui.pauseOpen || ui.mapOpen))
   }
 
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
@@ -4084,6 +4085,7 @@ export default class GameScene extends Phaser.Scene {
     if (t === this.merchant) ui.openShop()
     else if (t.role === 'forge') ui.openForge()
     else if (t.role === 'rest') this.restAtOutpost(t) // avant-poste de Sargèr : repos (soin + sauvegarde)
+    else if (t.role === 'reliquaire') ui.openReliquaire() // Reliquaire de Sargèr : échange Éclats Maudits -> stuff/panoplie
     else ui.openDialogue(t.name, t.lines, t.texture)
   }
 
@@ -4095,6 +4097,31 @@ export default class GameScene extends Phaser.Scene {
     this.saveGame()
     this.scene.get('UIScene')?.showToast?.('Tu reprends des forces auprès du feu des survivants.', '#7cfc9a')
     Audio.sfx?.('sfx_loot', { vol: 0.4, detune: -200 })
+  }
+
+  /** Offres du RELIQUAIRE (vendeur de faction de Sargèr ; coût en Éclats Maudits). */
+  reliquaireOffers() {
+    return [
+      { id: 'epic', label: 'Caisse épique', desc: '1 équipement ÉPIQUE de ta classe', cost: 120 },
+      { id: 'rare', label: 'Caisse rare', desc: '1 équipement rare de ta classe', cost: 60 },
+      { id: 'pots', label: 'Réserve de potions', desc: '3 grandes potions de soin + 3 de mana', cost: 30 },
+    ]
+  }
+
+  /** Achat au Reliquaire : dépense les Éclats Maudits -> dépose le butin AUX PIEDS du héros (il le ramasse). */
+  buyFromReliquaire(id) {
+    const p = this.player, ui = this.scene.get('UIScene')
+    const offer = this.reliquaireOffers().find((o) => o.id === id)
+    if (!offer) return false
+    if ((p.resources?.mat_curse ?? 0) < offer.cost) { ui?.showToast?.('Pas assez d\'Éclats Maudits.', '#e0a866'); this.playDenied?.(); return false }
+    p.resources.mat_curse -= offer.cost; p.invVersion++
+    const cls = p.className, dx = () => Phaser.Math.Between(-12, 12)
+    if (id === 'epic') this.drops.add(new Drop(this, p.x + dx(), p.y + 12, 'equip', 0, this.equipmentOfTier('epic', cls)))
+    else if (id === 'rare') this.drops.add(new Drop(this, p.x + dx(), p.y + 12, 'equip', 0, this.equipmentOfTier('rare', cls)))
+    else if (id === 'pots') for (let i = 0; i < 3; i++) { this.drops.add(new Drop(this, p.x + dx(), p.y + 12, 'equip', 0, cloneItem(ITEMS.potion_big))); this.drops.add(new Drop(this, p.x + dx(), p.y + 12, 'equip', 0, cloneItem(ITEMS.potion_mana_big))) }
+    Audio.sfx('sfx_loot', { vol: 0.5, detune: 0 })
+    this.saveGame()
+    return true
   }
 
   // ===================== INTÉRIEURS (taverne / apothicaire) =====================
@@ -6479,6 +6506,7 @@ export default class GameScene extends Phaser.Scene {
     this.drops.add(new Drop(this, mon.x, mon.y - 2, 'equip', 0, this.equipmentOfTier('epic', cls)))
     this.drops.add(new Drop(this, mon.x - 14, mon.y + 4, 'equip', 0, this.equipmentOfTier('rare', cls)))
     this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', Phaser.Math.Between(mon.goldMin ?? 100, mon.goldMax ?? 180)))
+    this.drops.add(new Drop(this, mon.x + 12, mon.y + 6, 'equip', 0, { ...cloneItem(ITEMS.mat_curse), amount: mon.curseReward ?? 30 })) // gros stack d'Éclats Maudits
     this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))
     if (Math.random() < 0.25) this.trySetPieceDrop(mon)
   }
@@ -6580,6 +6608,10 @@ export default class GameScene extends Phaser.Scene {
     // OR (toujours)
     const g = Math.max(1, Math.round(Phaser.Math.Between(loot.gold[0], loot.gold[1]) * lvlMul * (mon.elite ? 3 : 1)))
     this.drops.add(new Drop(this, mon.x + 6, mon.y + 4, 'gold', g))
+    // SARGÈR : monnaie « Éclat Maudit » (mobs maudits ; élite + généreux) -> dépensée au Reliquaire de l'avant-poste
+    if (this.biomeAt(Math.floor(mon.x / TILE), Math.floor(mon.y / TILE)) === 'cursed') {
+      this.drops.add(new Drop(this, mon.x + 8, mon.y - 4, 'equip', 0, { ...cloneItem(ITEMS.mat_curse), amount: mon.elite ? Phaser.Math.Between(3, 6) : Phaser.Math.Between(1, 2) }))
+    }
     // MATÉRIAU (table par espèce) : drop fréquent, va dans la poche de ressources (empilable)
     if (loot.mat && ITEMS[loot.mat] && Math.random() < (loot.matChance ?? 0)) {
       this.drops.add(new Drop(this, mon.x - 8, mon.y + 6, 'equip', 0, cloneItem(ITEMS[loot.mat])))
@@ -6654,9 +6686,9 @@ export default class GameScene extends Phaser.Scene {
     } else if (drop.type === 'equip') {
       const it = drop.item
       if (it?.type === 'material') {
-        // MATÉRIAU : empilé dans la poche de ressources (pas dans le sac)
-        p.addResource(it.id)
-        text = `${it.name} (${p.resources[it.id]})`
+        // MATÉRIAU : empilé dans la poche de ressources (pas dans le sac). `amount` = stack (ex. Éclats Maudits).
+        p.addResource(it.id, it.amount ?? 1)
+        text = `${it.name}${(it.amount ?? 1) > 1 ? ' ×' + it.amount : ''} (${p.resources[it.id]})`
         color = RARITY[it.rarity]?.color ?? '#cfe8ff'
         Audio.sfx('sfx_pickup', { vol: 0.5, detune: 0 })
       } else {
