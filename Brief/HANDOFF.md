@@ -5,15 +5,15 @@
 
 ---
 
-## ⚡ DERNIÈRE SESSION (2026-06-10) — JUICE de combat + fixes donjon-grottes — ⚠️ NON COMMITÉ
-HEAD inchangé = `85508f0`. **Tout est dans le working tree, build OK (`npx vite build` EXIT=0), RIEN n'a été commité.** Fichiers modifiés : `GameScene.js`, `Player.js`, `BootScene.js`, `UIScene.js`, `scripts/map_preview.cjs` (+ non-suivis : donjon-grottes assets `public/assets/deco/{aband/,chest.png,dungeon_props.png}`, `scripts/{extract_props,hamlet_preview,tile_grid}.cjs`). Détail mémoire = [[combat-juice-dungeon-fixes]].
+## ⚡ DERNIÈRE SESSION (2026-06-10) — JUICE de combat + fixes donjon-grottes — ✅ COMMITÉ & POUSSÉ
+HEAD = **`c9cc91f`** (poussé `origin/main`), build OK (`npx vite build` EXIT=0). Commit unique : juice + fixes donjon-grottes + assets donjon (`deco/aband/`, `chest.png`, `dungeon_props.png`) + scripts d'extraction + PNG de référence Brief + ce HANDOFF. **Exclus du commit** (laissés en working tree, non suivis) : `.claude/` (config locale outil) et les dumps jetables `Brief/_bal _boss _fx _sarger`. Détail mémoire = [[combat-juice-dungeon-fixes]].
 
 1. **JUICE de combat** (validé en chantier) — tout via `hitMonster` : **coups critiques** (consts `CRIT_CHANCE=0.05`, `CRIT_MUL=1.6`, `HITSTOP_MS=55` en tête de GameScene), `hitSpark()` (étincelle d'impact en primitives), `deathPop()` (éclat de mort, ×1.7 + shake pour élite), `hitstop()` (gel physique ~55 ms, garde anti-cumul, désactivable), `flashHurt()` **proportionnel** (`Player.lastHurtFrac`), `updateLowHpVignette()` (voile rouge pulsant <25 % PV).
 2. **Donjon-grottes instanciées (`cave_a`/`cave_b`, WIP non testé)** — **mort instantanée corrigée** : trashLevel 7/8→**5/6** + garde `Math.min(...,MONSTER_MAX_LEVEL)` ; **projectiles bloqués par les murs** (colliders dans `buildDungeon`) ; **invuln d'apparition 1.8 s** ; coffre lumineux `unlockDungeonChest()` (violet→doré). ⚠️ **Toute la feature donjon-grottes (~494 l.) reste à TESTER en jeu.**
 3. **Métiers & artisanat étendu** = chantier choisi puis **ABANDONNÉ par l'utilisateur** (aucun code écrit). **Ne PAS reproposer** sans demande explicite.
 4. **Décision** : le **MULTIJOUEUR se fera à la TOUTE FIN** — « pour l'instant que solo » (Colyseus avait été pré-choisi pour plus tard, cf. §4).
 
-**TODO immédiat prochaine session** : (a) tester en jeu le donjon-grottes + le juice ; (b) si OK, faire la « flag dance » (`DEBUG_GIVE_BOAT=false`) et **commiter** ce gros lot (juice + donjon-grottes) — pour l'instant c'est tout en working tree.
+**TODO immédiat prochaine session** : **tester en jeu** le donjon-grottes (entrées = bouches de grotte du monde) + le juice de combat ; ajuster si besoin (`CRIT_CHANCE`/`HITSTOP_MS`, difficulté/déco des grottes). Déjà commité+poussé, donc itérer librement.
 
 ---
 
