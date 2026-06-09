@@ -488,6 +488,7 @@ export default class GameScene extends Phaser.Scene {
     if (!this.preview) {
       this.spawnMonsters()
       this.spawnBosses() // boss de biome (repaires fixes au fond de chaque zone)
+      this.spawnCursedRares() // SARGÈR : 5 rares nommés ♦ qui rôdent par sous-zone (mini-boss group-required)
     }
     this.physics.add.collider(this.monsters, this.obstacles)
     this.physics.add.collider(this.monsters, this.waterLayer) // monstres bloqués par l'eau
@@ -2947,6 +2948,46 @@ export default class GameScene extends Phaser.Scene {
     this.wildNpcs.push({ tx: obx, ty: Math.round(this.cy), tex: texes[4], name: names[4], lines: pool[4], fixed: true })
   }
 
+  /** SARGÈR — 5 RARES nommés ♦ (mini-boss qui rôdent par sous-zone, group-required, SANS arène scellée).
+   *  Réutilisent des rigs de boss NON utilisés par le gauntlet, re-teintés ; PV réduits (frac) ; butin = spawnRareLoot. */
+  spawnCursedRares() {
+    if (this.preview) return
+    const RARES = [
+      { id: 'vermyre', name: 'Vermyre, le Bois-Pourri', type: 'giantbamboo', sub: 'blight', frac: 0.45, gold: [80, 140], curse: 40 },
+      { id: 'sslaraq', name: 'Sslaraq, la Tisseuse Blême', type: 'giantracoon', sub: 'blight', frac: 0.45, gold: [80, 140], curse: 35 },
+      { id: 'khalmire', name: 'Khalmire, le Givre-Liche', type: 'giantslime', sub: 'frost', frac: 0.5, gold: [100, 160], curse: 50 },
+      { id: 'vorkaesh', name: 'Vorkaesh, le Cendre-Damné', type: 'democyclop', sub: 'ash', frac: 0.5, gold: [120, 180], curse: 55 },
+      { id: 'mortecaille', name: 'Mortécaille, le Veilleur du Bourg', type: 'giantbamboo2', sub: 'ghost', frac: 0.55, gold: [150, 220], curse: 70 },
+    ]
+    this._rareDefs = {}
+    for (const r of RARES) { this._rareDefs[r.id] = r; this.spawnOneRare(r) }
+  }
+
+  /** Place (ou re-place) un rare dans sa sous-zone (repli : n'importe quelle tuile maudite HORS gauntlet). */
+  spawnOneRare(r) {
+    const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy
+    let tile = null, fallback = null
+    for (let tries = 0; tries < 400 && !tile; tries++) {
+      const a = Phaser.Math.FloatBetween(0, Math.PI * 2), rad = Phaser.Math.Between(22, 70)
+      const tx = Math.round(ccx + Math.cos(a) * rad), ty = Math.round(ccy + Math.sin(a) * rad)
+      if (!this.isCursedIsland(tx, ty) || this.onWater(tx, ty, 1) || this.occupied.has(this.key(tx, ty))) continue
+      if (Math.hypot(tx - ccx, ty - ccy) < 58) continue // hors gauntlet (Dargoth + Gardiens)
+      fallback ||= { tx, ty }
+      if (this.cursedSub(tx, ty) === r.sub) tile = { tx, ty }
+    }
+    tile = tile || fallback
+    if (!tile) return
+    const m = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, r.type, { level: 6, boss: true, name: '♦ ' + r.name })
+    m.maxHp = Math.round(m.maxHp * r.frac); m.hp = m.maxHp // PV réduits vs un vrai boss (group-required mais pas un mur de raid)
+    m.isRare = true; m.rareId = r.id; m.noArena = true; m.bossBiome = 'cursed'
+    m.homeX = tile.tx * TILE + 8; m.homeY = tile.ty * TILE + 8
+    m.goldMin = r.gold[0]; m.goldMax = r.gold[1]; m.curseReward = r.curse
+    m.setTint(CURSED_SUB_TINT[r.sub] ?? 0xffffff)
+    this.monsters.add(m)
+    if (!m.dragon) this.makeBossSolid(m)
+    this.bosses.push(m)
+  }
+
   spawnBosses() {
     this.bosses = []
     for (const biome of Object.keys(BIOME_BOSSES)) {
@@ -3107,7 +3148,7 @@ export default class GameScene extends Phaser.Scene {
     // pas encore verrouillée : l'arène se scelle quand le COMBAT commence vraiment (le joueur a TAPÉ le
     // boss ou s'est fait TOUCHER). Pas sur la simple approche -> on peut s'avancer, observer, repartir.
     for (const b of this.bosses || []) {
-      if (b.active && b.hp > 0 && b.combatEngaged) {
+      if (b.active && b.hp > 0 && b.combatEngaged && !b.noArena) { // RARES (noArena) : combat OUVERT, jamais d'arène scellée (kitable en groupe)
         this.lockArena(b)
         break
       }
@@ -6423,6 +6464,25 @@ export default class GameScene extends Phaser.Scene {
     this.playDenied?.()
   }
 
+  /** RARE ♦ de Sargèr abattu : jingle + butin allégé (épique+rare+or+monnaie, JAMAIS de légendaire) + respawn 8-12 min. */
+  onRareKilled(mon) {
+    Audio.playVictory(this, 'mus_victory')
+    this.scene.get('UIScene')?.showToast?.(`${mon.displayName ?? mon.name} terrassé !`, '#c86ef0')
+    this.spawnRareLoot(mon)
+    const r = this._rareDefs?.[mon.rareId]
+    if (r) this.time.delayedCall(Phaser.Math.Between(480000, 720000), () => { if (!this.gameOver) this.spawnOneRare(r) }) // re-rôde après 8-12 min
+  }
+
+  /** Butin d'un rare : 1 épique (classe) + 1 rare + or + cœur + 25% pièce de panoplie. (Monnaie ajoutée en Part B2.) */
+  spawnRareLoot(mon) {
+    const cls = this.player.className
+    this.drops.add(new Drop(this, mon.x, mon.y - 2, 'equip', 0, this.equipmentOfTier('epic', cls)))
+    this.drops.add(new Drop(this, mon.x - 14, mon.y + 4, 'equip', 0, this.equipmentOfTier('rare', cls)))
+    this.drops.add(new Drop(this, mon.x, mon.y + 10, 'gold', Phaser.Math.Between(mon.goldMin ?? 100, mon.goldMax ?? 180)))
+    this.drops.add(new Drop(this, mon.x, mon.y - 10, 'heart', Math.max(20, Math.round(this.player.maxHp * 0.5))))
+    if (Math.random() < 0.25) this.trySetPieceDrop(mon)
+  }
+
   onBossKilled(mon) {
     this.monsters.getChildren().slice().forEach((m) => { // despawn de tous les adds invoqués par ce boss
       if (m.active && m.summonedBy === mon) { const fx = this.add.circle(m.x, m.y, 6, 0xb060ff, 0.7).setDepth(m.y + 2); this.tweens.add({ targets: fx, scale: 3, alpha: 0, duration: 280, onComplete: () => fx.destroy() }); m.despawn() }
@@ -6431,6 +6491,7 @@ export default class GameScene extends Phaser.Scene {
     if (i >= 0) this.bosses.splice(i, 1)
     if (this.activeBoss === mon) this.activeBoss = null
     if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
+    if (mon.isRare) { this.onRareKilled(mon); return } // RARE ♦ de Sargèr : butin allégé + respawn dédié (PAS le butin de boss)
     if (mon.guardian) this.onGuardianSlain(mon) // GAUNTLET : gardien de Sargèr tombé -> progresse vers le sceau de Dargoth
     Audio.playVictory(this, 'mus_victory') // jingle de victoire (coupe le thème de combat, puis la zone reprend)
     this.questKill(mon) // progression d'une quête « battre un boss » (cible = clé du boss, count 1)

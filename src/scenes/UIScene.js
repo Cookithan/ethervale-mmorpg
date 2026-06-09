@@ -2037,7 +2037,10 @@ export default class UIScene extends Phaser.Scene {
         if (!g.isExplored(m.x / g.tile, m.y / g.tile) || !inFrame(m.x / g.tile, m.y / g.tile)) return // brouillard / autre île
         const mx = ox + (m.x / g.tile) * cell
         const my = oy + (m.y / g.tile) * cell
-        if (m.isBoss) {
+        if (m.isRare) { // RARE ♦ de Sargèr : losange violet (repérable de loin)
+          mg.fillStyle(0xc86ef0, 1)
+          mg.fillCircle(mx, my, 3.4)
+        } else if (m.isBoss) {
           mg.fillStyle(0xff7a1f, 1)
           mg.fillCircle(mx, my, 3)
         } else {
@@ -2541,7 +2544,10 @@ export default class UIScene extends Phaser.Scene {
         const sx = cx + ((m.x - p.x) / tile) * scale
         const sy = cy + ((m.y - p.y) / tile) * scale
         if (Math.abs(sx - cx) > half || Math.abs(sy - cy) > half) return // hors fenêtre
-        if (m.isBoss) {
+        if (m.isRare) { // RARE ♦ de Sargèr (violet)
+          mobs.fillStyle(0xc86ef0, 1)
+          mobs.fillCircle(sx, sy, 3.2)
+        } else if (m.isBoss) {
           mobs.fillStyle(0xff7a1f, 1)
           mobs.fillCircle(sx, sy, 3)
         } else {
