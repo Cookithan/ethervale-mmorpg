@@ -1,34 +1,50 @@
-# HANDOFF — état du jeu & prochains chantiers
+# HANDOFF — « Island of Ergas » (état 2026-06-09)
 
-> Écrit pour le prochain Claude. Lis **ce fichier + la mémoire auto** (`MEMORY.md`). Repo : `github.com/Cookithan/ethervale-mmorpg`, branche `main`, **HEAD = `7869fe3` (poussé)**. Jeu = Phaser 3.90 + Vite. `npm run dev` → http://localhost:5173 (Ctrl+Maj+R après modif : le HMR ne relance pas `create()`/`preload()`).
+> **PROCHAIN CLAUDE : lis ce fichier EN PREMIER, puis l'index mémoire `MEMORY.md`.**
+> Ce doc dit exactement où on en est et ce qu'il reste.
 
-## 1) ÉTAT GIT / DEBUG
-- `src/main.js` `arcade.debug` est repassé à **`false`** (committé). Le remettre à `true` localement pour voir les hitbox pendant le réglage, mais **le repasser à `false` avant un commit**.
-- Non committés (volontairement) : `Brief/*.png` (maquettes jetables) + `.claude/`. Ne pas les committer.
-- ⚠️ Worktrees ultracode = partent d'`origin/main` → **`git push` AVANT** un workflow qui lit/rend du code récent (déjà fait jusqu'à `7869fe3`).
+---
 
-## 2) CE QUI EST FAIT (session « intérieurs vivants », HEAD `7869fe3`)
-**TAVERNE** — on s'assoit (E) sur **n'importe quelle chaise/tabouret** (hitbox de siège dynamique : `solidBody.enable = libre && pas dessus`, cf. `updateSeatHint`) ; on se **lève en bougeant** (clavier). S'asseoir **appelle le barman** (`callBarman`) : il vient **se coller au client** via **SA PORTE** (`spr_door` percée dans le comptoir col 14, trou collision 8px infranchissable joueur ; `_interior.barDoor`), **itinéraire à étapes** (`barmanPath` : derrière→porte→allée ligne 8.0→client) qui **évite les meubles**. Dialogue : bulle « J'arrive » → arrivé « boisson ou repas ? » (`openServerChoice`) → carte filtrée par `cat`. Repart par sa porte à la fermeture (`barmanReturn`/`onTavernShopClosed`). Structure **multi** : `seat.takenBy` (1 chaise=1 joueur), `bw.servingSeat` (1 client à la fois). Murs lambris bois foncé.
-**APOTHICAIRE** — Ylva immobile, **se met en mouvement pendant qu'elle prépare** (`bw.prepper`, gate sur `this._brewing`) ; commande = délai selon rareté (3/6/10 s, `prepPotion`), livraison au sac.
-**DORTOIR** — dormir = soin + mana + sauvegarde + **point de repos** (`player.respawnHome`) → à la mort on réapparaît **dans son lit** (`respawnAtVillage` branche `goInterior('dorm', restSpawn)`).
-**BOUTIQUES À NIVEAUX** (apothicaire/tavern) — panneau bespoke « ardoise/bannières », items par `tier`, RÉNOVER (or + niveau perso, `SHOP_CONFIGS.costs/minLevel`). 7 nouveaux consommables (élixirs + repas/boissons à `foodBuff`). Marchand = potions de BASE seulement ; reste `vendor:'apothecary'`/`'tavern'`. Stack 6 potions, **pas de stack** repas/boissons (`isStackable` exclut `item.cat`). **« Vendre TOUT »** marchand (`sellAll`). Pas de musique de boutique dans les lieux (`openShop` ne joue `mus_shop` que si `!shopType`).
-**4 BÂTIMENTS ENTERABLES** — forge / marchand / maison (Aldwin+Elara) / banque. `interiorConfig` (flags `forge`/`shopGeneral`), branches `buildInterior` (`} else if (id===...)` avant le `else` apothicaire), cols/rows + murs id-aware, `enter:` sur les villageois, carré d'entrée étendu, détection `update` (tout `e.zone`), routage `interiorInteract`, **override résident** (`_interiorNpcOverride`, maison Aldwin/Elara). Marchand singleton décalé hors de la porte (`spawnMerchant` +1 tuile) ; hitbox porte marchand +15px (bâtiment retourné).
-**DIVERS** — pas d'attaque/compétence dans un intérieur (`if (this.inInterior) return` dans basicAttack/shootForward/castSpell*/fireProjectile) ; pas de clic-déplacement assis ; messages allégés.
+## 0. Cadre & règles de travail
+- **Jeu** : RPG action top-down, **Phaser 3.90 + Vite**. Lancer : `npm run dev` → http://localhost:5173 (HMR ; **Ctrl+Shift+R** si assets/preload changent — le HMR ne relance pas `create()`).
+- **Repo** : github.com/Cookithan/ethervale-mmorpg (compte gh `Cookithan`), branche **main**. `git push origin main` après commit. **HEAD propre = `80889fe`** (+ ce HANDOFF).
+- **Claude est AVEUGLE en jeu** (aucun playtest possible). Vérification = `npx vite build` (attendre **EXIT=0**) + outils PNG :
+  - `scripts/room_preview.cjs` → aperçu des **intérieurs** (PNG).
+  - `scripts/map_preview.cjs` → aperçu de la **carte monde** (océan/Ergas/Sargèr/sous-zones, PNG `Brief/_map.png`). **Éditer ses constantes en tête** pour tester un placement à la vue. **Excellent anti-placement-à-l'aveugle.**
+- **Avant CHAQUE commit** : `arcade.debug=false` (main.js l.22) **ET** `DEBUG_GIVE_BOAT=false` (GameScene.js, en tête). Messages de commit terminés par `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- ⚠️ **« Flag dance »** : tout commit touchant `GameScene.js` → passer `DEBUG_GIVE_BOAT` à **false**, build, commit, push, **puis le remettre `true` en LOCAL** (pour les tests : barque offerte + touche **G** = téléport sur Sargèr + gate de niveau désactivé). **Ne JAMAIS pousser le flag à true.** (Actuellement false dans le dépôt — le remettre true en local si on reprend les tests Sargèr.)
+- **Outils dev dormants** (flags en tête de GameScene) : `DEBUG_SPAWN_BOSS` (=null ; mettre un id → touche **B** invoque ce boss à côté), `DEBUG_GIVE_BOAT` (=false), `TEST_UNLOCK_SKILLS` (=false).
+- **Règle utilisateur** : proposer (AskUserQuestion) AVANT un gros changement/choix de design. Déco = assets Ninja (pas Sprout). L'utilisateur valide en jeu ; il signale bugs/ressenti → on itère. Il a autorisé **ultracode** (workflows multi-agents) pour les gros chantiers Sargèr — produire des SPECS apply-ready puis implémenter soi-même.
 
-## 3) PROCHAINS CHANTIERS (à proposer/choisir)
-1. **Polish visuel des 4 nouveaux intérieurs** (forge/marchand/maison/banque) — le mobilier est un PREMIER JET d'agents (frames Penzilla devinés : l'enclume/fournaise/lit/coffre réutilisent des pièces existantes). **Méthode** : compositeur `scripts/room_preview.cjs` (rend une salle en PNG, mêmes coords que `buildInterior`) → Read le PNG → corriger les frames/positions. ⚠️ certaines pièces peuvent être bizarres/mal placées.
-2. **Banque fonctionnelle** (coffre/stockage d'or & objets) — dialogue dit « bientôt ».
-3. **Déco fine du bourg extérieur** (assets CC0 à fournir) / **île maudite** / réactiver le **dragon de mer** (`spawnSeaDragon` `return` en tête).
-4. **MULTIJOUEUR** (Partie B, gros chantier Colyseus/Supabase) — la taverne a déjà des hooks (`takenBy`, `servingSeat`).
+## 1. CE QUI VIENT D'ÊTRE FAIT (cette session) = l'END-GAME « ÎLE DE SARGÈR »
+Détail complet en mémoire : **[[sarger-endgame]]** (`memory/sarger-endgame.md`). Résumé :
+- **Sargèr = 2e continent PLEINE TAILLE à l'EST** (même ellipse 96×82 qu'Ergas ; carte élargie `MAP_W 540→640`). Ergas **inchangé** (coords absolues fixes — prouvé via `map_preview.cjs`). Accessible en **barque** (3000 or), **gate niveau 30** (`enforceSargerGate`).
+- **GAUNTLET** : Dargoth au CENTRE, **scellé** tant que ses **3 Gardiens** (Nyl/Akaoni/Fujin) ne sont pas abattus (`player.dargothUnlocked`, persistant). Sa mort = **épilogue** (`EpilogueScene`) + badge **« Légende d'Ergas »** sur l'écran de sélection (`player.gameCompleted`). Récompense unique = **Sceau de Dargoth** (légendaire) + pièce de panoplie.
+- **Sargèr v2 (donjon WoW à ciel ouvert)** : terrain en **4 sous-zones miroir corrompu** d'Ergas (`cursedSub`) ; **déco** par sous-zone + brume + voile teinté ; **Bourg Fantôme** (ruines-miroir + **avant-poste/hub** : repos, forge, lore, Quartier-maître) ; **donjon peuplé** (trash dense niveau max + **élites ★ group-required** + **5 Rares ♦**) ; **monnaie Éclats Maudits** → **Reliquaire** (vendeur). Wayfinding : **boussole en mer**, marqueur carte M, **Oona fixe au rivage est** d'Ergas (donneuse de la quête finale).
+- **Aussi cette session (avant Sargèr v2)** : review d'équilibrage des boss (slams adoucis pour le Tank, Tank speedMul 0.78, Dargoth tanky), fix FX feu infini (`playFx` détecte les anims qui bouclent), réticule de cible lisible, **sac de mort renouvelé à chaque mort** (plus de perte à 3), **rapatriement du sac par l'apothicaire** (−1 niveau + 50 or → sac sur le comptoir), temps mort global entre capacités de boss (anti-enchaînement), carte M recadrée par île, nuit = ellipse du village, feu réduit sous la pluie.
 
-## 4) MÉTHODE (rappel — ça marche)
-- **Compositeur** `scripts/room_preview.cjs` pour le visuel des salles + screenshots itératifs.
-- **AskUserQuestion AVANT un gros choix de design** ; ne pas foncer seul (déco = assets Ninja/Penzilla, pas Sprout).
-- **Workflow ultracode** = design/recon en parallèle, je présente + valide avant le gros build (⚠️ `git push` avant si worktrees).
-- Je suis **sans visuel** → demander à l'utilisateur de tester (F5) + décrire les bugs ; F12 console pour les erreurs rouges.
+## 2. ÉTAT DU JEU (vue d'ensemble)
+Le jeu est **complet en solo** : 4 classes (Guerrier/Tank/Mage/Soigneur), multi-personnages (écran de sélection), monde-île d'**Ergas** (prairie/forêt/désert/neige/côte) + **Sargèr** (île maudite end-game), **16 boss** à patterns WoW (phases + 4 briques + FX), **5 rares** sur Sargèr, village vivant (forge/marché/banque/taverne/apothicaire/auberge **enterables**, intérieurs vivants), quêtes (chaîne guidée → Dargoth), météo/jour-nuit/brouillard de guerre, artisanat, panoplies, économie, **épilogue/fin de jeu**. Détail = `MEMORY.md` + ses fichiers (surtout [[sarger-endgame]], [[boss-patterns-fx]], [[mmorpg-project]]).
 
-## 5) POINTEURS FICHIERS (vérifiés sur `7869fe3`)
-- Intérieurs : `GameScene.js` → `interiorConfig` (~3658), `buildInterior` (~3729, branches tavern/inn/dorm/forge/merchant/house/bank/else=apothecary), `interiorInteract` (~4350), `updateInterior`/`updateSeatHint`/`updateBarman`/`sitDown`/`standUp`/`callBarman`/`barmanReturn`/`barmanPath`/`prepPotion`/`restInBed`.
-- Entrées : `spawnVillage` villagers (~3227) + carré d'entrée (~3296) ; `enterInterior`/`goInterior` ; détection dans `update` (~6248).
-- Boutiques : `UIScene.js` → `openShop`/`openServerChoice`/`buildLocationShop`/`orderItem`/`renovateShop`/`drawMenuUpgrade`/`shopEffectStr`/`sellAll`. Données : `src/data/items.js` (`SHOP_CONFIGS`/`SHOP_MAX_TIER`/`SHOP_STOCK`, consommables ~181-211).
-- Repos/respawn : `restInBed`/`respawnAtVillage` (GameScene) ; `player.respawnHome`/`foodBuff`/`shopLevels` (Player + save.js).
+## 3. À TESTER EN JEU (angles morts — Claude ne peut pas)
+Tout Sargèr v2 est **build-OK mais peu/pas validé au navigateur** (gros volume livré). À vérifier en priorité (F5 → flag `DEBUG_GIVE_BOAT=true` en local → touche **G** = téléport sur Sargèr) :
+1. **PERFS** sur Sargèr (monde doublé + déco dense + ~96 mobs + élites + 5 rares). Si ça rame : baisser densités (`BIOME_SPAWN.cursed.mult`, seuils de `scatterCursedProps`).
+2. **DIFFICULTÉ** : volontairement **group-required pur** (élites ×128 PV) → brutal en solo (assumé, en attendant le multi). Ajuster si trop/pas assez.
+3. **Le DRAGON** (`dragonblue`, raid maudit) : on lui a ajouté barrage+nova mais il est **segmenté** → ses anneaux pourraient **figer** pendant un sort (NON vérifié). Si moche : restructurer (appeler `updateDragon` même pendant un cast) ou retirer ses sorts.
+4. Rendu : côte de Sargèr, ruines, avant-poste + ses 4 PNJ, rares ♦ (minimap), Reliquaire (achat → butin aux pieds), brume au-dessus du perso, voile teinté par sous-zone.
+5. Pas de **crash** résiduel. (Un crash a déjà été corrigé : feu de l'avant-poste poussé dans `this.campfires` sans `glow` → `updateCampfires` plantait. **Leçon : toute entrée de `this.campfires` doit avoir x/y/radius/until/sprite/flame/glow/seed, sinon crash à la 1re frame.**)
+
+## 4. PROCHAINS CHANTIERS POSSIBLES (au choix de l'utilisateur — DEMANDER)
+- **MULTIJOUEUR** = LE gros chantier visé (refonte : serveur autoritaire **Colyseus** + sync + prédiction + auth/saves **Supabase** + refactor simulation/rendu + hébergement). Débloque les RAIDS (Tengu des Glaces, Samouraï Sylvestre, Dragon) + le contenu group-required de Sargèr. **Ce N'EST PAS un petit ajout** (nouvelle fondation). L'utilisateur avait choisi « finir le solo d'abord » → Sargèr est fait. Le multi est la suite logique.
+- **Polish Sargèr** : équilibrage après tests, le dragon (cf. §3.3), packs d'élites en paires plus serrés, plus d'offres au Reliquaire (panoplie maudite dédiée), ambiance sonore/météo propre à Sargèr, particules d'âmes/braises (émetteur prévu mais non fait — voir spec `Brief/_sarger/deco.txt` section ambianceFx C/D + `this._ghostWisps` déjà rempli mais non utilisé).
+- **Contenu Ergas** : déco fine du bourg (assets CC0 à FOURNIR par l'utilisateur), cosmétiques.
+- **Bugs/équilibrage** signalés en testant.
+
+## 5. POINTEURS TECHNIQUES CLÉS
+- **Tout le gros code = `src/scenes/GameScene.js`** (génération monde, spawn, déco, combat, UI hooks) + `src/scenes/UIScene.js` (HUD/panneaux/carte M) + `src/entities/Monster.js` (boss/mobs + moteur de patterns) + `src/entities/Player.js` + `src/data/` (items.js, quests.js, classes.js, save.js, sound.js) + `src/scenes/EpilogueScene.js`.
+- **Sargèr** : `CURSED_ISLE={ox:300,oy:65,rx:96,ry:82}` (centre tuile ~480,175) ; `isCursedIsland`/`cursedSub` ; gauntlet keep-out `hypot(tx-ccx,ty-ccy)<58` ; `spawnCursedRares`/`spawnGhostRuins`/`spawnSargerOutpost`/`scatterCursedProps` (toutes appelées dans `create()`).
+- **Boss** : moteur de PHASES + briques dans `Monster.js` ; callbacks FX (`playFx`) dans GameScene ; flags d'instance `boss.dargoth/guardian/isRare/noArena`. `noArena` court-circuite `updateArena` (rares = combat ouvert).
+- **Saves** (`src/data/save.js` `makeSave` + `Player.applySave`) : `player.resources` (poche matériaux dont `mat_curse`, à l'abri de la mort) ; champs persistés ajoutés cette session : `sargerSlain`, `dargothUnlocked`, `gameCompleted`, `counterBag` (+ déjà `bankGold/bankItems`). Compat assurée (defaults `?? 0/false/null`).
+- **Pièges connus** : (a) `this.campfires` exige des entrées complètes (cf. §3.5) ; (b) `cursedBounds` n'est calculé qu'à `setupMinimap` (tard dans create) → pour la déco, calculer la bbox direct depuis `CURSED_ISLE` ; (c) `equipmentOfTier` exclut `unique`/`set`/`eliteOnly`/`craftedOnly`/`ranged` du butin normal ; (d) les n° de ligne des SPECS de workflow ne sont PAS fiables (le code bouge constamment) → toujours re-grep avant d'éditer.
+- **Workflows (ultracode)** : produire des **specs apply-ready** (parallèle + ancrées dans le code réel) puis IMPLÉMENTER soi-même (les agents en worktree sur un fichier partagé = conflits). Sorties de cette session conservées dans `Brief/_sarger`, `_bal`, `_boss`, `_fx` (jetables).
+- **Temp/jetable** (non committé, ignorable) : `Brief/_bal _boss _fx _sarger` (sorties de workflows), `Brief/_map*.png` (aperçus carte).
