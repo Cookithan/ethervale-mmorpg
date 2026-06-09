@@ -15,6 +15,12 @@ HEAD = **`c9cc91f`** (poussé `origin/main`), build OK (`npx vite build` EXIT=0)
 
 **TODO immédiat prochaine session** : **tester en jeu** le donjon-grottes (entrées = bouches de grotte du monde) + le juice de combat ; ajuster si besoin (`CRIT_CHANCE`/`HITSTOP_MS`, difficulté/déco des grottes). Déjà commité+poussé, donc itérer librement.
 
+## 🎯 PROCHAINE SESSION — IDÉE RETENUE PAR L'UTILISATEUR : « Bibliothèque de compétences par classe » (grimoire + loadout)
+**Concept** : chaque classe a un GRAND pool de compétences ; le joueur en **équipe un nombre LIMITÉ** dans sa barre de sorts (slots) → il **compose son build** et peut le changer. Mécanique = **grimoire + loadout**. **Acquisition = DÉBLOCAGE PROGRESSIF via le CONTENU** (pas tout d'un coup) : on gagne les compétences en jouant, et les plus **puissantes/rares sont GATED derrière le contenu difficile — Sargèr (end-game), donjons, boss**. Très MMO : personnalisation + rejouabilité + carotte de farm (chasser une compétence sur un boss).
+- **Existant à étendre** : aujourd'hui chaque classe = `spell` (niv.1) + `spell2` (~niv.10) + `spell3` (ultime de panoplie) dans `src/data/classes.js` (+ `MAGE_KITS` par élément pour le Mage). Cast + mana/cooldowns dans `GameScene` (`castSpell`/`castSpell2`/`castSpell3`, `nextSpellAt`/`nextSpell2At`/`nextSpell3At`, `SPELL3_COST`). Barre de sorts/UI dans `UIScene`. Persistance : `save.js makeSave`/`Player.applySave`.
+- ✅ **DÉCIDÉ** : mécanique = grimoire + loadout ; acquisition = **déblocage progressif via le contenu** (drops de boss, donjons, Sargèr), compétences rares/fortes derrière le end-game.
+- **Forks à TRANCHER la prochaine fois (AskUserQuestion avant de coder)** : (1) combien de slots équipables (ex. 4-6) ; (2) le DÉTAIL des sources par compétence (quel boss/donjon lâche quoi, % de drop/pity, quelques-unes de base au niveau pour amorcer) ; (3) UI du grimoire (parcourir le pool + assigner aux slots, voir verrouillées/déverrouillées) ; (4) où changer le loadout (partout / au repos/ville seulement) ; (5) persistance save (compétences CONNUES + loadout équipé) ; (6) rééquilibrage (chaque compétence = niveau requis + coût mana + cooldown + dégâts/effet). Détail mémoire = [[skill-library-loadout]].
+
 ---
 
 ## 0. Cadre & règles de travail
