@@ -298,7 +298,7 @@ export const BOAT_ITEM = {
   name: 'Barque du large',
   icon: 'boat',
   rarity: 'epic',
-  price: 3000,
+  price: 1200, // 3000 -> 1200 : accessible plus tôt (le vrai gate de Sargèr = le niveau 30, pas l'or)
   desc: "Navigue sur l'eau et atteins les Terres maudites.",
 }
 

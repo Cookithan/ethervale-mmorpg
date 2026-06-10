@@ -442,6 +442,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // étiquette : ÉLITE -> nom + niveau toujours visibles (or) ; NORMAL -> "Niv.X" qui
     // n'apparaît qu'avec la barre de vie (au combat) pour ne pas surcharger l'écran.
     const labelTxt = elite ? `★ ${this.eliteName} · Niv.${this.displayLevel}` : `Niv.${this.displayLevel}`
+    this._labelBase = labelTxt // étiquette de base ; les PV exacts s'y accolent tant que la barre de vie est visible
     this.infoText = scene.add
       .text(x, y - this.barOffsetY - 4, labelTxt, {
         fontFamily: 'monospace',
@@ -1269,7 +1270,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (!this.isBoss && this.def.mobAtk && this.aggroed && !arenaBlocksMe && this.updateMobAttack(time, player, dx, dy, dist)) {
       if (this.alert?.visible) this.alert.setPosition(this.x, this.y - this.barOffsetY - 6)
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4)
-      this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)
+      this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE || this.hpBarBg.visible) // au combat (barre visible) : PV exacts lisibles même de loin
       this.updateHpBar(time)
       return
     }
@@ -1368,7 +1369,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     } else {
       this.infoText.setPosition(this.x, this.y - this.barOffsetY - 4) // l'étiquette suit le monstre
       // niveau VISIBLE dès qu'on s'approche (avant d'attaquer) ; l'élite est toujours affichée
-      this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE)
+      this.infoText.setVisible(this.elite || dist < NAMEPLATE_RANGE || this.hpBarBg.visible) // au combat (barre visible) : PV exacts lisibles même de loin
     }
     if (this.alert?.visible) this.alert.setPosition(this.x, this.y - this.barOffsetY - 6) // le « ! » suit le monstre
     this.updateHpBar(time)
@@ -1379,12 +1380,17 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (time >= this.hpHideAt) {
       this.hpBarBg.setVisible(false)
       this.hpBarFg.setVisible(false)
+      // la barre se cache -> on retire les PV de l'étiquette (retour au « Niv.X » / nom d'élite)
+      if (this._lastHpStr) { this._lastHpStr = null; this.infoText.setText(this._labelBase) }
       return
     }
     const ratio = Phaser.Math.Clamp(this.hp / this.maxHp, 0, 1)
     this.hpBarBg.setPosition(this.x, this.y - this.barOffsetY)
     this.hpBarFg.setPosition(this.x - 7, this.y - this.barOffsetY)
     this.hpBarFg.setSize(14 * ratio, 1)
+    // PV EXACTS accolés à l'étiquette tant qu'on est au combat (setText seulement quand la valeur change)
+    const hpStr = `${Math.max(0, Math.ceil(this.hp))}/${this.maxHp}`
+    if (this._lastHpStr !== hpStr) { this._lastHpStr = hpStr; this.infoText.setText(`${this._labelBase} · ${hpStr}`) }
   }
 
   /**

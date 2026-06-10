@@ -54,6 +54,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.body.setSize(10, 8).setOffset(3, 7)
 
     this.facing = 'down'
+    this.aimVec = [0, 1] // direction de VISÉE des attaques (8 directions) : dernier déplacement, diagonales incluses
     this.sitting = false // assis sur un siège de taverne (figé jusqu'au lever)
     this.anims.play(`${heroKey}-idle-down`)
 
@@ -674,6 +675,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.setVelocity(vx * spd, vy * spd)
 
     const moving = vx !== 0 || vy !== 0
+    if (moving) this.aimVec = [vx, vy] // VISÉE 8 directions : mémorise le dernier déplacement (diagonales incluses)
     // direction = axe DOMINANT (sinon le clic-déplacement, dont vx est presque toujours ≠ 0,
     // regarde toujours sur le côté et jamais vers le haut/bas)
     if (moving) {

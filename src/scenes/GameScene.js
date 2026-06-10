@@ -5757,9 +5757,9 @@ export default class GameScene extends Phaser.Scene {
       tx = target.x
       ty = target.y
     } else {
-      const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
-      tx = p.x + dir[0] * 120
-      ty = p.y + dir[1] * 120
+      const v = this.aimVec() // 8 DIRECTIONS : lance dans la direction du dernier déplacement
+      tx = p.x + v[0] * 120
+      ty = p.y + v[1] * 120
     }
     const dx = tx - p.x
     const dy = ty - p.y
@@ -5771,15 +5771,26 @@ export default class GameScene extends Phaser.Scene {
     proj.fire(p.x, p.y, tx, ty, p.attackPower, this.time.now, target, 0xffffff, weapon.proj)
   }
 
+  /** Direction de VISÉE des attaques (8 directions) : dernier déplacement du héros (diagonales incluses),
+   *  sinon l'axe du regard (repli pour un perso qui n'a pas encore bougé). */
+  aimVec() {
+    const p = this.player
+    const v = p.aimVec
+    if (v && (v[0] || v[1])) return v
+    return { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
+  }
+
   doAttack(force = false) {
     if (this.uiBusy()) return
     const p = this.player
     if (!p.abilities.melee && !force) return // classe sans corps à corps (Mage/Soigneur) — SAUF coup désespéré sans arme (force=true)
     if (!p.startAttack(this.time.now)) return
 
-    const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing]
-    const cx = p.x + dir[0] * 14 // centre de la zone, devant le perso
-    const cy = p.y + dir[1] * 14
+    // 8 DIRECTIONS : la zone de frappe suit le dernier déplacement (diagonales incluses), pas juste les 4 axes
+    const v = this.aimVec()
+    const aimDeg = Phaser.Math.RadToDeg(Math.atan2(v[1], v[0])) // angle passé aux visuels (swing/arc/tranche)
+    const cx = p.x + v[0] * 14 // centre de la zone, devant le perso
+    const cy = p.y + v[1] * 14
     const RANGE = 20 // rayon de la zone de frappe (généreux)
 
     // arme équipée -> son sprite fait un MOUVEMENT DE COUP (swing) ; sinon simple arc blanc.
@@ -5787,10 +5798,10 @@ export default class GameScene extends Phaser.Scene {
     // orientée en diagonale) ne s'aligne pas sur l'arc du swing -> on swingue le sprite Ninja à la place.
     const weapon = p.equipped?.weapon
     const wIcon = weapon?.swingTex || weapon?.icon
-    if (wIcon && this.textures.exists(wIcon)) this.showWeaponSwing(p.x, p.y, p.facing, wIcon)
-    else this.showSlash(p.x, p.y, p.facing)
+    if (wIcon && this.textures.exists(wIcon)) this.showWeaponSwing(p.x, p.y, aimDeg, wIcon)
+    else this.showSlash(p.x, p.y, aimDeg)
     // tranche FX selon le TYPE d'arme (lame = tranche courbée, masse = slash circulaire)
-    if (weapon?.fx && this.anims.exists(weapon.fx)) this.showSlashFx(p.x, p.y, p.facing, weapon.fx)
+    if (weapon?.fx && this.anims.exists(weapon.fx)) this.showSlashFx(p.x, p.y, aimDeg, weapon.fx)
     // MAINS NUES (arme cassée) : coup de poing -> son sourd (whoosh) + rappel de réparation ; sinon lame.
     if (p.unarmed) { Audio.sfx(SFX.whoosh, { vol: 0.45 }); this.warnBrokenWeapon() }
     else { Audio.sfx(SFX.slash, { vol: 0.5 }); this._brokenWarnShown = false } // lame en main -> réarme l'avertissement
@@ -5948,8 +5959,8 @@ export default class GameScene extends Phaser.Scene {
     if (target) {
       this.fireProjectile(target.x, target.y, target)
     } else {
-      const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing]
-      this.fireProjectile(p.x + dir[0] * 120, p.y + dir[1] * 120, null)
+      const v = this.aimVec() // 8 DIRECTIONS : tire dans la direction du dernier déplacement
+      this.fireProjectile(p.x + v[0] * 120, p.y + v[1] * 120, null)
     }
   }
 
@@ -7277,7 +7288,8 @@ export default class GameScene extends Phaser.Scene {
 
   /** Petit éclair blanc en arc pour matérialiser le coup d'épée. */
   showSlash(x, y, facing) {
-    const ang = { down: 90, up: -90, left: 180, right: 0 }[facing]
+    // `facing` = nom de direction OU angle en DEGRÉS (attaques 8 directions)
+    const ang = typeof facing === 'number' ? facing : ({ down: 90, up: -90, left: 180, right: 0 }[facing] ?? 90)
     const g = this.add.graphics().setDepth(y + 50)
     g.lineStyle(2, 0xffffff, 0.9)
     const base = Phaser.Math.DegToRad(ang)
@@ -7314,7 +7326,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   showWeaponSwing(px, py, facing, iconKey) {
-    const center = { right: 0, down: 90, left: 180, up: -90 }[facing] ?? 0
+    // `facing` = nom de direction OU angle en DEGRÉS (attaques 8 directions)
+    const center = typeof facing === 'number' ? facing : ({ right: 0, down: 90, left: 180, up: -90 }[facing] ?? 0)
     const SWING = 80 // amplitude de l'arc (degrés)
     const r = 15 // distance de la lame au héros (PORTÉE conservée)
     this._heldHideUntil = this.time.now + 170 // cache l'arme tenue le temps du coup, puis elle revient
@@ -7337,7 +7350,8 @@ export default class GameScene extends Phaser.Scene {
   showSlashFx(px, py, facing, fxKey) {
     const tex = fxKey.replace('-', '_')
     if (!this.textures.exists(tex)) return
-    const deg = { right: 0, down: 90, left: 180, up: -90 }[facing] ?? 0
+    // `facing` = nom de direction OU angle en DEGRÉS (attaques 8 directions)
+    const deg = typeof facing === 'number' ? facing : ({ right: 0, down: 90, left: 180, up: -90 }[facing] ?? 0)
     const rad = Phaser.Math.DegToRad(deg)
     const fx = this.add.sprite(px + Math.cos(rad) * 16, py + Math.sin(rad) * 16, tex).setDepth(py + 52).setScale(1.4)
     fx.setRotation(rad + Phaser.Math.DegToRad(90)) // oriente la tranche vers la direction d'attaque
@@ -7666,17 +7680,28 @@ export default class GameScene extends Phaser.Scene {
     const p = this.player
     p.sailing = p.hasBoat && this.isOnWater(p.x, p.y)
     if (p.sailing) {
-      // ORIENTATION 4 DIRECTIONS selon le cap du héros (bateau vu de côté, proue à droite par défaut) :
-      // gauche = miroir (reste à l'endroit), haut/bas = rotation ±90°.
-      if (p.facing === 'left') this.boatSprite.setFlipX(true).setRotation(0)
-      else if (p.facing === 'right') this.boatSprite.setFlipX(false).setRotation(0)
-      else if (p.facing === 'up') this.boatSprite.setFlipX(false).setRotation(-Math.PI / 2)
-      else this.boatSprite.setFlipX(false).setRotation(Math.PI / 2) // down
+      // CAP CONTINU AVEC INERTIE (vraie barque) : la cible = direction du déplacement ; le cap actuel
+      // TOURNE LENTEMENT vers elle (RotateTo, ~2.6 rad/s -> demi-tour en ~1,2 s) au lieu de claquer à 90°.
+      const v = p.body?.velocity
+      if (v && (Math.abs(v.x) > 4 || Math.abs(v.y) > 4)) this._boatTarget = Math.atan2(v.y, v.x)
+      if (this._boatHeading == null) this._boatHeading = this._boatTarget ?? ({ left: Math.PI, right: 0, up: -Math.PI / 2 }[p.facing] ?? Math.PI / 2)
+      if (this._boatTarget != null) {
+        const dt = (this.game.loop.delta || 16) / 1000
+        this._boatHeading = Phaser.Math.Angle.RotateTo(this._boatHeading, this._boatTarget, 2.6 * dt)
+      }
+      // RENDU : sprite de base = proue à DROITE. Quand le cap pointe à gauche, flipY garde la coque à
+      // l'endroit (rotation π + flipY = miroir horizontal). HYSTÉRÉSIS (±0.08) pour ne pas papillonner
+      // quand on navigue plein nord/sud (cos ≈ 0).
+      const cosH = Math.cos(this._boatHeading)
+      if (cosH < -0.08) this._boatFlipY = true
+      else if (cosH > 0.08) this._boatFlipY = false
+      this.boatSprite.setFlipX(false).setFlipY(!!this._boatFlipY).setRotation(this._boatHeading)
       this.boatSprite.setVisible(true).setPosition(p.x, p.y + 5).setDepth(p.y - 1)
       // le héros reste ASSIS dans la barque : pose idle figée (ni marche ni pas — voir Player.update)
       p.anims.play(`${p.heroKey}-idle-${p.facing}`, true)
     } else if (this.boatSprite.visible) {
-      this.boatSprite.setVisible(false).setRotation(0).setFlipX(false)
+      this.boatSprite.setVisible(false).setRotation(0).setFlipX(false).setFlipY(false)
+      this._boatHeading = null; this._boatTarget = null // au prochain embarquement, repart du cap courant
     }
     this.enforceSargerGate(p)
     this.updateSeaCompass()
