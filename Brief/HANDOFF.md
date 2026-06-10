@@ -5,6 +5,15 @@
 
 ---
 
+## ⚡ SESSION 2026-06-10 (suite) — BIBLIOTHÈQUE DE COMPÉTENCES + AUDIT ULTRACODE — ✅ VALIDÉ EN JEU
+**Tout est dans ce commit.** Détail complet en mémoire : [[skill-library-loadout]] + [[audit-ultracode-fixes]] + [[interior-music-starter-weapon]].
+1. **Bibliothèque de compétences COMPLÈTE** : barre 4 slots (`castSlot`, touches 1-4, R), catalogue `SKILLS` (~8-9/classe), moteur d'ÉTATS sur Monster (🩸❄️💀⚡🔥 lus dans `hitMonster`), **grimoire en glisser-déposer chez YLVA** (menu Potions/Sorts), **Mage verrouillé à son élément** (apparence) + sorts neutres (blink ciblé façon Omen avec visée déplaçable + délai d'incant, météore, cataclysme), **chasse à la compétence** (3 sorts forts/classe gated, gagnés sur les boss, `tryUnlockSkillFromBoss`), **panoplie 4/4 = apprend l'ULT** (`recomputeStats`).
+2. **Audit ultracode** (60 agents, 16 bugs confirmés TOUS corrigés) : remboursement d'incant interrompue, Cataclysme détone 💀, morsure-pendant-stun (typo `stunnedUntil`), blink validé (eau/arène/donjon), softlock sortie de donjon, voile nocturne plafonné en arène, toast eau-sans-bateau, marque ⚡ après crit, particules purgées en intérieur.
+3. **LEGACY SUPPRIMÉ** : `castSpell/2/3`, `p.spell/p.spell2`, `MAGE_KITS`, `SPELL3_COST`, flag `enraged` ; textes/aide/cartes de classe à jour (catalogue SKILLS).
+4. **Divers** : musiques d'intérieur (`mus_apothecary`/`mus_tavern` ⚠️ 19 Mo à compresser, pas de ffmpeg ici), arrêt devant la porte en entrant (`inputLockUntil`), **arme de départ = instance `starter`** (seule incassable + non vendable), focus1/focus_fire +manaRegen, focus2 `questOnly`, bateau (voir session courante).
+
+---
+
 ## ⚡ DERNIÈRE SESSION (2026-06-10) — JUICE de combat + fixes donjon-grottes — ✅ COMMITÉ & POUSSÉ
 HEAD = **`c9cc91f`** (poussé `origin/main`), build OK (`npx vite build` EXIT=0). Commit unique : juice + fixes donjon-grottes + assets donjon (`deco/aband/`, `chest.png`, `dungeon_props.png`) + scripts d'extraction + PNG de référence Brief + ce HANDOFF. **Exclus du commit** (laissés en working tree, non suivis) : `.claude/` (config locale outil) et les dumps jetables `Brief/_bal _boss _fx _sarger`. Détail mémoire = [[combat-juice-dungeon-fixes]].
 

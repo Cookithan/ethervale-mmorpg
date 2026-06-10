@@ -1,6 +1,6 @@
 import Phaser from 'phaser'
 import { ITEMS, effectiveStats, cloneItem, STARTER_WEAPON, refreshItemDef, setStatus } from '../data/items.js'
-import { CLASSES, DEFAULT_CHARACTER, MAGE_KITS } from '../data/classes.js'
+import { CLASSES, DEFAULT_CHARACTER, knownSkillsFor, skillPoolFor, SKILL_BY_ID } from '../data/classes.js'
 import { Audio, SFX } from '../data/sound.js'
 
 const SPEED = 65 // vitesse de déplacement de base (px/s) — modulée par la classe (speedMul)
@@ -93,20 +93,19 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.projFx = heroDef?.proj ?? null // sprite/anim du projectile de base (ex: fx-fireball / fx-energyball teinté)
     this.casting = false // en incantation (Météore du Mage) -> déplacement bloqué
     this.castInterrupted = false // mis à true si on prend un coup pendant l'incantation -> sort annulé
-    // MANA + LE sort de la classe (1 seul : coût mana + cooldown). Régén lente gérée dans update().
+    // MANA. Régén lente gérée dans update(). (Les anciens spell/spell2/nextSpell*At — sorts fixes —
+    // ont été supprimés : tout passe par la bibliothèque de compétences ci-dessous.)
     this.baseMana = cls.mana ?? 0 // mana de base de la classe ; +Anneau via recomputeStats
     this.maxMana = this.baseMana
     this.mana = this.maxMana
-    this.spell = cls.spell ?? null // { id, name, cost, cd }
-    this.nextSpellAt = 0 // fin du cooldown du sort de classe
-    this.spell2 = cls.spell2 ?? null // 2e compétence (déverrouillée à `spell2.level`, défaut niv 10)
-    this.nextSpell2At = 0 // fin du cooldown du 2e sort
-    // MAGE ÉLÉMENTAIRE : l'élément vient de l'APPARENCE (feu/glace/ombre) -> kit de sorts propre (MAGE_KITS).
+    // MAGE ÉLÉMENTAIRE : l'élément vient de l'APPARENCE (feu/glace/ombre) -> filtre son pool de sorts (skillPoolFor).
     this.element = heroDef?.element ?? null
-    if (this.className === 'mage' && this.element && MAGE_KITS[this.element]) {
-      this.spell = MAGE_KITS[this.element].spell
-      this.spell2 = MAGE_KITS[this.element].spell2
-    }
+    // BIBLIOTHÈQUE DE COMPÉTENCES (grimoire + loadout) : pool par classe (SKILLS), 4 slots équipés.
+    this.unlockedSkills = [] // compétences GATED gagnées sur des boss (la « chasse à la compétence »)
+    this.skillsMigrated = true // nouveau perso : pas de grandfather (les gated se gagnent sur les boss dès le départ)
+    this.loadout = [null, null, null, null] // 4 slots (ids de compétence) — auto-rempli ci-dessous puis modifiable à l'Autel
+    this.skillCd = {} // cooldown par id (instant absolu) — remplace les nextSpell*At pour les 4 slots
+    this.spellBuff = { atk: 0, def: 0, until: 0 } // buff temporaire d'un sort (Cri de rage / Bénédiction)
     this.charging2 = false // Charge du Tank en cours (buff de vitesse jusqu'à 4 s / impact)
     this.chargeSpeedMul = 1 // multiplicateur de vitesse pendant la Charge du Tank
     this.shieldUntil = 0 // fin du buff Bouclier (Tank) -> -80 % dégâts reçus
@@ -117,6 +116,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // (rien d'autre : ni armure, ni anneau -> tout le reste se gagne/s'achète).
     const starterId = STARTER_WEAPON[this.className] ?? 'sword'
     this.equipped = { weapon: cloneItem(ITEMS[starterId]), armor: null, focus: null, ring: null }
+    if (this.equipped.weapon) this.equipped.weapon.starter = true // SEULE arme incassable + non vendable (les mêmes ramassées sont cassables)
     this.spellPowerMul = 1 // >1 = effet/dégâts de compétence renforcé (Relique)
     this.spellDurationMul = 1 // >1 = durée d'effet de compétence allongée (Relique)
     this.inventory = [] // sac vide au départ
@@ -147,6 +147,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.hp = this.baseMaxHp
     this.recomputeStats() // initialise maxHp / attackPower / defense
     this.hp = this.maxHp
+    this.autoFillLoadout() // loadout de départ (compétences connues au niveau 1)
 
     this.attacking = false
     this.attackUntil = 0
@@ -187,6 +188,13 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     // (les sprites d'items ont changé -> sinon une vieille save garde les anciennes icônes Ninja).
     for (const slot of Object.keys(this.equipped)) if (this.equipped[slot]) refreshItemDef(this.equipped[slot])
     for (const it of this.inventory) if (it) refreshItemDef(it)
+    // ARME DE DÉPART : l'arme ÉQUIPÉE du type de la classe = la SEULE incassable + non vendable. On marque le
+    // starter (anciennes saves sans flag) et on PURGE le vieux flag `unbreakable` (les mêmes armes ramassées
+    // d'anciennes saves redeviennent cassables/vendables).
+    const sw = this.equipped.weapon
+    if (sw && sw.id === (STARTER_WEAPON[this.className] ?? 'sword') && sw.starter == null) sw.starter = true
+    for (const slot of Object.keys(this.equipped)) { const it = this.equipped[slot]; if (it && it.unbreakable && !it.starter) delete it.unbreakable }
+    for (const it of this.inventory) if (it && it.unbreakable && !it.starter) delete it.unbreakable
     this.hasBoat = s.hasBoat ?? false
     this.resources = s.resources ?? {}
     this.quest = s.quest ?? null
@@ -206,6 +214,20 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.foodBuff = s.foodBuff ?? { atk: 0, def: 0, regen: 0, until: 0 }
     this.setPity = s.setPity ?? {}
     this.reviveCharge = s.reviveCharge ?? false
+    // BIBLIOTHÈQUE : compétences débloquées par contenu + loadout équipé (sanitize : ids inconnus purgés, slots
+    // vides re-remplis par les compétences connues). Ancienne save (pas de loadout) -> reconstruit du niveau.
+    this.unlockedSkills = Array.isArray(s.unlockedSkills) ? s.unlockedSkills.slice() : []
+    // GRANDFATHER (une seule fois) : un perso existant garde les compétences GATED qu'il avait par niveau —
+    // on ne le punit pas du passage au système « gagnées sur les boss ». Les NOUVELLES (level futur) = boss.
+    this.skillsMigrated = s.skillsMigrated ?? false
+    if (!this.skillsMigrated) {
+      for (const sk of skillPoolFor(this.className, this.element)) if (sk.gated && this.level >= sk.level && !this.unlockedSkills.includes(sk.id)) this.unlockedSkills.push(sk.id)
+      this.skillsMigrated = true
+    }
+    this.loadout = Array.isArray(s.loadout) ? s.loadout.slice(0, 4) : [null, null, null, null]
+    this.skillCd = {}
+    this.spellBuff = { atk: 0, def: 0, until: 0 }
+    this.autoFillLoadout()
     this.recomputeStats()
     this.hp = Math.min(s.hp ?? this.maxHp, this.maxHp)
     this.mana = this.maxMana
@@ -268,12 +290,25 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       manaRegen += b.manaRegen ?? 0
       spellPower += b.spellPower ?? 0
       spellDuration += b.spellDuration ?? 0
-      if (st.count >= 4) this.activeSet = st.set // panoplie complète -> compétence de set débloquée
+      if (st.count >= 4) {
+        this.activeSet = st.set // panoplie complète
+        // PANOPLIE 4/4 = APPREND l'ULTIME de la classe (2e chemin vers l'ULT, en plus de la chasse aux boss).
+        // Définitif : la compétence reste connue même si on retire les pièces ensuite.
+        const ultId = st.set?.skill
+        if (ultId && SKILL_BY_ID[ultId] && !(this.unlockedSkills ?? []).includes(ultId)) {
+          this.unlockedSkills ||= []
+          this.unlockedSkills.push(ultId)
+          this.autoFillLoadout() // l'équipe direct s'il reste un slot libre
+          this.scene?.scene?.get?.('UIScene')?.showToast?.(`✦ Panoplie complète — tu apprends « ${st.set.skillName ?? ultId} » !`, '#3ddc84')
+        }
+      }
     }
     // BUFF DE REPAS (taverne) / élixir : +ATQ / +DÉF tant qu'il est actif (temps absolu `until`). La régén est
     // appliquée frame par frame dans GameScene.updateFoodBuff ; l'expiration y rappelle recomputeStats pour retirer ce bonus.
     const fbNow = this.scene?.time?.now ?? 0
     if (this.foodBuff && fbNow < (this.foodBuff.until || 0)) { atk += this.foodBuff.atk || 0; def += this.foodBuff.def || 0 }
+    // BUFF DE SORT (Cri de rage / Bénédiction) : +ATQ / +DÉF temporaire (expiration gérée dans GameScene.updateFoodBuff).
+    if (this.spellBuff && fbNow < (this.spellBuff.until || 0)) { atk += this.spellBuff.atk || 0; def += this.spellBuff.def || 0 }
     this.coldResist = coldResist
     this.heatResist = heatResist
     // MAINS NUES (aucune arme équipée — ex. après casse) : peu de dégâts (moins qu'une dague) pour
@@ -406,7 +441,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
    */
   wearSlot(slot) {
     const it = this.equipped[slot]
-    if (!it || it.durability == null || it.unbreakable || Object.values(STARTER_WEAPON).includes(it.id)) return null // incassable (flag OU arme de base)
+    if (!it || it.durability == null || it.starter) return null // seule l'arme de DÉPART (instance marquée) est incassable
     it.durability -= 1
     if (it.durability <= 0) {
       it.durability = 0
@@ -488,6 +523,28 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     return gained
   }
 
+  /** Ids des compétences CONNUES (déverrouillées) de la classe, ordre catalogue (≈ ordre de déblocage). */
+  knownSkillIds() {
+    return knownSkillsFor(this.className, this.level, this.unlockedSkills, this.element).map((s) => s.id)
+  }
+
+  /** Remplit les slots VIDES du loadout avec des compétences connues non équipées (ordre catalogue). Ne RETIRE
+   *  jamais un choix du joueur ; purge seulement les ids devenus inconnus (de-level / save corrompue). */
+  autoFillLoadout() {
+    if (!Array.isArray(this.loadout)) this.loadout = [null, null, null, null]
+    this.loadout.length = 4
+    const known = new Set(this.knownSkillIds())
+    for (let i = 0; i < 4; i++) if (this.loadout[i] && !known.has(this.loadout[i])) this.loadout[i] = null
+    const equipped = new Set(this.loadout.filter(Boolean))
+    for (const id of this.knownSkillIds()) {
+      if (equipped.has(id)) continue
+      const slot = this.loadout.indexOf(null)
+      if (slot < 0) break
+      this.loadout[slot] = id
+      equipped.add(id)
+    }
+  }
+
   /** Ajoute de l'XP, gère le(s) passage(s) de niveau (cap 50). */
   gainXp(amount) {
     if (this.level >= this.maxLevel) return
@@ -505,7 +562,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
       this.xpToNext = xpForLevel(this.level) // coût du prochain niveau (×1,16 par palier)
       this.scene.onLevelUp?.()
     }
-    if (this.level > startLevel) Audio.sfx('sfx_levelup', { vol: 0.7, detune: 0 }) // jingle de montée de niveau (1 fois)
+    if (this.level > startLevel) { this.autoFillLoadout(); Audio.sfx('sfx_levelup', { vol: 0.7, detune: 0 }) } // nouvelles compétences -> slots vides remplis ; jingle 1 fois
     if (this.level >= this.maxLevel) this.xp = 0
   }
 
@@ -523,6 +580,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.recomputeStats()
     this.hp = Math.min(this.hp, this.maxHp) // PV/mana plafonnés au nouveau max (réduit)
     this.mana = Math.min(this.mana, this.maxMana)
+    this.autoFillLoadout() // un niveau perdu peut reverrouiller une compétence -> on purge/recomble le loadout
     this.invVersion++
     return true
   }
@@ -556,6 +614,21 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     }
     // incantation (Météore) : le mage est ENRACINÉ (ne bouge pas) tant qu'il incante
     if (this.casting) {
+      this.setVelocity(0, 0)
+      this.moveTarget = null
+      this.anims.play(`${this.heroKey}-idle-${this.facing}`, true)
+      return
+    }
+    // VERROU D'ENTRÉE (intérieur/donjon) : on reste FIGÉ devant la porte un court instant pour ne pas
+    // « foncer » dans la salle si une touche de déplacement est encore tenue (effet tunnel).
+    if (time < (this.inputLockUntil ?? 0)) {
+      this.setVelocity(0, 0)
+      this.moveTarget = null
+      this.anims.play(`${this.heroKey}-idle-${this.facing}`, true)
+      return
+    }
+    // MODE VISÉE (téléportation ciblée façon Omen) : le héros est FIGÉ le temps de viser la destination.
+    if (this.scene._aiming) {
       this.setVelocity(0, 0)
       this.moveTarget = null
       this.anims.play(`${this.heroKey}-idle-${this.facing}`, true)

@@ -16,7 +16,7 @@ const NPC_SPRITES = [
 // audio : clés des fichiers (musiques .ogg + bruitages .wav) à précharger
 const MUSIC_KEYS = ['mus_snow', 'mus_desert', 'mus_cursed', 'mus_boss1', 'mus_boss2', 'mus_boss3', 'mus_shop']
 // musiques importées en .mp3 (menu + village + forêt jour/nuit + maudit nuit + victoire + boss de raid)
-const MUSIC_KEYS_MP3 = ['mus_menu', 'mus_village', 'mus_forest', 'mus_forest_night', 'mus_cursed_night', 'mus_victory', 'mus_boss_raid']
+const MUSIC_KEYS_MP3 = ['mus_menu', 'mus_village', 'mus_forest', 'mus_forest_night', 'mus_cursed_night', 'mus_victory', 'mus_boss_raid', 'mus_apothecary', 'mus_tavern']
 const SFX_KEYS = [
   'sfx_slash', 'sfx_slash2', 'sfx_sword', 'sfx_whoosh', 'sfx_launch',
   'sfx_hit1', 'sfx_hit2', 'sfx_impact', 'sfx_magic1', 'sfx_magic2',

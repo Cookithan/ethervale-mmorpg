@@ -73,7 +73,7 @@ export const ITEMS = {
   // de sprite qui swingue à l'attaque (showWeaponSwing). =====
   // Guerrier (épées / lames, tranche 'fx-slash') :
   dagger: { id: 'dagger', name: 'Dague', slot: 'weapon', classes: ['warrior'], icon: 'aw_dagger', rarity: 'common', price: 45, stats: { attack: 4 }, dur: 40, fx: 'fx-slash' },
-  sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'aw_sword', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 50, unbreakable: true, fx: 'fx-slash' },
+  sword: { id: 'sword', name: 'Épée', slot: 'weapon', classes: ['warrior'], icon: 'aw_sword', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 50, fx: 'fx-slash' },
   sabre: { id: 'sabre', name: 'Sabre courbe', slot: 'weapon', classes: ['warrior'], icon: 'aw_sabre', rarity: 'rare', price: 200, stats: { attack: 11 }, dur: 65, fx: 'fx-slash' },
   katana: { id: 'katana', name: 'Katana', slot: 'weapon', classes: ['warrior'], icon: 'aw_katana', rarity: 'rare', price: 220, stats: { attack: 12 }, dur: 70, fx: 'fx-slash' },
   kris: { id: 'kris', name: "Kris de l'ombre", slot: 'weapon', classes: ['warrior'], icon: 'aw_kris', rarity: 'epic', price: 520, stats: { attack: 18 }, dur: 100, fx: 'fx-slash' },
@@ -82,17 +82,17 @@ export const ITEMS = {
   throwknife: { id: 'throwknife', name: 'Couteaux de lancer', slot: 'weapon', classes: ['warrior'], icon: 'fx_kunai', ranged: true, proj: { tex: 'fx_kunai' }, rarity: 'common', price: 90, stats: { attack: 4 }, dur: 45 },
   shuriken: { id: 'shuriken', name: 'Shuriken', slot: 'weapon', classes: ['warrior'], icon: 'fx_shuriken', ranged: true, proj: { tex: 'fx_shuriken', anim: 'fx-shuriken' }, rarity: 'rare', price: 200, stats: { attack: 8 }, dur: 60 },
   // Tank (masses / lames lourdes -> slash circulaire 'fx-circslash') :
-  club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'at_club', rarity: 'common', price: 90, stats: { attack: 5 }, dur: 60, unbreakable: true, fx: 'fx-circslash' },
+  club: { id: 'club', name: 'Gourdin', slot: 'weapon', classes: ['tank'], icon: 'at_club', rarity: 'common', price: 90, stats: { attack: 5 }, dur: 60, fx: 'fx-circslash' },
   warhammer: { id: 'warhammer', name: 'Marteau de guerre', slot: 'weapon', classes: ['tank'], icon: 'at_warhammer', rarity: 'rare', price: 240, stats: { attack: 10 }, dur: 90, fx: 'fx-circslash' },
   axe: { id: 'axe', name: 'Hache de guerre', slot: 'weapon', classes: ['tank'], icon: 'at_axe', rarity: 'rare', price: 250, stats: { attack: 11 }, dur: 85, fx: 'fx-circslash' },
   greatblade: { id: 'greatblade', name: 'Lame colossale', slot: 'weapon', classes: ['tank'], icon: 'at_greatblade', rarity: 'epic', price: 580, stats: { attack: 17 }, dur: 120, fx: 'fx-circslash' },
   warlance: { id: 'warlance', name: 'Pertuisane', slot: 'weapon', classes: ['tank'], icon: 'at_warlance', rarity: 'epic', price: 560, stats: { attack: 16 }, dur: 115, fx: 'fx-circslash' },
   // Mage (baguettes / bâtons / grimoire) — pas de swing (le mage incante/tire) :
-  wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'am_wand', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 40, unbreakable: true },
+  wand: { id: 'wand', name: 'Baguette arcanique', slot: 'weapon', classes: ['mage'], icon: 'am_wand', rarity: 'common', price: 100, stats: { attack: 7 }, dur: 40 },
   grimoire: { id: 'grimoire', name: 'Grimoire interdit', slot: 'weapon', classes: ['mage'], icon: 'am_grimoire', heldScale: 0.7, rarity: 'rare', price: 240, stats: { attack: 12 }, dur: 60 },
   archstaff: { id: 'archstaff', name: "Bâton de l'archimage", slot: 'weapon', classes: ['mage'], icon: 'am_archstaff', rarity: 'epic', price: 580, stats: { attack: 19 }, dur: 80 },
   // Soigneur (sceptres bénis) — pas de swing :
-  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'ah_healstick', rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40, unbreakable: true },
+  healstick: { id: 'healstick', name: 'Bâton de soin', slot: 'weapon', classes: ['healer'], icon: 'ah_healstick', rarity: 'common', price: 90, stats: { attack: 4 }, dur: 40 },
   healwand: { id: 'healwand', name: 'Sceptre béni', slot: 'weapon', classes: ['healer'], icon: 'ah_healwand', rarity: 'rare', price: 220, stats: { attack: 8 }, dur: 60 },
   relic: { id: 'relic', name: 'Relique sacrée', slot: 'weapon', classes: ['healer'], icon: 'ah_relic', rarity: 'epic', price: 540, stats: { attack: 12 }, dur: 80 },
 
@@ -106,10 +106,10 @@ export const ITEMS = {
 
   // ===== RELIQUES (slot 'focus', label « Relique ») -> améliorent LA COMPÉTENCE. Une relique donne SOIT
   // +effet/dégâts du sort (`spellPower`), SOIT +durée d'effet (`spellDuration`). Plus de réduction de cooldown. =====
-  focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellPower: 0.1 },
-  focus2: { id: 'focus2', name: 'Cristal de givre', slot: 'focus', icon: 'rel_frost', rarity: 'rare', price: 260, spellDuration: 0.22, stats: { manaRegen: 2 } },
+  focus1: { id: 'focus1', name: "Parchemin d'apprenti", slot: 'focus', icon: 'foc_scroll', rarity: 'common', price: 110, spellPower: 0.1, stats: { manaRegen: 1 } },
+  focus2: { id: 'focus2', name: 'Cristal de givre', slot: 'focus', icon: 'rel_frost', rarity: 'rare', price: 260, spellDuration: 0.22, stats: { manaRegen: 2 }, questOnly: true }, // récompense de quête (q_owls) — retiré du marchand (achetable trop tôt sinon)
   focus3: { id: 'focus3', name: 'Cristal de foudre', slot: 'focus', icon: 'rel_thunder', rarity: 'epic', price: 580, spellPower: 0.32, stats: { manaRegen: 3 } },
-  focus_fire: { id: 'focus_fire', name: 'Cristal de flammes', slot: 'focus', icon: 'rel_flame', rarity: 'epic', price: 600, spellPower: 0.4 },
+  focus_fire: { id: 'focus_fire', name: 'Cristal de flammes', slot: 'focus', icon: 'rel_flame', rarity: 'epic', price: 600, spellPower: 0.4, stats: { manaRegen: 4 } }, // épique : aligné sur les autres reliques (manaRegen manquait)
 
   // ===== ANNEAUX (slot 'ring') -> +Mana max (+ bonus secondaire). Icônes Kyrise (anneaux à gemme sertie). =====
   amulet: { id: 'amulet', name: 'Anneau de mana', slot: 'ring', icon: 'eq_ring_band', rarity: 'common', price: 90, stats: { mana: 16, manaRegen: 1 } },
@@ -259,7 +259,7 @@ export const ELITE_DROP = {
 
 // stock du marchand GÉNÉRAL = catalogue SAUF légendaires, pièces de set, objets forgés, items d'élite ET
 // produits exclusifs à un lieu (`vendor` : repas de taverne…). Les potions restent dispo au marchand ET à l'apothicaire.
-export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set && !it.craftedOnly && !it.eliteOnly && !it.vendor)
+export const SHOP_STOCK = Object.values(ITEMS).filter((it) => it.rarity !== 'legendary' && !it.set && !it.craftedOnly && !it.eliteOnly && !it.vendor && !it.questOnly)
 
 // BOUTIQUES PAR LIEU « qui montent en niveau » (concept Rénovation). Chaque boutique a son TIER 1..4 PAR PERSO
 // (player.shopLevels[shopType]). On RÉNOVE en payant de l'or ET en ayant le niveau de perso requis ; chaque palier
@@ -364,6 +364,12 @@ export function hasDurability(item) {
   return item != null && item.dur != null
 }
 
+/** INCASSABLE + NON VENDABLE : UNIQUEMENT l'arme de DÉPART (instance marquée `starter`). Les mêmes armes
+ *  ramassées/achetées plus tard sont des instances normales (cassables, vendables). */
+export function isUnbreakable(item) {
+  return !!(item && item.starter)
+}
+
 /** Coût en or pour réparer entièrement la durabilité (0 si plein / pas de durabilité). */
 export function repairCost(item) {
   if (!hasDurability(item)) return 0
@@ -402,8 +408,8 @@ export function describeItem(item) {
     if (item.spellDuration) parts.push(`+${Math.round(item.spellDuration * 100)}% durée du sort`)
     txt = (txt ? txt + '\n' : '') + parts.join('\n')
   }
-  if (item.unbreakable || Object.values(STARTER_WEAPON).includes(item.id)) {
-    txt += '\nIncassable ∞'
+  if (isUnbreakable(item)) {
+    txt += '\nIncassable ∞ · arme de départ (non vendable)'
   } else if (hasDurability(item)) {
     const broken = (item.durability ?? item.dur) <= 0
     txt += `\nDurabilité ${item.durability ?? item.dur}/${item.dur}${broken ? ' (CASSÉ)' : ''}`
@@ -411,7 +417,7 @@ export function describeItem(item) {
   if (item.set && SETS[item.set]) {
     const s = SETS[item.set]
     const fb = (b) => Object.entries(b).map(([k, v]) => (k === 'spellPower' || k === 'spellDuration') ? `+${Math.round(v * 100)}% ${k === 'spellPower' ? 'effet' : 'durée'}` : `+${v} ${STAT_LABELS[k] ?? k}`).join(', ')
-    txt += `\nPanoplie « ${s.name} »\n  (2) ${fb(s.bonus2)}\n  (4) ${fb(s.bonus4)} + ${s.skillName}`
+    txt += `\nPanoplie « ${s.name} »\n  (2) ${fb(s.bonus2)}\n  (4) ${fb(s.bonus4)} + apprend « ${s.skillName} »`
   }
   const restr = classRestrictionLabel(item)
   if (restr) txt += `\n${restr}`

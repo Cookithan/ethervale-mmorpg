@@ -380,7 +380,6 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.attackUntil = 0 // fin de la phase d'attaque courante
     this.nextAttackAt = 0 // cooldown avant la prochaine charge
     this.slamming = false // saut-slam en cours (bond) -> le collider joueur est ignoré (le boss passe au-dessus)
-    this.enraged = false // transfo à 50 % PV déclenchée (def.enrage)
     this.transUntil = 0 // fin de l'anim de transformation (boss figé pendant)
     this.barrageFireAt = 0 // instant où la volée du déluge part (def.barrage)
     this.attackAngle = 0 // direction verrouillée de la charge (posée au début du télégraphe)
@@ -552,6 +551,49 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.weakenUntil = (this.scene?.time?.now ?? 0) + durationMs
   }
 
+  // ===== SYSTÈME D'ÉTATS-COMBOS (bibliothèque de compétences) — en SOLO ils jouent surtout en PASSIF =====
+  /** 🩸 SAIGNEMENT (Guerrier/Tank) : DoT PHYSIQUE qui se CUMULE (rafraîchit + additionne, plafonné). */
+  applyBleed(dmg, durationMs) {
+    const now = this.scene?.time?.now ?? 0
+    const active = this.bleedUntil && now < this.bleedUntil
+    this.bleedDmg = Math.min((active ? (this.bleedDmg ?? 0) : 0) + dmg, dmg * 5) // cumul plafonné (anti-stack infini)
+    this.bleedUntil = now + durationMs
+    if (!active) this.bleedTickAt = now + 500
+  }
+
+  /** ❄️ GEL (Mage glace/Tank) : IMMOBILISE un mob (root) + ralenti en sortie ; sur un BOSS, on ne ROOT pas
+   *  (comme stun/fear) -> simple ralenti. Teinte bleutée pendant le gel. */
+  applyFreeze(durationMs) {
+    if (this.isBoss) { this.applySlow(durationMs, 0.5); return }
+    const now = this.scene?.time?.now ?? 0
+    this.frozenUntil = now + durationMs
+    this.applySlow(durationMs + 600, 0.5) // traîne de ralenti à la fin du gel
+    this._tintedFrozen = true
+    this.setTint(0x7fd8ff)
+  }
+
+  /** 💀 VULNÉRABLE (Tank/Guerrier/Mage ombre) : +dégâts SUBIS pendant `durationMs` (lu dans hitMonster).
+   *  On garde la plus FORTE vulnérabilité en cours (pas de cumul exponentiel). */
+  applyVulnerable(factor, durationMs) {
+    const now = this.scene?.time?.now ?? 0
+    this.vulnFactor = (this.vulnUntil && now < this.vulnUntil) ? Math.max(this.vulnFactor ?? 0, factor) : factor
+    this.vulnUntil = now + durationMs
+  }
+
+  /** ⚡ MARQUE (Soigneuse) : pose un sceau ; chaque coup du joueur ajoute `bonus` dégâts sacrés (lu dans
+   *  hitMonster). En solo c'est un PASSIF d'amplification (la « détonation » par un allié = multi). */
+  applyMark(bonus, durationMs) {
+    this.markBonus = bonus
+    this.markUntil = (this.scene?.time?.now ?? 0) + durationMs
+  }
+
+  /** Teinte « au repos » (hors flash blanc de coup) : bleu si GELÉ, sinon l'or des élites, sinon rien. */
+  restingTint() {
+    const now = this.scene?.time?.now ?? 0
+    if (this.frozenUntil && now < this.frozenUntil) return 0x7fd8ff
+    return this.baseTint
+  }
+
   /** Joue l'anim d'un boss à rig (idle/walk/hit) sans la relancer si déjà en cours. */
   playRig(state) {
     if (this.rigState === state) return
@@ -603,7 +645,6 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (Array.isArray(ph.add)) for (const k of ph.add) this.phaseAbilities.add(k) // le kit GRANDIT
     if (ph.dmgMul && ph.dmgMul !== 1) { this.damage = Math.round(this.damage * ph.dmgMul); this.dmgScale *= ph.dmgMul }
     if (ph.cdMul && ph.cdMul !== 1) this.phaseCdMul *= ph.cdMul
-    if (ph.trans) this.enraged = true // flag legacy (raccourcit le windup du barrage)
     if (ph.trans) {
       const tk = `boss-${this.rig}-trans`
       if (this.rig && this.scene.anims.exists(tk)) {
@@ -1008,7 +1049,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     this.scene.time.delayedCall(80, () => {
       if (!this.active) return
       this.clearTint()
-      if (this.baseTint !== null) this.setTint(this.baseTint) // re-applique l'or des élites
+      const t = this.restingTint() // re-applique l'or des élites OU le bleu de gel
+      if (t !== null) this.setTint(t)
     })
     this.showHpBar()
     // boss à rig : joue l'anim "hit" (verrouille l'état le temps de l'anim) -> réaction visible aux coups.
@@ -1103,11 +1145,23 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
     this.showSleep(time, false) // réveillé (ou monstre normal) : pas de "Zzz"
 
-    // BRÛLURE (Mage feu) : dégâts par tics (0,5 s). takeDamage gère la mort -> on sort si le monstre meurt.
+    // BRÛLURE (Mage feu, 🔥) : dégâts par tics (0,5 s). takeDamage gère la mort -> on sort si le monstre meurt.
     if (this.burnUntil && time < this.burnUntil && time >= (this.burnTickAt ?? 0)) {
       this.burnTickAt = time + 500
       this.scene.floatingText?.(this.x, this.y - 10, `${this.burnDmg ?? 1}`, '#ff8a3a')
       if (this.takeDamage(this.burnDmg ?? 1)) return
+    }
+    // SAIGNEMENT (🩸) : DoT physique cumulable, mêmes tics (0,5 s).
+    if (this.bleedUntil && time < this.bleedUntil && time >= (this.bleedTickAt ?? 0)) {
+      this.bleedTickAt = time + 500
+      this.scene.floatingText?.(this.x, this.y - 10, `${this.bleedDmg ?? 1}`, '#ff5470')
+      if (this.takeDamage(this.bleedDmg ?? 1)) return
+    }
+    // GEL (❄️) : fin du gel -> on retire la teinte bleue (re-applique l'or des élites / rien).
+    if (this._tintedFrozen && !(this.frozenUntil && time < this.frozenUntil)) {
+      this._tintedFrozen = false
+      this.clearTint()
+      if (this.baseTint !== null) this.setTint(this.baseTint)
     }
 
     const def = this.def
@@ -1125,7 +1179,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // le monstre est collé au joueur (-> oscillation gauche/droite sans fin).
     const homeDist = Math.hypot(this.homeX - this.x, this.homeY - this.y)
     const slowed = this.slowUntil && time < this.slowUntil // RALENTI (Blizzard du Mage)
-    const spd = def.speed * SPEED_SCALE * (slowed ? (this.slowFactor ?? 0.5) : 1)
+    const frozen = !this.isBoss && this.frozenUntil && time < this.frozenUntil // GEL (❄️) : root du mob
+    const spd = frozen ? 0 : def.speed * SPEED_SCALE * (slowed ? (this.slowFactor ?? 0.5) : 1)
     let aimX
     let aimY
 
@@ -1280,7 +1335,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     }
 
     // CONTRÔLE par compétence de set du joueur (override de la nav) : ÉTOURDI = immobile ; EFFRAYÉ = fuit.
-    if (this.stunUntil && time < this.stunUntil) { this.setVelocity(0, 0); aimX = 0; aimY = 0 }
+    if (this.stunnedUntil && time < this.stunnedUntil) { this.setVelocity(0, 0); aimX = 0; aimY = 0 }
     else if (this.fearUntil && time < this.fearUntil) { const d = dist || 1; this.setVelocity(-(dx / d) * spd * 1.15, -(dy / d) * spd * 1.15); aimX = -dx; aimY = -dy }
 
     // BOSS À DISTANCE : tire des orbes que le joueur esquive. Le projectile part vers la FIN du
@@ -1403,7 +1458,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       return true
     }
     // idle : déclenche si à portée, cooldown écoulé, pas étourdi/effrayé
-    const blocked = (this.stunUntil && time < this.stunUntil) || (this.fearUntil && time < this.fearUntil)
+    const blocked = (this.stunnedUntil && time < this.stunnedUntil) || (this.fearUntil && time < this.fearUntil)
     if (!blocked && time >= this.nextMobAtk && dist <= cfg.range) {
       this.mobPhase = 'telegraph'; this.mobUntil = time + (cfg.windup ?? 450) * slow; this.mobAngle = Math.atan2(dy, dx)
       this.setVelocity(0, 0)
@@ -1428,7 +1483,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
    *  les dégâts sont majorés (×dmgMul). */
   tryBite(player, now) {
     if (!this.isBoss && this.mobPhase !== 'idle') return false // en plein pattern spécial : pas de morsure en plus
-    if ((this.stunUntil && now < this.stunUntil) || (this.fearUntil && now < this.fearUntil)) return false // étourdi/effrayé : ne mord pas
+    if ((this.stunnedUntil && now < this.stunnedUntil) || (this.fearUntil && now < this.fearUntil)) return false // étourdi/effrayé : ne mord pas (typo stunUntil corrigée : un mob « z Z z » mordait quand même au contact)
     if (this.isBoss && !this.combatEngaged) return false // boss endormi : ne mord pas tant qu'on ne l'a pas réveillé
     if (this.def.charge) return false // boss à CHARGE : ne blesse QUE par son dash (test de distance) -> mêlée sûre entre 2 charges
     if (this.isBoss && this.attackPhase !== 'idle') return false // boss en plein pattern (saut-slam) -> pas de morsure en plus, l'AoE fait les dégâts

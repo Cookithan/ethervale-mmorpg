@@ -70,6 +70,9 @@ export function makeSave(player, character) {
     respawnHome: player.respawnHome, // a dormi au dortoir -> respawn dans son lit à la mort
     setPity: player.setPity, // compteur anti-malchance des pièces de panoplie (par id)
     reviveCharge: player.reviveCharge, // bénédiction de résurrection (Soigneur, set) en attente
+    unlockedSkills: player.unlockedSkills, // compétences GATED gagnées sur des boss (bibliothèque)
+    skillsMigrated: player.skillsMigrated, // grandfather des compétences gated déjà fait (une seule fois)
+    loadout: player.loadout, // 4 compétences équipées dans la barre (grimoire + loadout)
     exploredFog: player.exploredFog, // brouillard de guerre : cellules de carte déjà explorées
     x: Math.round(player.x),
     y: Math.round(player.y),

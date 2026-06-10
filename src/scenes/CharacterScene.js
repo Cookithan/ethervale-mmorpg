@@ -1,5 +1,5 @@
 import Phaser from 'phaser'
-import { CLASSES, CLASS_LIST } from '../data/classes.js'
+import { CLASSES, CLASS_LIST, SKILLS } from '../data/classes.js'
 import { genCharId } from '../data/save.js'
 import { drawHall } from './hallBackdrop.js'
 import { Audio } from '../data/sound.js'
@@ -117,11 +117,19 @@ export default class CharacterScene extends Phaser.Scene {
       items.push(this.add.text(x, fy + 172, `ATQ ${c.attack}    DEF ${c.defense}`, { fontFamily: 'monospace', fontSize: '13px', color: '#cfe0ff' }).setOrigin(0.5, 0))
       // attaque de base
       items.push(this.add.text(x, fy + 194, `⚔ ${c.abilities.melee ? 'Mêlée (Espace)' : 'Distance (F)'}`, { fontFamily: 'monospace', fontSize: '12px', color: '#9affc0' }).setOrigin(0.5, 0))
-      // sort 1 (nom + effet)
-      items.push(this.add.text(x, fy + 214, `✦ ${c.spell.name}`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#9fd0ff' }).setOrigin(0.5, 0))
-      items.push(this.add.text(x, fy + 232, c.spell.desc ?? '', { fontFamily: 'monospace', fontSize: '10px', color: '#d7e6f5', align: 'center', wordWrap: { width: inner } }).setOrigin(0.5, 0))
-      // sort 2 (déverrouillé niv.10) -> montre la progression
-      if (c.spell2) items.push(this.add.text(x, fy + 270, `✦ Niv.10 : ${c.spell2.name}`, { fontFamily: 'monospace', fontSize: '11px', color: '#b9a0e0' }).setOrigin(0.5, 0))
+      // 1er SORT du catalogue (bibliothèque de compétences) + taille du pool — le Mage choisit son
+      // ÉLÉMENT via l'apparence (feu/glace/ombre), donc on l'annonce au lieu d'un sort fixe.
+      const pool = SKILLS[c.key] ?? []
+      const first = pool.find((s) => s.level <= 1 && !s.element) ?? pool[0]
+      if (c.key === 'mage') {
+        items.push(this.add.text(x, fy + 214, '✦ Élément selon l\'apparence', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#9fd0ff' }).setOrigin(0.5, 0))
+        items.push(this.add.text(x, fy + 232, 'Feu 🔥, glace ❄️ ou ombre 💀 — choisi à l\'étape suivante', { fontFamily: 'monospace', fontSize: '10px', color: '#d7e6f5', align: 'center', wordWrap: { width: inner } }).setOrigin(0.5, 0))
+      } else if (first) {
+        items.push(this.add.text(x, fy + 214, `✦ ${first.name}`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#9fd0ff' }).setOrigin(0.5, 0))
+        items.push(this.add.text(x, fy + 232, first.desc ?? '', { fontFamily: 'monospace', fontSize: '10px', color: '#d7e6f5', align: 'center', wordWrap: { width: inner } }).setOrigin(0.5, 0))
+      }
+      // taille du pool -> montre la progression (grimoire : 4 sorts équipés parmi le pool)
+      items.push(this.add.text(x, fy + 270, `✦ ${pool.length} compétences à débloquer · 4 équipées`, { fontFamily: 'monospace', fontSize: '11px', color: '#b9a0e0' }).setOrigin(0.5, 0))
       box.on('pointerover', () => this.focusClass(i)) // survol = focus (joue le son de défilement)
       box.on('pointerdown', () => this.pickClass(i))
       this.classCells.push(box)

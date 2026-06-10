@@ -5,7 +5,7 @@ import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY, itemColor, itemTint, ELITE_DROP } from '../data/items.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
-import { DEFAULT_CHARACTER, KNIGHT_CHARACTER, SPELL3_COST } from '../data/classes.js'
+import { DEFAULT_CHARACTER, KNIGHT_CHARACTER, SKILL_BY_ID, knownSkillsFor, skillPoolFor } from '../data/classes.js'
 import { makeSave, saveCharacter, getCharacterSave, lastPlayedSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
 import { FONT } from '../ui/font.js'
@@ -176,7 +176,7 @@ const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la temp�
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
 const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque + touche G téléport Sargèr + gate désactivé (test end-game).
-const DEBUG_TP_HAMLET = true // OUTIL DEV : true -> touche H téléporte au hameau abandonné « Ombrebois » (forêt ouest) pour tester. REMETTRE false avant commit.
+const DEBUG_TP_HAMLET = false // OUTIL DEV : true -> touche H téléporte au hameau abandonné « Ombrebois » (forêt ouest) pour tester. REMETTRE false avant commit.
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -489,7 +489,16 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.obstacles)
     // l'eau bloque (sauf ponts) — SAUF si le joueur a le bateau (A3) : le processCallback annule alors
     // la collision -> il navigue librement sur l'eau (l'île maudite devient atteignable).
-    this.physics.add.collider(this.player, this.waterLayer, null, () => !this.player.hasBoat)
+    this.physics.add.collider(this.player, this.waterLayer, null, () => {
+      if (this.player.hasBoat) return false // bateau -> navigation libre (collision annulée)
+      // FEEDBACK : on bute contre l'eau sans bateau -> rappel throttlé (sinon le blocage est inexpliqué)
+      const now = this.time.now
+      if (now > (this._waterTellAt || 0)) {
+        this._waterTellAt = now + 5000
+        this.scene.get('UIScene')?.showToast?.('Il te faut une barque pour naviguer — vois le marchand', '#9fd0ff')
+      }
+      return true
+    })
 
     // --- monstres --- (PAS en mode aperçu d'accueil : on garde le décor mais sans mobs -> moins lourd)
     this.monsters = this.physics.add.group()
@@ -662,10 +671,12 @@ export default class GameScene extends Phaser.Scene {
       this.input.mouse?.disableContextMenu() // le clic droit sert à tirer, pas au menu
       this.input.keyboard.on('keydown-SPACE', () => this.basicAttack())
       this.input.keyboard.on('keydown-F', () => this.shootForward())
-      this.input.keyboard.on('keydown-ONE', () => this.castSpell()) // LE sort de la classe (touche 1)
-      this.input.keyboard.on('keydown-R', () => this.castSpell()) // alias pratique (R)
-      this.input.keyboard.on('keydown-TWO', () => this.castSpell2()) // 2e compétence (touche 2, déverrouillée niv 10)
-      this.input.keyboard.on('keydown-THREE', () => this.castSpell3()) // compétence de PANOPLIE (touche 3, panoplie complète)
+      // BARRE DE 4 SLOTS configurables (bibliothèque de compétences) : touches 1..4 = slots, R = alias slot 1.
+      this.input.keyboard.on('keydown-ONE', () => this.castSlot(0))
+      this.input.keyboard.on('keydown-TWO', () => this.castSlot(1))
+      this.input.keyboard.on('keydown-THREE', () => this.castSlot(2))
+      this.input.keyboard.on('keydown-FOUR', () => this.castSlot(3))
+      this.input.keyboard.on('keydown-R', () => this.castSlot(0)) // alias pratique (1er slot)
       this.input.keyboard.on('keydown-E', () => this.tryInteract())
       this.input.keyboard.addCapture('TAB') // empêche Tab de changer le focus du navigateur
       this.input.keyboard.on('keydown-TAB', () => this.cycleTarget()) // Tab = cible l'ennemi visible le plus proche / cycle
@@ -688,6 +699,8 @@ export default class GameScene extends Phaser.Scene {
         // ignore les clics sur le panneau d'inventaire (géré par UIScene)
         const ui = this.scene.get('UIScene')
         if (ui?.pointerOverInventory?.(p.x, p.y)) return
+        // MODE VISÉE (téléportation ciblée) : clic gauche = confirmer la destination, clic droit = annuler
+        if (this._aiming) { if (p.rightButtonDown()) this.cancelAiming(); else this.confirmAiming(); return }
         if (p.rightButtonDown()) {
           this.fireProjectile(p.worldX, p.worldY, null) // clic droit = tir libre vers le curseur
           return
@@ -4101,7 +4114,7 @@ export default class GameScene extends Phaser.Scene {
   /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
   uiBusy() {
     const ui = this.scene.get('UIScene')
-    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.bankOpen || ui.reliquaireOpen || ui.pauseOpen || ui.mapOpen))
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.bankOpen || ui.reliquaireOpen || ui.grimoireOpen || ui.apothChoiceOpen || ui.pauseOpen || ui.mapOpen))
   }
 
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
@@ -4540,6 +4553,11 @@ export default class GameScene extends Phaser.Scene {
     for (const o of d.objs) { try { o.destroy() } catch (e) { /**/ } }
     this._dungeon = null
     this.inDungeon = null
+    // verrous TOUJOURS relâchés ici (et pas seulement dans exitDungeon) : si la mort interrompt la sortie
+    // pendant le fondu, _exiting resterait true -> sortie du prochain donjon impossible (softlock).
+    this._exiting = false
+    this._doorBusy = false
+    if (this._aiming) this.cancelAiming() // visée de téléportation en cours -> purge (sinon visuels fantômes en monde)
     // restauration MONDE
     const p = this.player
     p.setCollideWorldBounds(true)
@@ -4596,13 +4614,18 @@ export default class GameScene extends Phaser.Scene {
       const spot = (opts.spawn && this._interior[opts.spawn]) || this._interior.entry
       p.setPosition(spot.x, spot.y).setVelocity(0, 0)
       p.moveTarget = null
+      p.inputLockUntil = this.time.now + 400 // s'ARRÊTE devant la porte (pas de "tunnel" si une touche est tenue)
       p.setDepth(7015)
+      // MUSIQUE propre à certains intérieurs (sinon la musique de zone continue ; la sortie la restaure via update)
+      const interiorMusic = { apothecary: 'mus_apothecary', tavern: 'mus_tavern' }[id]
+      if (interiorMusic) Audio.playMusic(this, interiorMusic)
       this.fitInteriorCamera() // caméra FIXE + zoomée sur la pièce (ne suit plus le joueur, moins de noir)
       this.fogGroup?.setVisible(false) // masque le monde extérieur
       this.nightOverlay?.setVisible(false)
       this.raylight?.setVisible(false)
-      this.snowEmitter?.stop()
-      this.rainEmitter?.stop()
+      this.snowEmitter?.stop(); this.snowEmitter?.killAll() // stop N'efface PAS les particules vivantes -> purge (sinon flocons dans la taverne)
+      this.rainEmitter?.stop(); this.rainEmitter?.killAll()
+      if (this._aiming) this.cancelAiming() // visée de téléportation -> purgée à l'entrée d'un intérieur
       cam.fadeIn(220, 6, 5, 10)
     })
   }
@@ -5027,6 +5050,7 @@ export default class GameScene extends Phaser.Scene {
       p.setCollideWorldBounds(true)
       const r = this._villageReturn || { x: this.cx * TILE, y: this.cy * TILE }
       p.setPosition(r.x, r.y + 18).setVelocity(0, 0) // juste DEVANT la porte (pas dessus -> pas de re-entrée)
+      p.moveTarget = null; p.inputLockUntil = this.time.now + 300 // s'arrête devant la porte en ressortant
       p.moveTarget = null
       p.setDepth(p.y)
       cam.useBounds = true
@@ -5319,7 +5343,8 @@ export default class GameScene extends Phaser.Scene {
       if (it.cfg.forge) { this.scene.get('UIScene')?.openForge?.(); return } // FORGE : Aldric ouvre la forge (réparation/amélioration/craft)
       if (it.cfg.bank) { this.scene.get('UIScene')?.openBank?.(); return } // BANQUE : Cornélius ouvre le coffre (dépôt/retrait or + objets)
       if (it.cfg.shopGeneral) { this.scene.get('UIScene')?.openShop?.(); return } // MARCHAND : boutique générale
-      if (it.cfg.shop) { this.scene.get('UIScene')?.openShop?.(it.cfg.shop); return } // apothicaire : Ylva ouvre sa carte (commande -> préparation)
+      if (it.cfg.shop === 'apothecary') { this.scene.get('UIScene')?.openApothChoice?.(); return } // APOTHICAIRE : Ylva propose Potions / Sorts (grimoire)
+      if (it.cfg.shop) { this.scene.get('UIScene')?.openShop?.(it.cfg.shop); return } // autre boutique de lieu
       this.scene.get('UIScene')?.openDialogue(it.cfg.npcName, it.cfg.lines, it.cfg.npcTex)
     } else if (this.dist(p.x, p.y, it.exit.x, it.exit.y) <= 24) {
       this.exitInterior()
@@ -5709,6 +5734,7 @@ export default class GameScene extends Phaser.Scene {
   basicAttack() {
     const p = this.player
     if (!p) return
+    if (this._aiming) { this.confirmAiming(); return } // en visée de téléportation : Espace = partir
     if (this.inInterior) return // zone sûre : aucune attaque dans un intérieur (taverne, auberge, apothicaire, dortoir)
     if (this.sailBlocked()) return // pas d'attaque en navigation
     const w = p.equipped?.weapon
@@ -5793,9 +5819,16 @@ export default class GameScene extends Phaser.Scene {
   hitMonster(mon, amount, fromX, fromY, knock = 150) {
     if (!mon || !mon.active) return
     if (mon.dargoth && !this.player.dargothUnlocked) { this.dargothSealedFeedback(mon); return } // INVULNÉRABLE tant que les 3 Gardiens veillent
+    // ÉTATS-COMBOS : 💀 VULNÉRABLE amplifie les dégâts subis ; ⚡ MARQUE ajoute un bonus sacré par coup.
+    // (Lus ici -> s'appliquent à tout ce qui passe par hitMonster : mêlée, sorts, traversées. Les DoT 🔥🩸
+    //  appellent takeDamage directement et ne sont donc PAS ré-amplifiés, volontairement.)
+    const tnow = this.time.now
+    if (mon.vulnUntil && tnow < mon.vulnUntil) amount = Math.round(amount * (1 + (mon.vulnFactor ?? 0.2)))
     // COUP CRITIQUE : multiplie les dégâts + feedback renforcé (chiffre orange, étincelle, micro-shake, recul +).
     const crit = Phaser.Math.FloatBetween(0, 1) < CRIT_CHANCE
     if (crit) { amount = Math.round(amount * CRIT_MUL); knock = Math.round(knock * 1.4) }
+    // ⚡ MARQUE : bonus PLAT ajouté APRÈS le crit (sinon il profitait du ×1.6 — asymétrie d'équilibrage)
+    if (mon.markUntil && tnow < mon.markUntil) amount += Math.round(mon.markBonus ?? 0)
     // recul AVANT les dégâts (takeDamage peut détruire le monstre -> body disparu). Les BOSS ne sont
     // JAMAIS repoussés (ce sont des murs) ; les mobs ET les élites le sont normalement.
     if (knock > 0 && !mon.isBoss) {
@@ -5920,88 +5953,9 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * Touche 1 : LE sort de la classe. SIMPLE : 1 sort, coût en MANA + cooldown. Auto-ciblé (ennemi le
-   * plus proche / soi-même) -> aucune visée pour l'instant (le ciblage WoW = Étape B). Retours clairs :
-   * "Pas prêt" (cooldown) / "Mana !" (mana insuffisant). On ne consomme rien si le sort ne part pas.
-   */
-  castSpell() {
-    if (this.uiBusy() || this.gameOver || this.inInterior) return // pas de sort dans un intérieur
-    if (this.sailBlocked()) return // pas de sort en navigation
-    const p = this.player
-    const sp = p.spell
-    if (!sp || p.hp <= 0) return
-    const now = this.time.now
-    if (now < p.nextSpellAt) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
-    if (p.mana < sp.cost) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
-    const effects = {
-      charge: () => this.spellCharge(),
-      shieldcharge: () => this.spellShieldCharge(), // Tank : sort principal = Charge
-      blizzard: () => this.spellBlizzard(), // Mage GLACE : zone + ralentit
-      firestorm: () => this.spellFirestorm(), // Mage FEU : zone + brûlure
-      voidstorm: () => this.spellVoidstorm(), // Mage OMBRE : zone + affaiblit
-      wordshield: () => this.spellShield(), // Soigneur : sort 1 = Mot de pouvoir : Bouclier (absorption + soin)
-    }
-    const fn = effects[sp.id]
-    if (!fn || fn() === false) return // sort inconnu / non exécuté -> on ne consomme ni mana ni cd
-    p.spendMana(sp.cost)
-    p.nextSpellAt = now + sp.cd // cooldown fixe (la Relique n'agit plus sur le cooldown : effet/durée)
-  }
-
-  /** 2e COMPÉTENCE (touche 2), déverrouillée au niveau `spell2.level` (10). Mêmes règles que castSpell
-   *  (cooldown propre `nextSpell2At`, coût mana). */
-  castSpell2() {
-    if (this.uiBusy() || this.gameOver || this.inInterior) return // pas de sort dans un intérieur
-    if (this.sailBlocked()) return
-    const p = this.player
-    const sp = p.spell2
-    if (!sp || p.hp <= 0) return
-    if (!TEST_UNLOCK_SKILLS && p.level < (sp.level ?? 10)) return this.floatingText(p.x, p.y - 18, `Niv ${sp.level ?? 10}`, '#ffd27a')
-    const now = this.time.now
-    if (now < p.nextSpell2At) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
-    if (p.mana < sp.cost) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
-    const effects = {
-      whirlwind: () => this.spellWhirlwind(),
-      provoke: () => this.spellProvoke(), // Tank : 2e compétence = Provocation (niv 10)
-      pyroblast: () => this.spellPyroblast(), // Mage FEU : mono-cible + brûlure (niv 10)
-      frostlance: () => this.spellFrostlance(), // Mage GLACE : mono-cible + ralentit (niv 10)
-      shadowbolt: () => this.spellShadowbolt(), // Mage OMBRE : mono-cible + affaiblit (niv 10)
-      sanctuary: () => this.spellSanctuary(),
-    }
-    const fn = effects[sp.id]
-    if (!fn || fn() === false) return
-    p.spendMana(sp.cost)
-    p.nextSpell2At = now + sp.cd // cooldown fixe (cf. castSpell)
-  }
-
-  /** COMPÉTENCE DE PANOPLIE (touche 3) : disponible seulement si la panoplie de classe est COMPLÈTE
-   *  (p.activeSet, 4 pièces). Cooldown long + coût mana. Plus forte que les sorts 1/2. (Brief §5/§7) */
-  castSpell3() {
-    if (this.uiBusy() || this.gameOver || this.inInterior) return // pas de sort dans un intérieur
-    if (this.sailBlocked()) return
-    const p = this.player
-    if (p.hp <= 0) return
-    let set = p.activeSet
-    if (!set && TEST_UNLOCK_SKILLS) {
-      const skill = { warrior: 'warcry', tank: 'shockwave', mage: 'mirror', healer: 'resurrect' }[this.character?.classKey]
-      if (skill) set = { skill } // TEST : panoplie simulée -> sort de panoplie utilisable sans les 4 pièces
-    }
-    if (!set) return this.floatingText(p.x, p.y - 18, 'Panoplie incomplète (4/4)', '#ffd27a')
-    const now = this.time.now
-    if (now < (p.nextSpell3At ?? 0)) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
-    const COST = SPELL3_COST[this.character?.classKey] ?? 45 // l'ULTIME : le plus cher (au-dessus du sort 2)
-    if (p.mana < COST) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
-    const effects = {
-      mirror: () => this.spellMirrorImage(), // Mage : Image miroir (clones)
-      warcry: () => this.spellWarcry?.(), // Guerrier : Cri intimidant (à venir étape 7)
-      shockwave: () => this.spellShockwave?.(), // Tank : Onde de choc (à venir)
-      resurrect: () => this.spellResurrect?.(), // Soigneur : Résurrection (à venir)
-    }
-    const fn = effects[set.skill]
-    if (!fn || fn() === false) return this.floatingText(p.x, p.y - 18, 'Bientôt', '#ffd27a')
-    p.spendMana(COST)
-    p.nextSpell3At = now + 35000 // cooldown long (~35 s)
-  }
+  // (les anciens castSpell/castSpell2/castSpell3 — sorts fixes touches 1/2/3 — ont été SUPPRIMÉS :
+  //  remplacés par castSlot() + player.loadout, cf. la bibliothèque de compétences. Le sort de panoplie
+  //  4/4 est désormais APPRIS automatiquement quand le set est complet, cf. Player.recomputeStats.)
 
   /** Jeu de sons magiques (cast/proj/impact + detune) selon l'APPARENCE du héros (feu/lumière/ombre/arcane). */
   spellSfx() {
@@ -6271,6 +6225,7 @@ export default class GameScene extends Phaser.Scene {
   incant(ms, label, color, onDone) {
     const p = this.player
     if (p.casting) return false
+    const refund = this._castingSkill // {id, cost} posé par castSlot -> remboursé si l'incantation est interrompue
     const start = this.time.now
     p.casting = true
     p.castInterrupted = false
@@ -6293,7 +6248,11 @@ export default class GameScene extends Phaser.Scene {
       delay: 16, loop: true,
       callback: () => {
         if (!p.active || p.castInterrupted || this.gameOver) {
-          if (p.castInterrupted) this.floatingText(p.x, p.y - 18, 'Incantation interrompue', '#ff8a8a')
+          if (p.castInterrupted) {
+            this.floatingText(p.x, p.y - 18, 'Incantation interrompue', '#ff8a8a')
+            // REMBOURSEMENT : le sort n'est pas parti -> on rend la mana et on purge le cooldown
+            if (refund) { p.mana = Math.min(p.maxMana, p.mana + refund.cost); if (p.skillCd) p.skillCd[refund.id] = 0 }
+          }
           ev.remove(); cleanup(); return
         }
         const t = Phaser.Math.Clamp((this.time.now - start) / ms, 0, 1)
@@ -6548,14 +6507,14 @@ export default class GameScene extends Phaser.Scene {
     return this.incant(ms, label, color, onDone)
   }
 
-  // --- SORT 1 (zone) par élément --- (BLINK de mobilité au départ, cf. mageCast1)
-  spellBlizzard() { return this.mageCast1(1100, 'Blizzard…', 0x8fd8ff, () => this.elementalStorm({ color: 0x8fd8ff, tex: 'fx_ice_spike', anim: 'fx-ice-spike', originY: 0.82, detune: 500, onHit: (m) => m.applySlow?.(1300, 0.45) })) }
-  spellFirestorm() { return this.mageCast1(1100, 'Tempête de feu…', 0xff5a2a, () => this.elementalStorm({ color: 0xff5a2a, tex: 'fx_explosion', anim: 'fx-explosion', scale: 1.2, tint: false, detune: -200, onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.5)), 3000) })) }
-  spellVoidstorm() { return this.mageCast1(1100, "Tempête d'ombre…", 0x9b4dff, () => this.elementalStorm({ color: 0x9b4dff, tex: 'fx_spirit', anim: 'fx-spirit', scale: 1.5, tint: true, detune: -400, onHit: (m) => m.applyWeaken?.(0.5, 4000) })) }
+  // --- SORT 1 (zone) par élément --- (PAS de blink : la téléportation est une compétence dédiée à part)
+  spellBlizzard() { return this.mageCast(1100, 'Blizzard…', 0x8fd8ff, () => this.elementalStorm({ color: 0x8fd8ff, tex: 'fx_ice_spike', anim: 'fx-ice-spike', originY: 0.82, detune: 500, onHit: (m) => m.applyFreeze?.(1400) })) } // ❄️ GEL
+  spellFirestorm() { return this.mageCast(1100, 'Tempête de feu…', 0xff5a2a, () => this.elementalStorm({ color: 0xff5a2a, tex: 'fx_explosion', anim: 'fx-explosion', scale: 1.2, tint: false, detune: -200, onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.5)), 3000) })) } // 🔥 EMBRASÉ
+  spellVoidstorm() { return this.mageCast(1100, "Tempête d'ombre…", 0x9b4dff, () => this.elementalStorm({ color: 0x9b4dff, tex: 'fx_spirit', anim: 'fx-spirit', scale: 1.5, tint: true, detune: -400, onHit: (m) => m.applyVulnerable?.(0.25, 4000) })) } // 💀 VULNÉRABLE
   // --- SORT 2 (mono-cible niv 10) par élément ---
-  spellPyroblast() { return this.mageCast(950, 'Pyroblast…', 0xff5a2a, () => this.elementalBolt({ color: 0xff5a2a, dmgMul: 3.5, tex: 'fx_explosion', anim: 'fx-explosion', onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.6)), 3000) })) }
-  spellFrostlance() { return this.mageCast(950, 'Lance de givre…', 0x8fd8ff, () => this.elementalBolt({ color: 0x8fd8ff, dmgMul: 3.2, tex: 'fx_ice_burst', anim: 'fx-ice-burst', boomScale: 1.6, onHit: (m) => m.applySlow?.(2000, 0.4) })) }
-  spellShadowbolt() { return this.mageCast(950, "Trait d'ombre…", 0x9b4dff, () => this.elementalBolt({ color: 0x9b4dff, dmgMul: 3.2, tex: 'fx_spirit', anim: 'fx-spirit', tint: true, boomScale: 1.8, onHit: (m) => m.applyWeaken?.(0.5, 5000) })) }
+  spellPyroblast() { return this.mageCast(950, 'Pyroblast…', 0xff5a2a, () => this.elementalBolt({ color: 0xff5a2a, dmgMul: 3.5, tex: 'fx_explosion', anim: 'fx-explosion', onHit: (m) => m.applyBurn?.(Math.max(1, Math.round(this.player.attackPower * 0.6)), 3000) })) } // 🔥
+  spellFrostlance() { return this.mageCast(950, 'Lance de givre…', 0x8fd8ff, () => this.elementalBolt({ color: 0x8fd8ff, dmgMul: 3.2, tex: 'fx_ice_burst', anim: 'fx-ice-burst', boomScale: 1.6, onHit: (m) => m.applyFreeze?.(1800) })) } // ❄️
+  spellShadowbolt() { return this.mageCast(950, "Trait d'ombre…", 0x9b4dff, () => this.elementalBolt({ color: 0x9b4dff, dmgMul: 3.2, tex: 'fx_spirit', anim: 'fx-spirit', tint: true, boomScale: 1.8, onHit: (m) => m.applyVulnerable?.(0.3, 5000) })) } // 💀
 
   /** ONDE DE CHOC (Tank, compétence de set) : slam au sol -> anneau de pics de ROCHE, dégâts + ÉTOURDIT
    *  les ennemis autour ET les FORCE à te cibler (provocation). */
@@ -6610,6 +6569,504 @@ export default class GameScene extends Phaser.Scene {
       }
     })
     return true
+  }
+
+  // ===== NOUVELLES COMPÉTENCES (bibliothèque) — posent des ÉTATS (passifs en solo) =====
+  /** FRAPPE SISMIQUE (Guerrier) : onde au sol -> dégâts AoE + 🩸 SAIGNEMENT (DoT) sur les touchés. */
+  spellSeismicStrike() {
+    const p = this.player
+    const R = 70
+    Audio.sfx('sfx_roar', { vol: 0.4, detune: 120 })
+    this.cameras.main.shake(180, 0.006)
+    const wave = this.add.circle(p.x, p.y, R, 0xd8b070, 0.18).setStrokeStyle(3, 0xffcf6b, 0.85).setDepth(p.y - 1).setScale(0.15)
+    this.tweens.add({ targets: wave, scale: 1, alpha: 0, duration: 380, ease: 'Quad.easeOut', onComplete: () => wave.destroy() })
+    const spike = (x, y) => {
+      const s = this.add.sprite(x, y, 'fx_rock_spike').setOrigin(0.5, 0.85).setDepth(y + 4).setScale(0.8)
+      if (this.anims.exists('fx-rock-spike')) { s.play('fx-rock-spike'); s.once('animationcomplete', () => s.destroy()) } else this.time.delayedCall(450, () => s.destroy())
+    }
+    spike(p.x, p.y)
+    const N = 6
+    for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2; spike(p.x + Math.cos(a) * R * 0.65, p.y + Math.sin(a) * R * 0.65) }
+    const dmg = Math.round(p.attackPower * 1.6)
+    const bleed = Math.max(2, Math.round(p.attackPower * 0.22))
+    this.monsters.getChildren().forEach((m) => {
+      if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
+        this.hitMonster(m, dmg, p.x, p.y, 120)
+        m.applyBleed?.(bleed, 4000) // 🩸
+      }
+    })
+    return true
+  }
+
+  /** CRI DE RAGE (Guerrier) : +30% d'attaque (8 s) + pose 💀 VULNÉRABLE sur les ennemis proches. */
+  spellRageCry() {
+    const p = this.player
+    const now = this.time.now
+    const R = 130
+    p.spellBuff = { atk: Math.round(p.attackPower * 0.3), def: 0, until: now + 8000 * (p.spellDurationMul ?? 1) }
+    p.recomputeStats()
+    Audio.sfx('sfx_roar', { vol: 0.7 })
+    this.cameras.main.shake(160, 0.007)
+    const halo = this.add.circle(p.x, p.y, R, 0xff7a3a, 0.26).setDepth(p.y - 2).setScale(0.2)
+    this.tweens.add({ targets: halo, scale: 1, alpha: 0, duration: 480, ease: 'Quad.easeOut', onComplete: () => halo.destroy() })
+    this.monsters.getChildren().forEach((m) => {
+      if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) m.applyVulnerable?.(0.25, 6000) // 💀
+    })
+    this.floatingText(p.x, p.y - 18, 'RAGE ! +ATQ', '#ff8a4a')
+    return true
+  }
+
+  /** ÉTENDARD (Tank) : plante une bannière -> ZONE persistante (~8 s) qui rend VULNÉRABLES (💀) les ennemis
+   *  à l'intérieur (rafraîchi par tics). */
+  spellBanner() {
+    const p = this.player
+    const x = p.x, y = p.y
+    const R = 78
+    Audio.sfx(SFX.shield, { vol: 0.5 })
+    const zone = this.add.circle(x, y, R, 0xc0506a, 0.14).setDepth(y - 2)
+    const ring = this.add.circle(x, y, R, 0xc0506a, 0).setStrokeStyle(2, 0xff6a86, 0.7).setDepth(y - 1)
+    const pole = this.add.rectangle(x, y - 12, 3, 26, 0x6a4a2a).setDepth(y + 5)
+    const flag = this.add.rectangle(x + 6, y - 20, 12, 8, 0xc83a52).setDepth(y + 6)
+    this.tweens.add({ targets: [zone, ring], alpha: 0.35, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
+    const ev = this.time.addEvent({ delay: 700, repeat: 11, callback: () => { // ~8 s de tics
+      this.monsters.getChildren().forEach((m) => {
+        if (m.active && Phaser.Math.Distance.Between(x, y, m.x, m.y) <= R) m.applyVulnerable?.(0.25, 1100) // 💀 (rafraîchi)
+      })
+    } })
+    this.time.delayedCall(8200, () => { ev.remove(); this.tweens.killTweensOf([zone, ring]); zone.destroy(); ring.destroy(); pole.destroy(); flag.destroy() })
+    this.floatingText(x, y - 24, 'Étendard !', '#ff8aa0')
+    return true
+  }
+
+  /** GIVRE-BOUCLIER (Tank) : aura de givre (5 s) ; tout ennemi en mêlée (qui te frappe) est GELÉ (❄️) par tics. */
+  spellFrostWard() {
+    const p = this.player
+    const now = this.time.now
+    const DUR = Math.round(5000 * (p.spellDurationMul ?? 1))
+    Audio.sfx(SFX.shield, { vol: 0.55, detune: 300 })
+    const aura = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 60).setScale(1.7).setAlpha(0.85).setTint(0x9fe0ff)
+    if (this.anims.exists('fx-shield')) aura.play('fx-shield')
+    const follow = this.time.addEvent({ delay: 30, loop: true, callback: () => aura.setPosition(p.x, p.y).setDepth(p.y + 60) })
+    const frost = this.time.addEvent({ delay: 400, loop: true, callback: () => { // gèle qui te colle (mêlée)
+      this.monsters.getChildren().forEach((m) => { if (m.active && !m.isBoss && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= 34) m.applyFreeze?.(900) }) // ❄️
+    } })
+    this.time.delayedCall(DUR, () => { follow.remove(); frost.remove(); this.tweens.add({ targets: aura, alpha: 0, duration: 200, onComplete: () => aura.destroy() }) })
+    this.floatingText(p.x, p.y - 18, 'Givre-bouclier !', '#9fe0ff')
+    return true
+  }
+
+  /** SCEAU DE JUGEMENT (Soigneuse) : MARQUE la cible (⚡) -> chaque coup du joueur lui inflige un bonus sacré. */
+  spellJudgment() {
+    const p = this.player
+    const target = this.currentTarget(340)
+    if (!target || !target.active) { this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a'); return false }
+    const bonus = Math.max(3, Math.round(p.attackPower * 0.5 * (p.spellPowerMul ?? 1)))
+    target.applyMark?.(bonus, 8000) // ⚡
+    this.hitMonster(target, Math.round(p.attackPower * 1.2), p.x, p.y, 0)
+    Audio.sfx(SFX.heal, { vol: 0.6, detune: 200 })
+    const seal = this.add.sprite(target.x, target.y - 6, 'fx_spark').setDepth(target.y + 6).setScale(2).setTint(0xffe27a)
+    if (this.anims.exists('fx-spark')) { seal.play('fx-spark'); seal.once('animationcomplete', () => seal.destroy()) } else this.time.delayedCall(400, () => seal.destroy())
+    this.floatingText(target.x, target.y - 18, '⚡ Marqué', '#ffe27a')
+    return true
+  }
+
+  /** BÉNÉDICTION (Soigneuse) : +attaque et +défense (12 s) — buff de soutien (en solo, sur soi). */
+  spellBlessing() {
+    const p = this.player
+    const now = this.time.now
+    p.spellBuff = { atk: Math.round(p.attackPower * 0.2), def: Math.round(p.defense * 0.3) + 2, until: now + 12000 * (p.spellDurationMul ?? 1) }
+    p.recomputeStats()
+    Audio.sfx(SFX.heal, { vol: 0.6, detune: -100 })
+    const glow = this.add.circle(p.x, p.y, 26, 0xffe9a0, 0.3).setDepth(p.y - 2).setScale(0.4)
+    this.tweens.add({ targets: glow, scale: 1.4, alpha: 0, duration: 600, onComplete: () => glow.destroy() })
+    this.floatingText(p.x, p.y - 18, 'Bénédiction !', '#ffe9a0')
+    return true
+  }
+
+  // ===== ROSTER COMPLET (passe 2) : nouvelles compétences, réutilisent les briques existantes =====
+  /** FENDOIR (Guerrier) : entaille autour ; dégâts DOUBLÉS sur une cible 💀 VULNÉRABLE (exploite l'état). */
+  spellCleave() {
+    const p = this.player
+    const R = 62
+    const now = this.time.now
+    Audio.sfx(SFX.whoosh, { vol: 0.5 })
+    this.showSlash(p.x, p.y, p.facing)
+    this.monsters.getChildren().forEach((m) => {
+      if (!m.active) return
+      const half = m.body ? (m.body.halfWidth + m.body.halfHeight) / 2 : 0
+      if (Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) > R + half) return
+      const vuln = m.vulnUntil && now < m.vulnUntil
+      this.hitMonster(m, p.attackPower * (vuln ? 3.6 : 1.8), p.x, p.y, 130)
+    })
+    return true
+  }
+
+  /** BOND DU BOURREAU (Guerrier) : saut (i-frames) puis dégâts + ÉTOURDISSEMENT autour à l'atterrissage. */
+  spellLeap() {
+    const p = this.player
+    this.playerDash({ color: 0xffcf6b, dur: 180, spd: 470 })
+    Audio.sfx(SFX.whoosh, { vol: 0.6, detune: -150 })
+    this.time.delayedCall(190, () => {
+      if (this.gameOver || !p.active) return
+      const R = 76
+      this.cameras.main.shake(180, 0.008)
+      const wave = this.add.circle(p.x, p.y, R, 0xffcf6b, 0.22).setStrokeStyle(3, 0xffe0a0, 0.9).setDepth(p.y - 1).setScale(0.2)
+      this.tweens.add({ targets: wave, scale: 1, alpha: 0, duration: 360, onComplete: () => wave.destroy() })
+      const dmg = Math.round(p.attackPower * 1.6)
+      this.monsters.getChildren().forEach((m) => {
+        if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) { this.hitMonster(m, dmg, p.x, p.y, 160); m.stun?.(m.isBoss ? 1200 : 1800) }
+      })
+    })
+    return true
+  }
+
+  /** FURIE SANGLANTE (Guerrier, ULT) : DÉTONE le 🩸 SAIGNEMENT des ennemis proches -> gros dégâts cumulés. */
+  spellBloodFury() {
+    const p = this.player
+    const R = 110
+    const now = this.time.now
+    Audio.sfx('sfx_roar', { vol: 0.8 })
+    this.cameras.main.shake(260, 0.012); this.cameras.main.flash(140, 180, 20, 20)
+    const halo = this.add.circle(p.x, p.y, R, 0xc01020, 0.3).setDepth(p.y - 2).setScale(0.2)
+    this.tweens.add({ targets: halo, scale: 1, alpha: 0, duration: 520, onComplete: () => halo.destroy() })
+    this.monsters.getChildren().forEach((m) => {
+      if (!m.active || Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) > R) return
+      const bleeding = m.bleedUntil && now < m.bleedUntil
+      const dmg = Math.round(p.attackPower * 2 + (bleeding ? (m.bleedDmg ?? 0) * 6 : 0))
+      this.hitMonster(m, dmg, p.x, p.y, 150)
+      if (bleeding) { m.bleedUntil = 0; this.hitSpark(m.x, m.y, true) }
+    })
+    this.floatingText(p.x, p.y - 18, 'FURIE SANGLANTE !', '#ff4060')
+    return true
+  }
+
+  /** MUR DE GARDE (Tank) : grand bouclier d'ABSORPTION (~50% PV max) qui encaisse avant les PV. */
+  spellGuardWall() {
+    const p = this.player
+    const amount = Math.max(20, Math.round(p.maxHp * 0.5 * (p.spellPowerMul ?? 1)))
+    p.shieldHp = Math.max(p.shieldHp ?? 0, amount)
+    p.shieldHpUntil = this.time.now + 8000 * (p.spellDurationMul ?? 1)
+    this.spawnShieldBubble()
+    Audio.sfx(SFX.shield, { vol: 0.7 })
+    this.floatingText(p.x, p.y - 18, `Bouclier +${amount}`, '#9fd0ff')
+    return true
+  }
+
+  /** HEURTOIR (Tank) : harponne l'ennemi le plus proche, l'attire à soi et l'ÉTOURDIT (boss : juste étourdi). */
+  spellHook() {
+    const p = this.player
+    const target = this.currentTarget(220) || this.nearestMonster(p.x, p.y, 220, true)
+    if (!target || !target.active) { this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a'); return false }
+    Audio.sfx(SFX.whoosh, { vol: 0.5, detune: -200 })
+    const line = this.add.line(0, 0, p.x, p.y, target.x, target.y, 0xcfcfd6).setOrigin(0, 0).setLineWidth(2).setDepth(p.y + 5)
+    this.tweens.add({ targets: line, alpha: 0, duration: 260, onComplete: () => line.destroy() })
+    const dx = p.x - target.x, dy = p.y - target.y, d = Math.hypot(dx, dy) || 1
+    if (!target.isBoss) { target.setPosition(p.x - (dx / d) * 26, p.y - (dy / d) * 26); target.stun?.(1600); target.aggroed = true; target.returning = false }
+    else target.stun?.(800)
+    this.hitMonster(target, Math.round(p.attackPower * 1.4), p.x, p.y, 0)
+    return true
+  }
+
+  /** FORTERESSE (Tank, ULT) : −80% dégâts subis (4 s, via shieldUntil) + provoque + 💀 VULNÉRABLE autour. */
+  spellFortress() {
+    const p = this.player
+    const now = this.time.now
+    p.shieldUntil = now + 4000 * (p.spellDurationMul ?? 1)
+    Audio.sfx(SFX.shield, { vol: 0.8 }); Audio.sfx('sfx_roar', { vol: 0.4 })
+    this.cameras.main.shake(200, 0.008)
+    const bubble = this.add.sprite(p.x, p.y, 'fx_shield').setDepth(p.y + 61).setScale(2).setAlpha(0.9).setTint(0xffe08a)
+    if (this.anims.exists('fx-shield')) bubble.play('fx-shield')
+    const ev = this.time.addEvent({ delay: 30, loop: true, callback: () => bubble.setPosition(p.x, p.y).setDepth(p.y + 61) })
+    this.time.delayedCall(p.shieldUntil - now, () => { ev.remove(); this.tweens.add({ targets: bubble, alpha: 0, duration: 200, onComplete: () => bubble.destroy() }) })
+    const R = 150
+    this.monsters.getChildren().forEach((m) => {
+      if (!m.active || Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) > R) return
+      if (!m.isBoss) { m.engage?.(true); m.showAlert?.(now) }
+      m.applyVulnerable?.(0.25, 6000)
+    })
+    this.floatingText(p.x, p.y - 18, 'FORTERESSE !', '#ffe08a')
+    return true
+  }
+
+  /** TÉLÉPORTATION (Mage, neutre) : clignement court dans la direction du héros (esquive, i-frames). */
+  spellBlink() {
+    this.startBlinkAim(SKILL_BY_ID.blink)
+    return false // VISÉE : on ne paie ni mana ni cooldown ici (paiement à la confirmation du clic, cf. confirmAiming)
+  }
+
+  /** TÉLÉPORTATION CIBLÉE (façon Omen) : entre en mode VISÉE — anneau de portée + marqueur fantôme qui suit
+   *  le curseur (borné à la portée). Clic gauche = se téléporter (paie mana+cd) ; clic droit / re-touche = annuler. */
+  startBlinkAim(def) {
+    if (this._aiming) { this.cancelAiming(); return }
+    if (this.player.casting) return // déjà en train de se téléporter
+    const p = this.player
+    const range = 200
+    const ring = this.add.circle(p.x, p.y, range, 0x9b6bff, 0.06).setStrokeStyle(2, 0x9b6bff, 0.5).setDepth(p.y - 3)
+    const ghost = this.add.image(p.x, p.y, p.heroKey, p.frame?.name ?? 0).setAlpha(0.45).setTint(0xc9a8ff).setDepth(99989)
+    const marker = this.add.circle(p.x, p.y, 13, 0x9b6bff, 0.25).setStrokeStyle(2, 0xc9a8ff, 0.95).setDepth(99990)
+    this._aiming = { skillId: def.id, cost: def.cost, cd: def.cd, range, ring, ghost, marker, armedAt: this.time.now + 160, tx: p.x, ty: p.y + 24, mode: 'keys', lpx: null, lpy: null }
+    this.scene.get('UIScene')?.showToast?.('Place l\'arrivée (ZQSD/flèches ou souris) · clic/Espace = partir · clic droit = annuler', '#c9a8ff')
+  }
+
+  /** Met à jour le point d'arrivée : on le DÉPLACE comme un joueur (touches ZQSD/WASD/flèches), sinon il suit
+   *  le curseur ; borné à la portée. Appelé chaque frame. */
+  updateAiming(delta = 16) {
+    const a = this._aiming
+    if (!a) return
+    if (this.gameOver || this.inInterior || this.inDungeon) { this.cancelAiming(); return }
+    const p = this.player
+    const c = p.cursors, k = p.keys
+    const left = c.left.isDown || k.A.isDown || k.Q.isDown, right = c.right.isDown || k.D.isDown
+    const up = c.up.isDown || k.W.isDown || k.Z.isDown, down = c.down.isDown || k.S.isDown
+    const ptr = this.input.activePointer
+    // bouger la SOURIS repasse en visée souris ; appuyer une touche repasse en pilotage clavier
+    if (a.lpx == null) { a.lpx = ptr.worldX; a.lpy = ptr.worldY }
+    if (Math.hypot(ptr.worldX - a.lpx, ptr.worldY - a.lpy) > 4) { a.mode = 'mouse'; a.lpx = ptr.worldX; a.lpy = ptr.worldY }
+    if (left || right || up || down) a.mode = 'keys'
+    let tx = a.tx, ty = a.ty
+    if (a.mode === 'keys') {
+      let vx = (right ? 1 : 0) - (left ? 1 : 0), vy = (down ? 1 : 0) - (up ? 1 : 0)
+      if (vx && vy) { const inv = 1 / Math.SQRT2; vx *= inv; vy *= inv }
+      const step = 230 * (delta / 1000) // ~vitesse de déplacement d'un joueur
+      tx += vx * step; ty += vy * step
+    } else { tx = ptr.worldX; ty = ptr.worldY }
+    const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy) || 1
+    if (d > a.range) { tx = p.x + (dx / d) * a.range; ty = p.y + (dy / d) * a.range }
+    // en DONJON : l'arrivée reste dans la salle (sinon téléport dans le noir hors-map)
+    const db = this.inDungeon && this._dungeon ? this._dungeon.bounds : null
+    if (db) { tx = Phaser.Math.Clamp(tx, db.x + 8, db.x + db.w - 8); ty = Phaser.Math.Clamp(ty, db.y + 8, db.y + db.h - 8) }
+    // VALIDITÉ du terrain d'arrivée : pas d'EAU, et on ne SORT PAS d'une arène scellée (marqueur rouge sinon)
+    let valid = db ? true : !this.onWater(Math.floor(tx / TILE), Math.floor(ty / TILE), 1)
+    if (valid && this.activeArena && this.dist(tx, ty, this.activeArena.cx, this.activeArena.cy) > this.activeArena.r - 12) valid = false
+    a.valid = valid
+    a.marker.setStrokeStyle(2, valid ? 0xc9a8ff : 0xff5050, 0.95).setFillStyle(valid ? 0x9b6bff : 0xc02020, 0.25)
+    a.ghost.setTint(valid ? 0xc9a8ff : 0xff6060)
+    a.tx = tx; a.ty = ty
+    a.marker.setPosition(tx, ty)
+    a.ghost.setPosition(tx, ty).setFlipX(tx < p.x)
+    a.ring.setPosition(p.x, p.y).setDepth(p.y - 3)
+  }
+
+  /** Confirme la téléportation (clic) : paie mana + cooldown, puis un COURT DÉLAI d'incantation à l'origine
+   *  (héros figé + aura qui se resserre + fantôme à destination) avant le départ. */
+  confirmAiming() {
+    const a = this._aiming
+    if (!a || this.time.now < a.armedAt) return // ignore le clic d'amorçage (anti double-déclenchement)
+    if (a.valid === false) { this.scene.get('UIScene')?.showToast?.('Destination invalide (eau / hors de l\'arène)', '#ff8a8a'); this.scene.get('UIScene')?.playDenied?.(); return }
+    const p = this.player
+    const tx = a.tx, ty = a.ty
+    p.spendMana(a.cost); p.skillCd ||= {}; p.skillCd[a.skillId] = this.time.now + a.cd
+    this.cancelAiming() // retire les visuels de VISÉE
+    // INCANTATION COURTE (~0,45 s) : le héros est figé (p.casting) à l'origine, le temps de partir.
+    const DUR = 450
+    p.casting = true; p.setVelocity(0, 0); p.moveTarget = null
+    Audio.sfx(SFX.magic ?? SFX.whoosh, { vol: 0.45, detune: 300 })
+    const aura = this.add.circle(p.x, p.y + 2, 18, 0x9b6bff, 0.22).setStrokeStyle(2, 0xc9a8ff, 0.85).setDepth(p.y - 2)
+    this.tweens.add({ targets: aura, scale: 0.25, alpha: 0.75, duration: DUR, ease: 'Quad.easeIn' })
+    const lbl = this.add.text(p.x, p.y - 22, 'Téléportation…', { fontFamily: FONT, fontSize: '8px', color: '#c9a8ff', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1).setDepth(99999).setResolution(3)
+    const destGhost = this.add.image(tx, ty, p.heroKey, p.frame?.name ?? 0).setAlpha(0).setTint(0xc9a8ff).setDepth(ty - 1)
+    this.tweens.add({ targets: destGhost, alpha: 0.5, duration: DUR })
+    this.time.delayedCall(DUR, () => {
+      aura.destroy(); lbl.destroy(); destGhost.destroy()
+      p.casting = false
+      if (!p.active || this.gameOver) return
+      const g1 = this.add.image(p.x, p.y, p.heroKey, p.frame?.name ?? 0).setAlpha(0.5).setTint(0xc9a8ff).setDepth(p.depth - 1)
+      this.tweens.add({ targets: g1, alpha: 0, duration: 240, onComplete: () => g1.destroy() })
+      p.setPosition(tx, ty).setVelocity(0, 0); p.moveTarget = null
+      p.invulnUntil = this.time.now + 250
+      Audio.sfx(SFX.whoosh, { vol: 0.5, detune: 400 })
+      const fx = this.add.circle(tx, ty, 10, 0x9b6bff, 0.5).setBlendMode(Phaser.BlendModes.ADD).setDepth(p.depth + 2)
+      this.tweens.add({ targets: fx, scale: 2.6, alpha: 0, duration: 300, onComplete: () => fx.destroy() })
+    })
+  }
+
+  /** Sort du mode visée (annulation OU après téléportation) : détruit les visuels. */
+  cancelAiming() {
+    const a = this._aiming
+    if (!a) return
+    a.ring?.destroy(); a.ghost?.destroy(); a.marker?.destroy()
+    this._aiming = null
+  }
+
+  /** MÉTÉORE (Mage, neutre) : incantation puis ÉNORME impact de zone sur la cible (ou devant). */
+  spellMeteor() {
+    const p = this.player
+    const dir = { down: [0, 1], up: [0, -1], left: [-1, 0], right: [1, 0] }[p.facing] || [0, 1]
+    const target = this.currentTarget(340)
+    const fx = p.x + dir[0] * 100, fy = p.y + dir[1] * 100
+    return this.incant(900, 'Météore…', 0xff7a3a, () => {
+      const gx = target && target.active ? target.x : fx
+      const gy = target && target.active ? target.y : fy
+      const R = Math.round(72 * (p.spellPowerMul ?? 1))
+      this.cameras.main.shake(220, 0.008)
+      Audio.sfx(SFX.meteor, { vol: 0.8 })
+      const boom = this.add.sprite(gx, gy, 'fx_explosion').setDepth(gy + 6).setScale(2.4)
+      if (this.anims.exists('fx-explosion')) { boom.play('fx-explosion'); boom.once('animationcomplete', () => boom.destroy()) } else this.time.delayedCall(420, () => boom.destroy())
+      const dmg = Math.round(p.attackPower * 3 * (p.spellPowerMul ?? 1))
+      this.monsters.getChildren().forEach((m) => { if (m.active && Phaser.Math.Distance.Between(gx, gy, m.x, m.y) <= R) this.hitMonster(m, dmg, gx, gy, 120) })
+    })
+  }
+
+  /** CATACLYSME (Mage, ULT neutre) : zone IMMENSE qui DÉTONE tous les états du champ (bonus par état). */
+  spellCataclysm() {
+    const p = this.player
+    return this.incant(1100, 'Cataclysme…', 0x9b4dff, () => {
+      const R = 210
+      const now = this.time.now
+      this.cameras.main.shake(320, 0.014); this.cameras.main.flash(160, 150, 80, 200)
+      const ring = this.add.circle(p.x, p.y, R, 0x9b4dff, 0.22).setDepth(p.y - 2).setScale(0.1)
+      this.tweens.add({ targets: ring, scale: 1, alpha: 0, duration: 600, onComplete: () => ring.destroy() })
+      const base = Math.round(p.attackPower * 2.6 * (p.spellPowerMul ?? 1))
+      this.monsters.getChildren().forEach((m) => {
+        if (!m.active || Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) > R) return
+        let bonus = 0
+        if (m.burnUntil && now < m.burnUntil) { bonus += base * 0.6; m.burnUntil = 0 }
+        if (m.bleedUntil && now < m.bleedUntil) { bonus += base * 0.6; m.bleedUntil = 0 }
+        if (m.frozenUntil && now < m.frozenUntil) { bonus += base * 0.6; m.frozenUntil = 0 }
+        if (m.vulnUntil && now < m.vulnUntil) { bonus += base * 0.6; m.vulnUntil = 0 } // détoné comme les autres états (oubli corrigé)
+        if (m.markUntil && now < m.markUntil) { bonus += base * 0.6; m.markUntil = 0 }
+        this.hitMonster(m, base + Math.round(bonus), p.x, p.y, 160)
+        const fx = this.add.sprite(m.x, m.y, 'fx_explosion').setDepth(m.y + 6).setScale(1.6)
+        if (this.anims.exists('fx-explosion')) { fx.play('fx-explosion'); fx.once('animationcomplete', () => fx.destroy()) } else this.time.delayedCall(350, () => fx.destroy())
+      })
+      this.floatingText(p.x, p.y - 18, 'CATACLYSME !', '#c89aff')
+    })
+  }
+
+  /** PURIFICATION (Soigneuse) : te soigne et RALENTIT les ennemis proches. */
+  spellPurify() {
+    const p = this.player
+    const healed = p.heal(Math.round(p.maxHp * 0.18 * (p.spellPowerMul ?? 1)))
+    Audio.sfx(SFX.heal, { vol: 0.6, detune: 150 })
+    this.showHealEffect(p.x, p.y)
+    if (healed > 0) this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A')
+    const R = 110
+    const glow = this.add.circle(p.x, p.y, R, 0xfff0b0, 0.2).setDepth(p.y - 2).setScale(0.2)
+    this.tweens.add({ targets: glow, scale: 1, alpha: 0, duration: 480, onComplete: () => glow.destroy() })
+    this.monsters.getChildren().forEach((m) => { if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) m.applySlow?.(2500, 0.5) })
+    return true
+  }
+
+  /** NOVA SACRÉE (Soigneuse) : explosion de lumière -> te SOIGNE et inflige des dégâts sacrés autour. */
+  spellHolyNova() {
+    const p = this.player
+    const R = 96
+    Audio.sfx(SFX.heal, { vol: 0.65 })
+    this.cameras.main.shake(120, 0.004)
+    const nova = this.add.circle(p.x, p.y, R, 0xfff0b0, 0.28).setDepth(p.y - 1).setScale(0.15)
+    this.tweens.add({ targets: nova, scale: 1, alpha: 0, duration: 420, onComplete: () => nova.destroy() })
+    const healed = p.heal(Math.round(p.maxHp * 0.12 * (p.spellPowerMul ?? 1)))
+    if (healed > 0) { this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A'); this.showHealEffect(p.x, p.y) }
+    const dmg = Math.round(p.attackPower * 1.5 * (p.spellPowerMul ?? 1))
+    this.monsters.getChildren().forEach((m) => { if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) this.hitMonster(m, dmg, p.x, p.y, 90) })
+    return true
+  }
+
+  /** CHÂTIMENT (Soigneuse) : trait sacré mono-cible ; dégâts DOUBLÉS sur une cible ⚡ MARQUÉE ou 💀 VULNÉRABLE
+   *  (détone la marque). */
+  spellSmite() {
+    const p = this.player
+    const target = this.currentTarget(340)
+    if (!target || !target.active) { this.floatingText(p.x, p.y - 18, 'Aucune cible', '#ffd27a'); return false }
+    const now = this.time.now
+    const amp = (target.markUntil && now < target.markUntil) || (target.vulnUntil && now < target.vulnUntil)
+    const orb = this.add.image(p.x, p.y - 6, 'proj').setTint(0xffe27a).setScale(2.2).setDepth(p.y + 5)
+    this.tweens.add({ targets: orb, x: target.x, y: target.y, duration: 180, ease: 'Quad.easeIn', onComplete: () => {
+      orb.destroy(); if (!target.active) return
+      const dmg = Math.round(p.attackPower * (amp ? 4 : 2) * (p.spellPowerMul ?? 1))
+      const boom = this.add.sprite(target.x, target.y, 'fx_spark').setDepth(target.y + 6).setScale(2.4).setTint(0xffe27a)
+      if (this.anims.exists('fx-spark')) { boom.play('fx-spark'); boom.once('animationcomplete', () => boom.destroy()) } else this.time.delayedCall(350, () => boom.destroy())
+      if (amp && target.markUntil) target.markUntil = 0
+      Audio.sfx(SFX.meteor, { vol: 0.6, detune: 200 })
+      this.hitMonster(target, dmg, p.x, p.y, 60)
+    } })
+    return true
+  }
+
+  /** Compétences CONNUES (déverrouillées) : flag de test, niveau, ou débloquée par le contenu. */
+  skillKnown(id) {
+    const p = this.player
+    const def = SKILL_BY_ID[id]
+    if (!def) return false
+    // VERROU DE CLASSE + ÉLÉMENT (mage) : on ne peut connaître qu'un sort de SA classe, et pour le mage
+    // seulement de SON élément (apparence) + les sorts neutres. Gate DUR (même avec le flag de test).
+    if (def.classKey !== p.className) return false
+    if (def.classKey === 'mage' && def.element && def.element !== p.element) return false
+    if (this.testUnlockSkills) return true
+    // GATED (fortes/rares) : seulement si gagnée sur un boss (unlockedSkills) ; les autres = par niveau.
+    return (p.unlockedSkills || []).includes(id) || (!def.gated && p.level >= def.level)
+  }
+
+  /** CHASSE À LA COMPÉTENCE : battre un BOSS apprend la PROCHAINE compétence GATED de la classe (ordre du
+   *  catalogue, élément du mage respecté). Persisté + annonce. Sans effet si toutes déjà apprises. */
+  tryUnlockSkillFromBoss(mon) {
+    const p = this.player
+    if (!p) return
+    p.unlockedSkills ||= []
+    const next = skillPoolFor(p.className, p.element).find((s) => s.gated && !p.unlockedSkills.includes(s.id))
+    if (!next) { // toutes les compétences gated déjà gagnées -> on ferme la boucle UNE fois (pas à chaque boss)
+      if (!this._allSkillsToastShown) { this._allSkillsToastShown = true; this.time.delayedCall(1300, () => this.scene.get('UIScene')?.showToast?.('⚜ Tu maîtrises déjà toutes les compétences de ta voie.', '#c9a8ff')) }
+      return
+    }
+    p.unlockedSkills.push(next.id)
+    this.saveGame?.()
+    this.time.delayedCall(1300, () => { // après le toast de victoire du boss
+      this.scene.get('UIScene')?.showToast?.(`⚜ Compétence apprise : ${next.name} ! (équipe-la chez Ylva)`, '#c9a8ff')
+      Audio.sfx('sfx_levelup', { vol: 0.6, detune: 200 })
+    })
+  }
+
+  /** Table id -> effet (mutualise les méthodes spellXxx pour le cast par slot). */
+  skillEffects() {
+    return {
+      // Guerrier
+      charge: () => this.spellCharge(), seismicstrike: () => this.spellSeismicStrike(), whirlwind: () => this.spellWhirlwind(), ragecry: () => this.spellRageCry(), warcry: () => this.spellWarcry(),
+      cleave: () => this.spellCleave(), leap: () => this.spellLeap(), bloodfury: () => this.spellBloodFury(),
+      // Tank
+      shieldcharge: () => this.spellShieldCharge(), provoke: () => this.spellProvoke(), banner: () => this.spellBanner(), shockwave: () => this.spellShockwave(), frostward: () => this.spellFrostWard(),
+      guardwall: () => this.spellGuardWall(), hook: () => this.spellHook(), fortress: () => this.spellFortress(),
+      // Mage (élément verrouillé par apparence + sorts neutres)
+      firestorm: () => this.spellFirestorm(), blizzard: () => this.spellBlizzard(), voidstorm: () => this.spellVoidstorm(), pyroblast: () => this.spellPyroblast(), frostlance: () => this.spellFrostlance(), shadowbolt: () => this.spellShadowbolt(), mirror: () => this.spellMirrorImage(),
+      blink: () => this.spellBlink(), meteor: () => this.spellMeteor(), cataclysm: () => this.spellCataclysm(),
+      // Soigneuse
+      wordshield: () => this.spellShield(), heal: () => this.spellHeal(), judgment: () => this.spellJudgment(), sanctuary: () => this.spellSanctuary(), blessing: () => this.spellBlessing(), resurrect: () => this.spellResurrect(),
+      purify: () => this.spellPurify(), holynova: () => this.spellHolyNova(), smite: () => this.spellSmite(),
+    }
+  }
+
+  /** CAST PAR SLOT (touches 1..4) : lit la compétence équipée dans `player.loadout[i]`, vérifie déblocage +
+   *  cooldown (par id, `player.skillCd`) + mana, exécute l'effet, puis paie mana + pose le cooldown. */
+  castSlot(i) {
+    if (this.uiBusy() || this.gameOver || this.inInterior) return
+    if (this.sailBlocked()) return
+    const p = this.player
+    if (!p || p.hp <= 0) return
+    const id = p.loadout?.[i]
+    if (!id) return // slot vide
+    if (this._aiming) { if (this._aiming.skillId === id) this.cancelAiming(); return } // en visée : re-presser annule, autre touche ignorée
+    const def = SKILL_BY_ID[id]
+    if (!def) return
+    if (!this.skillKnown(id)) return this.floatingText(p.x, p.y - 18, `Niv ${def.level}`, '#ffd27a')
+    const now = this.time.now
+    p.skillCd = p.skillCd || {}
+    if (now < (p.skillCd[id] || 0)) return this.floatingText(p.x, p.y - 18, 'Pas prêt', '#ffd27a')
+    if (p.mana < def.cost) return this.floatingText(p.x, p.y - 18, 'Mana !', '#7fb3ff')
+    const fn = this.skillEffects()[id]
+    // _castingSkill = visible par incant() (appelé SYNCHRONEMENT par fn) -> permet le REMBOURSEMENT
+    // mana+cooldown si l'incantation est interrompue par un coup (sinon : payé pour rien).
+    this._castingSkill = { id, cost: def.cost }
+    const ok = fn && fn() !== false
+    this._castingSkill = null
+    if (!ok) return // sort inconnu / non exécuté -> on ne consomme ni mana ni cooldown
+    p.spendMana(def.cost)
+    p.skillCd[id] = now + def.cd
+  }
+
+  /** Le loadout (4 sorts équipés) ne se réorganise qu'en lieu SÛR : au village (prairie) ou dans un intérieur
+   *  de village. Interdit en donjon / arène de boss / mort. (Onglet « Sorts » de la fiche perso, touche C.) */
+  canEditLoadout() {
+    if (this.gameOver || this.inDungeon || this.activeArena) return false
+    return this.inInterior || this.currentBiome === 'prairie'
   }
 
   /** MULTIJOUEUR (à venir) : renvoie l'ALLIÉ MORT le plus proche dans le rayon de réanimation, ou null.
@@ -7001,6 +7458,7 @@ export default class GameScene extends Phaser.Scene {
     if (i >= 0) this.bosses.splice(i, 1)
     if (this.activeBoss === mon) this.activeBoss = null
     if (this.activeArena?.boss === mon) this.releaseArena() // l'arène s'ouvre quand le boss tombe
+    this.tryUnlockSkillFromBoss(mon) // CHASSE À LA COMPÉTENCE : tout boss (rare/donjon/gardien/monde) apprend la prochaine gated
     if (mon.isRare) { this.onRareKilled(mon); return } // RARE ♦ de Sargèr : butin allégé + respawn dédié (PAS le butin de boss)
     if (mon.dungeonBoss) { this.onDungeonBossKilled(mon); return } // mini-boss de donjon (grottes d'Ergas) : butin dédié + coffre
     if (mon.guardian) this.onGuardianSlain(mon) // GAUNTLET : gardien de Sargèr tombé -> progresse vers le sceau de Dargoth
@@ -7387,10 +7845,11 @@ export default class GameScene extends Phaser.Scene {
       return
     }
     this.updateLowHpVignette(time) // tension PV bas (avant le return gameOver : la branche else masque le voile à la mort)
-    if (this.gameOver) return
+    if (this.gameOver) { if (this._aiming) this.cancelAiming(); return }
     if (this.inDungeon) { this.updateDungeon(time, delta); return } // dans un donjon instancié : combat actif, monde gelé
     if (this.inInterior) { this.updateInterior(time, delta); return } // dans un bâtiment : monde extérieur gelé
     this.player.update(time)
+    this.updateAiming(delta) // mode visée (téléportation ciblée) : pilote l'arrivée au clavier / à la souris
     const p = this.player
     p.setDepth(p.y)
     // ENTRÉE AUTOMATIQUE au CONTACT de la porte (taverne/apothicaire) — aucun message ni bouton.
@@ -7553,6 +8012,9 @@ export default class GameScene extends Phaser.Scene {
    *  le remet à zéro + recalcule les stats (retire le +ATQ/+DÉF). Le +ATQ/+DÉF lui-même est lu dans recomputeStats. */
   updateFoodBuff(time) {
     const p = this.player
+    // BUFF DE SORT (Cri de rage / Bénédiction) : à l'expiration, on l'efface + recalcule (retire le +ATQ/+DÉF).
+    const sb = p?.spellBuff
+    if (sb && sb.until && time >= sb.until) { p.spellBuff = { atk: 0, def: 0, until: 0 }; p.recomputeStats() }
     const fb = p?.foodBuff
     if (!fb || !fb.until) return
     if (time >= fb.until) { // buff expiré -> on l'efface et on recalcule (sinon le +ATQ/+DÉF resterait dans les stats)
@@ -7853,7 +8315,8 @@ export default class GameScene extends Phaser.Scene {
     } else { this._wasNight = night }
     // teinte : crépuscule/aube mauve (n modéré) -> bleu nuit profond (minuit), opacité ∝ n
     this.nightOverlay.setFillStyle(lerpHex(0x3a2e54, 0x070d28, n), 1)
-    this.nightOverlay.setAlpha(NIGHT_MAX_ALPHA * n)
+    // ARÈNE DE BOSS : voile nocturne PLAFONNÉ (0.25) le temps du combat -> télégraphes/AoE lisibles même en pleine nuit
+    this.nightOverlay.setAlpha(this.activeArena ? Math.min(NIGHT_MAX_ALPHA * n, 0.25) : NIGHT_MAX_ALPHA * n)
     // (le village/prairie reste de jour : trou permanent dans le voile via le masque radial inversé)
     // AMBIANCE : nuages du monde qui DÉRIVENT doucement + GOD RAYS forts le jour (n=0), nuls la nuit (n=1)
     if (this.worldClouds) { this.worldClouds.tilePositionX = time * 0.006; this.worldClouds.tilePositionY = time * 0.0032 }
@@ -7948,9 +8411,9 @@ export default class GameScene extends Phaser.Scene {
     }
     p.hp = p.maxHp
     p.mana = p.maxMana // mana pleine au respawn
-    p.nextSpellAt = 0
-    p.nextSpell2At = 0
-    p.nextSpell3At = 0 // COMPÉTENCES RESET à la mort : tous les cooldowns purgés -> kit prêt au respawn
+    p.skillCd = {} // COMPÉTENCES RESET à la mort : tous les cooldowns (par id) purgés -> kit prêt au respawn
+    p.spellBuff = { atk: 0, def: 0, until: 0 } // buffs de sort dissipés à la mort
+    p.recomputeStats()
     p.clearTint()
     p.setVelocity(0, 0)
     p.moveTarget = null

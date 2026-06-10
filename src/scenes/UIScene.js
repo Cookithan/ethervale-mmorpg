@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { ITEMS, MATERIALS, RECIPES, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, SHOP_CONFIGS, SHOP_MAX_TIER, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
-import { SKILL_ICONS, SPELL3_COST } from '../data/classes.js'
+import { SKILL_ICONS, SKILLS, SKILL_BY_ID, skillPoolFor } from '../data/classes.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
 // couleur du pseudo selon la classe (Guerrier rouge · Tank bleu · Mage violet · Soigneur vert)
@@ -40,6 +40,10 @@ export default class UIScene extends Phaser.Scene {
     this.forgeObjects = []
     this.bankOpen = false // coffre (banque)
     this.bankObjects = []
+    this.grimoireOpen = false // grimoire (compétences) ouvert via l'apothicaire
+    this.grimoireObjects = []
+    this.apothChoiceOpen = false // petit menu de l'apothicaire : Potions / Sorts
+    this.apothChoiceObjects = []
     this.forgeTab = 'craft' // onglet du panneau forge par défaut : 'craft' (fabriquer) | 'upgrade' (réparer/améliorer)
     this.craftCat = 'potion' // sous-catégorie de l'onglet Fabriquer : 'potion' | 'gear'
     this.pauseOpen = false
@@ -128,6 +132,8 @@ export default class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-J', () => this.toggleJournal()) // J : journal de quêtes
     this.input.keyboard.on('keydown-ESC', () => {
       if (this.dialogueOpen) this.closeDialogue()
+      else if (this.apothChoiceOpen) this.closeApothChoice()
+      else if (this.grimoireOpen) this.closeGrimoire()
       else if (this.forgeOpen) this.closeForge()
       else if (this.bankOpen) this.closeBank()
       else if (this.reliquaireOpen) this.closeReliquaire()
@@ -168,12 +174,10 @@ export default class UIScene extends Phaser.Scene {
 
     // aide (haut-centre) — adaptée aux capacités de la classe
     const ab = this.game_.player?.abilities ?? { melee: true, ranged: false, heal: false }
-    const spell = this.game_.player?.spell
     const parts = ['Clic = aller']
     if (ab.melee) parts.push('Espace = attaque')
     if (ab.ranged) parts.push('F = attaque')
-    if (spell) parts.push(`1 = ${spell.name}`)
-    parts.push('C = perso', 'M = carte', 'Échap = menu')
+    parts.push('1-4 = sorts (config. chez Ylva)', 'C = perso', 'M = carte', 'Échap = menu')
     reg(
       this.add
         .text(cw / 2, 8, parts.join(' · '), {
@@ -294,34 +298,38 @@ export default class UIScene extends Phaser.Scene {
       stroke: '#000000', strokeThickness: 6, shadow: { offsetX: 0, offsetY: 2, color: '#000', blur: 8, fill: true },
     }).setOrigin(0.5).setDepth(140).setVisible(false))
 
-    // --- BARRE DE COMPÉTENCES (bas-droite) : 4 cases carrées style WoW = ATK · Sort 1 · Sort 2 · Sort 3 (set) ---
-    // Icônes (RPG Ability Icons), bordure dorée (émeraude pour le set), raccourci clavier, voile + chiffre de
-    // cooldown, cadenas si verrouillé, flash au lancement. La LOGIQUE (clic/cooldown/mana) est inchangée.
+    // --- BARRE DE COMPÉTENCES (bas-droite) : ATK + 4 SLOTS configurables (bibliothèque + loadout) ---
+    // Les 4 slots lisent player.loadout ; chaque case = compétence équipée (icône/cd/coût/verrou par niveau).
+    // Au swap (onglet « Sorts » de la fiche perso) closeChar appelle rebuildHud() -> la barre reflète le nouveau loadout.
     const p = this.game_.player
-    const sp1 = p.spell
-    const sp2 = p.spell2
-    const setDef = SETS[p.className]
-    const size = 52
+    const size = 48
     const bgap = 6
     const byc = xpY - 8 - size / 2
     const rightCx = cw - 14 - size / 2
-    const cx = (i) => rightCx - i * (size + bgap) // i=0 -> droite (Sort 3), i=3 -> gauche (ATK)
-    this.skillsRect = new Phaser.Geom.Rectangle(cx(3) - size / 2 - 2, byc - size / 2 - 2, (size + bgap) * 3 + size + 4, size + 4)
+    const cx = (i) => rightCx - i * (size + bgap) // i=0 -> droite (slot 4) ... i=4 -> gauche (ATK)
+    this.skillsRect = new Phaser.Geom.Rectangle(cx(4) - size / 2 - 2, byc - size / 2 - 2, (size + bgap) * 4 + size + 4, size + 4)
     const tnow = () => this.game_.time.now
     this.skillUpdaters = []
     // TOOLTIP de compétence (NOM + UTILITÉ) affiché au survol d'une case de la barre
     this.skillTip = reg(this.add.text(0, 0, '', { fontFamily: 'monospace', fontSize: '11px', color: '#ffe9c0', align: 'center', backgroundColor: 'rgba(11,15,23,0.94)', padding: { x: 8, y: 6 }, stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 1).setDepth(160).setVisible(false))
-    // multiplicateur d'attaque -> dégâts ~ affichés au survol (sorts purement utilitaires = pas de ligne dégâts)
-    const SP_DMG = { charge: 2.2, whirlwind: 1.7, shieldcharge: 2.5, pyroblast: 3.5, frostlance: 3.2, shadowbolt: 3.2, shockwave: 2.2 }
-    const sp3Name = setDef?.skillName ?? 'Panoplie'
-    // ATK (attaque de base) — gauche
-    this.buildSkillCase(reg, cx(3), byc, size, { iconKey: ab.melee ? 'skill_atk_melee' : 'skill_atk_ranged', shortcut: ab.melee ? 'Esp' : 'F', onClick: () => this.game_.basicAttack?.(), title: 'Attaque', dmgMul: 1 })
-    // Sort 1
-    this.buildSkillCase(reg, cx(2), byc, size, { iconKey: SKILL_ICONS[sp1?.id], shortcut: '1', onClick: () => this.game_.castSpell?.(), cd: () => ({ rem: Math.max(0, p.nextSpellAt - tnow()), total: sp1?.cd ?? 1 }), cost: () => sp1?.cost, title: sp1?.name, dmgMul: SP_DMG[sp1?.id] })
-    // Sort 2 (déverrouillé niv `spell2.level`)
-    this.buildSkillCase(reg, cx(1), byc, size, { iconKey: SKILL_ICONS[sp2?.id], shortcut: '2', onClick: () => this.game_.castSpell2?.(), cd: () => ({ rem: Math.max(0, p.nextSpell2At - tnow()), total: sp2?.cd ?? 1 }), cost: () => sp2?.cost, locked: () => (!this.game_.testUnlockSkills && p.level < (sp2?.level ?? 10) ? `Niv\n${sp2?.level ?? 10}` : null), title: sp2?.name, dmgMul: SP_DMG[sp2?.id] })
-    // Sort 3 = compétence de PANOPLIE (bordure émeraude, verrouillé tant que la panoplie n'est pas complète)
-    this.buildSkillCase(reg, cx(0), byc, size, { iconKey: SKILL_ICONS[setDef?.skill], shortcut: '3', setBorder: true, onClick: () => this.game_.castSpell3?.(), cd: () => ({ rem: Math.max(0, (p.nextSpell3At ?? 0) - tnow()), total: 35000 }), cost: () => SPELL3_COST[this.game_.character?.classKey] ?? 45, locked: () => (this.game_.testUnlockSkills || p.activeSet ? null : 'Set\n4/4'), title: sp3Name, dmgMul: SP_DMG[setDef?.skill] })
+    // ATK (attaque de base) — case de gauche
+    this.buildSkillCase(reg, cx(4), byc, size, { iconKey: ab.melee ? 'skill_atk_melee' : 'skill_atk_ranged', shortcut: ab.melee ? 'Esp' : 'F', onClick: () => this.game_.basicAttack?.(), title: 'Attaque', dmgMul: 1 })
+    // 4 SLOTS configurables (touches 1..4) lus depuis player.loadout
+    for (let s = 0; s < 4; s++) {
+      const slot = s
+      const id0 = p.loadout?.[slot] // id à la construction (la barre est reconstruite au swap)
+      const d0 = SKILL_BY_ID[id0]
+      this.buildSkillCase(reg, cx(3 - s), byc, size, {
+        shortcut: `${s + 1}`,
+        iconKey: SKILL_ICONS[id0],
+        onClick: () => this.game_.castSlot?.(slot),
+        cd: () => { const id = this.game_.player.loadout?.[slot]; const d = SKILL_BY_ID[id]; return { rem: Math.max(0, (this.game_.player.skillCd?.[id] ?? 0) - tnow()), total: d?.cd ?? 1 } },
+        cost: () => SKILL_BY_ID[this.game_.player.loadout?.[slot]]?.cost,
+        locked: () => { const id = this.game_.player.loadout?.[slot]; if (!id) return null; return this.game_.skillKnown?.(id) ? null : `Niv\n${SKILL_BY_ID[id]?.level ?? '?'}` },
+        title: d0?.name,
+        dmgMul: d0?.dmgMul,
+      })
+    }
 
     // --- BOUTON PERSO (HUD, accès facile souris+tactile) : portrait + « C » en bas-gauche ---
     const pbSz = 48
@@ -774,7 +782,7 @@ export default class UIScene extends Phaser.Scene {
       reg(this.add.text(x0 + W - 26, setTop + 30, fmt(set.bonus2), { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: count >= 2 ? emerald : '#7c715a' }).setOrigin(1, 0))
       reg(this.add.text(x0 + 26, setTop + 48, '4 pièces', { fontFamily: 'monospace', fontSize: '10px', color: '#cdb78a' }).setOrigin(0, 0))
       reg(this.add.text(x0 + W - 26, setTop + 48, fmt(set.bonus4), { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: count >= 4 ? emerald : '#7c715a' }).setOrigin(1, 0))
-      reg(this.add.text(cx, setTop + 70, `★ ${set.skillName}  ·  butin de boss`, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: count >= 4 ? '#ffe066' : '#d8b25a' }).setOrigin(0.5, 0))
+      reg(this.add.text(cx, setTop + 70, count >= 4 ? `★ « ${set.skillName} » appris (équipe-le chez Ylva)` : `★ 4/4 : apprend « ${set.skillName} »  ·  pièces sur les boss`, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: count >= 4 ? '#ffe066' : '#d8b25a' }).setOrigin(0.5, 0))
     }
 
     // ===== CARACTÉRISTIQUES (stats lisibles + icônes) =====
@@ -889,6 +897,212 @@ export default class UIScene extends Phaser.Scene {
   }
 
   destroyBank() { this.bankObjects.forEach((o) => o.destroy()); this.bankObjects = [] }
+
+  // ============ APOTHICAIRE : menu Potions / Sorts (Ylva « gère tout ») ============
+  /** Petit menu quand on parle à Ylva : Potions (sa carte) ou Sorts (le grimoire). */
+  openApothChoice() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.forgeOpen) this.closeForge()
+    if (this.shopOpen) this.closeShop()
+    this.apothChoiceOpen = true
+    this.apothChoiceObjects = []
+    this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 0 })
+    const reg = (o) => { this.apothChoiceObjects.push(o); return o }
+    const cw = this.scale.width, ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.6).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeApothChoice()))
+    const W = 360, H = 184, x0 = cw / 2 - W / 2, y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, 0x1f2417, 0.99).setStrokeStyle(3, 0x8ef0a0).setInteractive())
+    reg(this.add.rectangle(x0 + 30, y0 + 30, 42, 42, 0x000000, 0.45).setStrokeStyle(2, 0x8ef0a0))
+    const port = reg(this.add.image(x0 + 30, y0 + 30, this.textures.exists('npc_shaman') ? 'npc_shaman' : 'player', 0)); port.setScale(36 / Math.max(port.width, port.height))
+    reg(this.add.text(x0 + 60, y0 + 16, 'Ylva', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#fff' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + 60, y0 + 35, '« Des potions, ou réorganiser tes sorts ? »', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'italic', color: '#9be0a8' }).setOrigin(0, 0))
+    // code couleur par destination : Potions = VERT (apothicaire), Sorts = VIOLET (magie, assorti au grimoire)
+    const btn = (bx, label, sub, t, onClick) => {
+      const w = 158, h = 60, by = y0 + 92
+      const bg = reg(this.add.rectangle(bx, by, w, h, t.fill, 1).setOrigin(0, 0).setStrokeStyle(2, t.border))
+      reg(this.add.text(bx + w / 2, by + 20, label, { fontFamily: 'monospace', fontSize: '16px', fontStyle: 'bold', color: t.text }).setOrigin(0.5))
+      reg(this.add.text(bx + w / 2, by + 42, sub, { fontFamily: 'monospace', fontSize: '9px', color: t.sub }).setOrigin(0.5))
+      const z = reg(this.add.rectangle(bx, by, w, h, 0xffffff, 0.001).setOrigin(0, 0).setInteractive({ useHandCursor: true }))
+      z.on('pointerover', () => bg.setFillStyle(t.hover, 1)); z.on('pointerout', () => bg.setFillStyle(t.fill, 1))
+      z.on('pointerdown', (po, lx, ly, ev) => { ev?.stopPropagation?.(); onClick() })
+    }
+    const GREEN = { fill: 0x2a3a22, hover: 0x3a5230, border: 0x8ef0a0, text: '#d8f5c8', sub: '#a8c89a' }
+    const VIOLET = { fill: 0x2a2440, hover: 0x3a3258, border: 0x9a70d0, text: '#e8d8ff', sub: '#bfa9e0' }
+    btn(x0 + 14, 'Potions', 'soins, mana, résistances', GREEN, () => this._apothPick(() => this.openShop('apothecary')))
+    btn(x0 + W - 172, 'Sorts', 'réorganiser tes 4 sorts', VIOLET, () => this._apothPick(() => this.openGrimoire()))
+    reg(this.add.text(cw / 2, y0 + H - 8, 'Échap = repartir', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5, 1))
+  }
+
+  /** Choix fait : on retire le menu (le jeu RESTE en pause) puis on ouvre le panneau choisi. */
+  _apothPick(openFn) {
+    this.apothChoiceOpen = false
+    this.apothChoiceObjects.forEach((o) => o.destroy()); this.apothChoiceObjects = []
+    openFn()
+  }
+
+  closeApothChoice() {
+    this.apothChoiceOpen = false
+    this.apothChoiceObjects.forEach((o) => o.destroy()); this.apothChoiceObjects = []
+    Audio.sfx('ui_cancel', { detune: 0 })
+    this.scene.resume('GameScene')
+  }
+
+  // ============ GRIMOIRE (compétences / loadout) — ouvert par l'apothicaire ============
+  openGrimoire() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.forgeOpen) this.closeForge()
+    if (this.shopOpen) this.closeShop()
+    if (this.bankOpen) this.closeBank()
+    this.grimoireOpen = true
+    this.grimoireObjects = []
+    this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: 80 })
+    this.buildGrimoire()
+  }
+
+  closeGrimoire() {
+    this.grimoireOpen = false
+    this.grimoireObjects?.forEach((o) => o.destroy())
+    this.grimoireObjects = []
+    Audio.sfx('ui_cancel', { detune: 0 })
+    if (this._loadoutDirty) { this._loadoutDirty = false; this.game_.saveGame?.() } // loadout persisté
+    this.rebuildHud() // la barre de sorts reflète le nouveau loadout
+    this.scene.resume('GameScene')
+  }
+
+  /** Panneau du grimoire en GLISSER-DÉPOSER : 4 cases « barre » (cibles) + une RÉSERVE d'icônes draggables.
+   *  Glisser une icône de la réserve vers une case = équiper ; glisser une icône de case dehors = retirer ;
+   *  case→case = échanger. Clic (sans glisser) = équiper la 1re case libre / retirer. Survol = détail en bas
+   *  (nom + description + coût) -> on sait à quoi sert chaque sort. Profondeur par défaut (ordre de création). */
+  buildGrimoire() {
+    this.grimoireObjects?.forEach((o) => o.destroy())
+    this.grimoireObjects = []
+    const reg = (o) => { this.grimoireObjects.push(o); return o }
+    const g = this.game_, p = g.player
+    const cw = this.scale.width, ch = this.scale.height
+    const pool = skillPoolFor(p?.className, p?.element) // mage = limité à son élément (+ sorts neutres)
+    const canEdit = g.canEditLoadout?.() ?? true
+    const STATE_ICON = { vulnerable: '💀', freeze: '❄️', burn: '🔥', bleed: '🩸', mark: '⚡' }
+    const perRow = 5
+    const reserveRows = Math.max(1, Math.ceil(pool.length / perRow))
+    const W = Math.min(560, cw - 18)
+    const H = Math.min(ch - 18, 232 + reserveRows * 84)
+    const x0 = cw / 2 - W / 2, y0 = ch / 2 - H / 2
+    // FOND + CADRE
+    reg(this.add.rectangle(0, 0, cw, ch, 0x05070c, 0.66).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeGrimoire()))
+    const grad = reg(this.add.graphics()); grad.fillStyle(0x191324, 0.99); grad.fillRect(x0, y0, W, H)
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, 0x000000, 0).setStrokeStyle(3, 0x9a70d0).setInteractive())
+    reg(this.add.text(cw / 2, y0 + 10, 'COMPÉTENCES', { fontFamily: 'Georgia, serif', fontSize: '18px', fontStyle: 'bold', color: '#e8d8ff', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5, 0))
+    reg(this.add.text(x0 + W - 12, y0 + 8, '✕', { fontFamily: 'monospace', fontSize: '15px', color: '#e0a0a0' }).setOrigin(1, 0).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.closeGrimoire()))
+    reg(this.add.text(cw / 2, y0 + 32, canEdit ? 'Glisse une icône dans une case 1-4 (ou clic). Glisse-la dehors pour retirer.' : '⚠ Reviens au village pour changer tes sorts', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: canEdit ? '#bfa9e0' : '#e0a866' }).setOrigin(0.5, 0))
+
+    // DÉTAIL (bas) : nom + description + coût, mis à jour au survol -> on sait à quoi sert le sort
+    const dyy = y0 + H - 48
+    reg(this.add.rectangle(x0 + 10, dyy - 6, W - 20, 46, 0x0e0b16, 0.6).setOrigin(0, 0))
+    const dName = reg(this.add.text(x0 + 18, dyy, '', { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#ffe9c0' }).setOrigin(0, 0))
+    const dCost = reg(this.add.text(x0 + W - 18, dyy, '', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: '#8fbfe0' }).setOrigin(1, 0))
+    const dDesc = reg(this.add.text(x0 + 18, dyy + 17, '', { fontFamily: 'monospace', fontSize: '9px', color: '#c6baa0', wordWrap: { width: W - 36 }, lineSpacing: 1 }).setOrigin(0, 0))
+    const showDetail = (sk) => {
+      if (!sk) { dName.setText(''); dCost.setText(''); dDesc.setText('Survole un sort pour voir ce qu\'il fait, puis glisse-le dans une case.'); return }
+      const known = !!g.skillKnown?.(sk.id)
+      dName.setText(sk.name + (sk.state ? `  ${STATE_ICON[sk.state] ?? ''}` : ''))
+      dCost.setText(known ? `${sk.cost} mana · ${Math.round(sk.cd / 1000)} s` : (sk.gated ? '🔒 À gagner sur un boss' : `🔒 Niveau ${sk.level}`))
+      dDesc.setText(sk.desc ?? '')
+    }
+    showDetail(null)
+
+    // TA BARRE : 4 cases (cibles de dépôt)
+    reg(this.add.text(x0 + 18, y0 + 50, 'TA BARRE', { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#cdbce8' }).setOrigin(0, 0))
+    const slotSize = 64, sgap = 18
+    const slotsW = slotSize * 4 + sgap * 3
+    const sx0 = cw / 2 - slotsW / 2
+    const sy = y0 + 68
+    this._grimSlots = []
+    for (let s = 0; s < 4; s++) {
+      const x = sx0 + s * (slotSize + sgap)
+      this._grimSlots.push({ x, y: sy, w: slotSize, h: slotSize, index: s })
+      reg(this.add.rectangle(x + slotSize / 2, sy + slotSize / 2, slotSize, slotSize, 0x120d06, 0.95).setStrokeStyle(2.5, 0xc9a8ff))
+      reg(this.add.text(x + 3, sy + 2, `${s + 1}`, { fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#ffe066', stroke: '#000', strokeThickness: 3 }).setOrigin(0, 0))
+      const sk = SKILL_BY_ID[p.loadout?.[s]]
+      const ic = sk && SKILL_ICONS[sk.id]
+      if (sk && ic && this.textures.exists(ic)) {
+        const img = reg(this.add.image(x + slotSize / 2, sy + slotSize / 2, ic)); img.setScale((slotSize - 14) / Math.max(img.width, img.height))
+        img.on('pointerover', () => showDetail(sk)); img.on('pointerout', () => showDetail(null))
+        this._makeGrimDraggable(img, sk, s, canEdit)
+      }
+    }
+
+    // RÉSERVE : TOUTES les compétences de la classe (grille stable) ; équipées marquées ✓N (grisées) ;
+    // verrouillées grisées + « Niv X ». Connues = draggables (équipées draggables depuis leur case).
+    reg(this.add.text(x0 + 18, sy + slotSize + 12, 'RÉSERVE', { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#cdbce8' }).setOrigin(0, 0))
+    const gridTop = sy + slotSize + 30
+    const cellW = (W - 44) / perRow
+    const iconSize = 58, rowH = 84
+    pool.forEach((sk, idx) => {
+      const known = !!g.skillKnown?.(sk.id)
+      const slotIdx = (p.loadout ?? []).indexOf(sk.id)
+      const equipped = slotIdx >= 0
+      const col = idx % perRow, row = Math.floor(idx / perRow)
+      const cxp = x0 + 22 + col * cellW + cellW / 2
+      const cyp = gridTop + row * rowH + iconSize / 2
+      reg(this.add.rectangle(cxp, cyp, iconSize, iconSize, equipped ? 0x281f3a : (known ? 0x1a1308 : 0x120d06), 0.92).setStrokeStyle(2.5, equipped ? 0x7CFC9A : (known ? 0x5a4a2a : 0x2a2218)))
+      const ic = SKILL_ICONS[sk.id]
+      const img = (ic && this.textures.exists(ic)) ? reg(this.add.image(cxp, cyp, ic)) : null
+      if (img) img.setScale((iconSize - 12) / Math.max(img.width, img.height)).setAlpha(known ? (equipped ? 0.6 : 1) : 0.3)
+      reg(this.add.text(cxp, cyp + iconSize / 2 + 2, sk.name, { fontFamily: 'monospace', fontSize: '8px', color: known ? '#d8cbb0' : '#776c5a', align: 'center', wordWrap: { width: cellW - 4 } }).setOrigin(0.5, 0))
+      if (equipped) reg(this.add.text(cxp + iconSize / 2 - 2, cyp - iconSize / 2 + 1, `✓${slotIdx + 1}`, { fontFamily: 'monospace', fontSize: '11px', fontStyle: 'bold', color: '#7CFC9A', stroke: '#000', strokeThickness: 3 }).setOrigin(1, 0))
+      else if (!known) reg(this.add.text(cxp, cyp - iconSize / 2 - 1, sk.gated ? '🔒 Boss' : `Niv ${sk.level}`, { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'bold', color: sk.gated ? '#ffd86b' : '#e0a44a', stroke: '#000', strokeThickness: 2 }).setOrigin(0.5, 1))
+      if (img) {
+        if (known) this._makeGrimDraggable(img, sk, equipped ? slotIdx : null, canEdit) // équipée -> draggable depuis sa case (déplacer/retirer)
+        else img.setInteractive({ useHandCursor: false })
+        img.on('pointerover', () => showDetail(sk)); img.on('pointerout', () => showDetail(null))
+      }
+    })
+  }
+
+  /** Rend une icône draggable (réserve ou case). fromSlot = index de case si on glisse DEPUIS une case, sinon null. */
+  _makeGrimDraggable(img, sk, fromSlot, canEdit) {
+    const baseScale = img.scaleX
+    img.setInteractive({ draggable: true, useHandCursor: true })
+    this.input.setDraggable(img)
+    img.on('dragstart', (ptr) => { img._fx = ptr.x; img._fy = ptr.y; img.setDepth(3000); img.setScale(baseScale * 1.25) })
+    img.on('drag', (ptr, dx, dy) => img.setPosition(dx, dy))
+    img.on('dragend', (ptr) => {
+      if (!canEdit) { this.showToast?.('Tu ne peux changer tes sorts qu\'au village', '#e0a866'); this.playDenied?.(); this.buildGrimoire(); return }
+      const moved = Math.hypot(ptr.x - (img._fx ?? ptr.x), ptr.y - (img._fy ?? ptr.y))
+      const p = this.game_.player
+      if (moved < 8) { // CLIC simple (pas un vrai glisser)
+        if (fromSlot != null) this.grimoireSetSlot(fromSlot, null, null)
+        else { const free = (p.loadout ?? [null, null, null, null]).indexOf(null); if (free >= 0) this.grimoireSetSlot(free, sk.id, null); else { this.showToast?.('4 slots utilisés — retires-en une', '#ffd27a'); this.buildGrimoire() } }
+        return
+      }
+      const slot = this._grimSlotAt(ptr.x, ptr.y)
+      if (slot >= 0) this.grimoireSetSlot(slot, sk.id, fromSlot)
+      else if (fromSlot != null) this.grimoireSetSlot(fromSlot, null, null) // relâché hors des cases depuis une case -> retire
+      else this.buildGrimoire() // relâché dans le vide depuis la réserve -> snap back
+    })
+  }
+
+  /** Index de la case (0-3) sous le point (x,y), ou -1. */
+  _grimSlotAt(x, y) {
+    for (const s of this._grimSlots ?? []) if (x >= s.x && x <= s.x + s.w && y >= s.y && y <= s.y + s.h) return s.index
+    return -1
+  }
+
+  /** Pose / retire / échange une compétence dans une case du loadout, puis reconstruit le panneau. */
+  grimoireSetSlot(slot, id, fromSlot) {
+    const p = this.game_.player
+    if (!Array.isArray(p.loadout)) p.loadout = [null, null, null, null]
+    if (id == null) { p.loadout[slot] = null; Audio.sfx('ui_cancel', { detune: 120 }) } // retire
+    else if (fromSlot != null && fromSlot !== slot) { const tmp = p.loadout[slot]; p.loadout[slot] = id; p.loadout[fromSlot] = tmp; Audio.sfx('ui_accept', { detune: 100 }) } // échange/déplace case->case
+    else if (fromSlot == null) { const ex = p.loadout.indexOf(id); if (ex >= 0 && ex !== slot) p.loadout[ex] = null; p.loadout[slot] = id; Audio.sfx('ui_accept', { detune: 100 }) } // réserve->case
+    else { this.buildGrimoire(); return } // même case -> rien
+    this._loadoutDirty = true
+    this.buildGrimoire()
+  }
 
   /** RELIQUAIRE de Sargèr : vendeur de faction (échange Éclats Maudits -> stuff/potions). */
   openReliquaire() {
@@ -1022,6 +1236,7 @@ export default class UIScene extends Phaser.Scene {
 
   sellItem(item) {
     const p = this.game_.player
+    if (item.starter) { this.showToast?.('Arme de départ — non vendable', '#e0a866'); this.playDenied?.(); return } // l'arme de base ne se vend pas
     if (p.takeOne(item)) { // vend UNE unité de la pile par clic
       p.gold += sellPrice(item)
       this.buildShop()
@@ -1359,13 +1574,13 @@ export default class UIScene extends Phaser.Scene {
   drawSellColumn(reg, x, y, w, bottom) {
     const p = this.game_.player
     const rows = []
-    for (const it of p.inventory) rows.push({ item: it, qty: it.qty ?? 1, btn: { label: `+${sellPrice(it)}`, enabled: true, onClick: () => this.sellItem(it) } })
+    for (const it of p.inventory) rows.push({ item: it, qty: it.qty ?? 1, btn: it.starter ? { label: 'Lié', enabled: false } : { label: `+${sellPrice(it)}`, enabled: true, onClick: () => this.sellItem(it) } })
     for (const id of MATERIALS) {
       const q = p.resources[id] ?? 0
       if (q > 0) rows.push({ item: ITEMS[id], qty: q, btn: { label: `+${sellPrice(ITEMS[id]) * q}`, enabled: true, onClick: () => this.sellResource(id) } })
     }
     const matTotal = MATERIALS.reduce((s, id) => s + sellPrice(ITEMS[id]) * (p.resources[id] ?? 0), 0)
-    const invTotal = p.inventory.reduce((s, it) => s + sellPrice(it) * (it.qty ?? 1), 0)
+    const invTotal = p.inventory.reduce((s, it) => s + (it.starter ? 0 : sellPrice(it) * (it.qty ?? 1)), 0)
     const grandTotal = matTotal + invTotal
     if (!rows.length) {
       reg(this.add.text(x + w / 2, y + 40, '(rien à vendre)', { fontFamily: 'monospace', fontSize: '11px', color: '#7c8aa0' }).setOrigin(0.5))
@@ -1384,10 +1599,10 @@ export default class UIScene extends Phaser.Scene {
   sellAll() {
     const p = this.game_.player
     let total = 0
-    for (const it of p.inventory) total += sellPrice(it) * (it.qty ?? 1)
+    for (const it of p.inventory) if (!it.starter) total += sellPrice(it) * (it.qty ?? 1)
     for (const id of MATERIALS) total += sellPrice(ITEMS[id]) * (p.resources[id] ?? 0)
     if (total <= 0) return
-    p.inventory = []
+    p.inventory = p.inventory.filter((it) => it.starter) // garde l'arme de départ (non vendable)
     p.invVersion++
     for (const id of MATERIALS) { const q = p.resources[id] ?? 0; if (q > 0) p.removeResource(id, q) }
     p.gold += total
@@ -2339,7 +2554,7 @@ export default class UIScene extends Phaser.Scene {
         this.tweens.add({ targets: icon, scaleX: baseScale, scaleY: baseScale, duration: 240, ease: 'Quad.easeOut' })
       }
       lastRatio = ratio
-      if (costText && def.cost) { const cost = def.cost(); costText.setText(`${cost}`).setColor(p.mana >= cost ? '#9fd8ff' : '#ff6b6b') }
+      if (costText && def.cost) { const cost = def.cost(); if (cost) costText.setText(`${cost}`).setColor(p.mana >= cost ? '#9fd8ff' : '#ff6b6b'); else costText.setText('') }
     })
   }
 
