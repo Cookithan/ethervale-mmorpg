@@ -97,6 +97,8 @@ const BIOME_NAMES = {
   desert: 'Désert',
   snow: 'Terres gelées',
   cursed: 'Terres maudites',
+  sea: 'Haute mer', // en NAVIGATION sur l'océan (le Voronoï des biomes couvre toute la carte, eau comprise —
+  //                    sans ce biome dédié, on entendait la musique du désert/de la neige en pleine mer)
 }
 
 // musique de fond par zone (clé chargée dans BootScene) ; un boss engagé prend le dessus
@@ -106,6 +108,7 @@ const MUSIC_BY_BIOME = {
   desert: 'mus_desert',
   snow: 'mus_snow',
   cursed: 'mus_cursed',
+  sea: 'mus_menu', // ambiance calme du menu = parfaite pour la traversée
 }
 
 // thème NOCTURNE par biome : prend le relais de la musique de zone quand il fait nuit (fondu via playMusic)
@@ -209,11 +212,13 @@ const BIOME_BOSSES = {
     { type: 'giantslime2', name: 'Cryos, la Gelée Ancienne' }, // solo
   ],
   // GAUNTLET DE SARGÈR : Dargoth au CŒUR de l'île, SCELLÉ tant que ses 3 GARDIENS (en anneau) ne sont pas vaincus.
+  // hpMul = SUR-MULTIPLICATEUR de PV (end-game) : sans lui, un gardien (~7,5k PV) avait MOINS de vie qu'une
+  // ÉLITE de trash niv.6 (~10-16k PV, scaling 2^5×4) — hiérarchie absurde signalée en jeu. Gardiens ~26k, Dargoth ~50k.
   cursed: [
-    { type: 'giantflam', name: 'Dargoth, Seigneur Maudit', dargoth: true }, // FINAL — au centre, verrouillé par les gardiens
-    { type: 'giantspirit', name: 'Nyl, l’Âme Damnée', guardian: true }, // gardien
-    { type: 'redsamurai', name: 'Akaoni le Damné', guardian: true }, // gardien (version maudite du Samouraï Rouge)
-    { type: 'tengured', name: 'Fujin le Damné', guardian: true }, // gardien (version maudite du Tengu Rouge)
+    { type: 'giantflam', name: 'Dargoth, Seigneur Maudit', dargoth: true, hpMul: 2.4 }, // FINAL — ~50k PV
+    { type: 'giantspirit', name: 'Nyl, l’Âme Damnée', guardian: true, hpMul: 3.4 }, // gardien ~25k PV
+    { type: 'redsamurai', name: 'Akaoni le Damné', guardian: true, hpMul: 3.4 }, // gardien ~27k PV (version maudite du Samouraï Rouge)
+    { type: 'tengured', name: 'Fujin le Damné', guardian: true, hpMul: 3.4 }, // gardien ~26k PV (version maudite du Tengu Rouge)
   ],
   // CÔTE : boss à DISTANCE qui surgit au bord de l'océan (repaire = tuile de terre au rivage, cf. computeBossLairs)
   coast: [
@@ -227,7 +232,7 @@ const CURSED_ISLE = { ox: 300, oy: 65, rx: 96, ry: 82 } // [offset tuiles depuis
 const SARGER_MIN_LEVEL = 30 // niveau MINIMUM pour fouler Sargèr (une malédiction repousse les plus faibles dans le détroit)
 // SARGÈR — sous-zones = MIROIR CORROMPU d'Ergas. Teinte (multiply sur le sol sombre BLOB.cursed) par sous-zone :
 // ghost = bourg fantôme (prairie), blight = Bois Blêmes (forêt), frost = Nécropole Gelée (neige), ash = Dunes de Cendre (désert).
-const CURSED_SUB_TINT = { ghost: 0xb0a4bc, blight: 0x86a072, frost: 0xc2cee0, ash: 0xc6ad92, ink: 0x9a9ad0 }
+const CURSED_SUB_TINT = { ghost: 0xb0a4bc, blight: 0x86a072, frost: 0xc2cee0, ash: 0xc6ad92, ink: 0x9a9ad0, hub: 0xbcb49a } // hub = clairière de l'avant-poste (herbe sèche claire, sol « propre »)
 const CURSED_SUB_NAME = { ghost: 'Bourg Fantôme', blight: 'Bois Blêmes', frost: 'Nécropole Gelée', ash: 'Dunes de Cendre', ink: 'Rivages d’Encre' }
 // ARÈNE DE BOSS : s'approcher trop près SCELLE une zone circulaire autour du boss -> impossible d'en
 // sortir tant qu'il n'est pas mort (sur un boss de raid intuable solo = piège mortel : reviens en groupe).
@@ -469,6 +474,9 @@ export default class GameScene extends Phaser.Scene {
     nightMask.invertAlpha = true // le voile est RETIRÉ là où le masque est opaque (= sur le village/prairie)
     this.nightOverlay.setMask(nightMask)
     this.occupied = new Set()
+    this.npcs = [] // liste UNIQUE des PNJ interactifs, initialisée ICI (avant l'avant-poste de Sargèr !) —
+    // elle était créée dans spawnVillagers (appelé APRÈS) qui EFFAÇAIT les 4 PNJ de l'avant-poste déjà
+    // poussés : sprites visibles mais retirés de la liste -> E/clic ne faisaient RIEN (bug signalé).
     this.spawnVillage() // village au spawn (avant la forêt : réserve l'emplacement)
     this.spawnWatermill() // moulin à eau sur la berge de la rivière sud (réserve avant la forêt)
     // (plus de spawnForest : il ne posait que des arbres verts Ninja en PRAIRIE -> la prairie est une zone SÛRE, sans arbres ;
@@ -555,7 +563,17 @@ export default class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemyProjectiles, (pl, proj) => {
       if (!proj.active) return
       proj.kill()
-      if (pl.takeDamage(proj.damage, this.time.now)) this.flashHurt() // takeDamage joue déjà le son de douleur
+      if (pl.takeDamage(proj.damage, this.time.now)) {
+        this.flashHurt() // takeDamage joue déjà le son de douleur
+        // FAUNE-MIROIR (leech à distance) : le tireur de Sargèr se SOIGNE de la moitié des dégâts volés
+        const sh = proj.shooter
+        if (sh?.active && sh.leech && !sh.isBoss && sh.hp < sh.maxHp) {
+          const drain = Math.max(1, Math.round(proj.damage * 0.5))
+          sh.hp = Math.min(sh.maxHp, sh.hp + drain)
+          this.floatingText?.(sh.x, sh.y - 12, `+${drain}`, '#9be07a')
+          sh.showHpBar?.()
+        }
+      }
     })
     this.physics.add.collider(this.enemyProjectiles, this.obstacles, (proj) => proj.kill())
 
@@ -664,6 +682,38 @@ export default class GameScene extends Phaser.Scene {
         emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, 600, 6) },
       }).setDepth(8600)
       this.rainEmitter.stop()
+      // PLUIE DE CENDRES (MIROIR de Sargèr : l'eau d'Ergas tombe en CENDRE grise là-bas) — mêmes cycles
+      // météo que la pluie (updateWeather choisit l'émetteur selon l'île), chute LENTE, pas d'éclaboussure.
+      this.ashEmitter = this.add.particles(0, 0, 'wx_snow', {
+        frame: [0, 1, 2, 3, 4, 5, 6],
+        lifespan: 5200,
+        speedY: { min: 34, max: 70 },
+        speedX: { min: -24, max: 10 },
+        rotate: { min: 0, max: 360 },
+        scale: { min: 0.7, max: 1.4 },
+        alpha: { start: 0.7, end: 0.15 },
+        tint: [0x6a6066, 0x57505a, 0x3f3a42],
+        frequency: 70,
+        quantity: 2,
+        emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, 900, 6) },
+      }).setDepth(8600)
+      this.ashEmitter.stop()
+      // BRAISES MONTANTES (sous-zone Dunes de Cendre) : ambiance continue, particules qui MONTENT du sol
+      // (l'inverse d'une chute) en mode ADD — le sol couve encore.
+      this.emberEmitter = this.add.particles(0, 0, 'wx_snow', {
+        frame: [0, 1],
+        lifespan: 2600,
+        speedY: { min: -64, max: -30 },
+        speedX: { min: -14, max: 14 },
+        scale: { min: 0.5, max: 0.9 },
+        alpha: { start: 0.85, end: 0 },
+        tint: [0xff7a2a, 0xffb04a, 0xd84a1a],
+        blendMode: 'ADD',
+        frequency: 90,
+        quantity: 1,
+        emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, 900, 6) },
+      }).setDepth(8600)
+      this.emberEmitter.stop()
     }
 
     // --- entrées combat (désactivées en mode aperçu) ---
@@ -760,7 +810,15 @@ export default class GameScene extends Phaser.Scene {
   /** Sauvegarde la partie (personnage + progression + position) dans le navigateur. */
   saveGame() {
     if (this.gameOver || !this.player || !this.charId) return // pas de slot (aperçu) -> on ne sauvegarde pas
-    if (this.exploredCells) this.player.exploredFog = [...this.exploredCells] // brouillard : cellules explorées (carte révélée)
+    // brouillard : cellules explorées (carte révélée). MIROIR : Sargèr ne PERSISTE PAS son exploration
+    // (le brouillard s'y referme — l'île refuse d'être cartographiée), SAUF le refuge de l'avant-poste.
+    if (this.exploredCells) {
+      this.player.exploredFog = [...this.exploredCells].filter((k) => {
+        const [cx, cy] = k.split(',').map(Number)
+        const tx = cx * this.fogCell + 2, ty = cy * this.fogCell + 2
+        return !this.isCursedIsland(tx, ty) || this.inOutpostRefuge(tx * TILE, ty * TILE)
+      })
+    }
     const save = makeSave(this.player, this.character)
     if ((this.inInterior || this.inDungeon) && this._villageReturn) { save.x = Math.round(this._villageReturn.x); save.y = Math.round(this._villageReturn.y) } // intérieur/donjon (hors-map) -> sauve la position MONDE, jamais hors-map
     saveCharacter(this.charId, save) // sauvegarde dans LE slot du perso courant
@@ -958,9 +1016,36 @@ export default class GameScene extends Phaser.Scene {
         const key = cx + ',' + cy
         if (this.exploredCells.has(key)) continue
         this.exploredCells.add(key) // exploré tout de suite (logique/marqueurs) ; le VISUEL fond sur 2 s
+        // MIROIR DE SARGÈR : l'île « refuse d'être cartographiée » -> on HORODATE la cellule ; loin du
+        // joueur, le brouillard SE REFERME après ~90 s (cf. updateCursedFog). Ergas reste révélée à jamais.
+        if (this.isCursedIsland(cx * cc + 2, cy * cc + 2)) (this._cursedFogT ||= new Map()).set(key, this.time.now)
         if (instant) this._eraseFogCell(cx, cy)
         else this._fogFade.push({ cx, cy, t: 0 })
       }
+    }
+  }
+
+  /** BROUILLARD DE SARGÈR QUI SE REFERME : balayage léger (toutes les 2,5 s) des cellules maudites révélées.
+   *  Une cellule LOIN du joueur depuis ~90 s redevient inexplorée (voile redessiné d'un bloc). Les cellules
+   *  PROCHES du joueur restent vivantes (horodatage rafraîchi) ; le REFUGE de l'avant-poste est définitif. */
+  updateCursedFog(time) {
+    if (!this._cursedFogT || this.preview || this.gameOver) return
+    if (time < (this._cursedFogNext || 0)) return
+    this._cursedFogNext = time + 2500
+    const p = this.player
+    const cc = this.fogCell
+    const keepR = (this.fogRevealCells + 1) * cc * TILE // rayon « vivant » autour du joueur (px)
+    const RECLOSE_MS = 90000
+    for (const [key, t0] of this._cursedFogT) {
+      const [cx, cy] = key.split(',').map(Number)
+      const wx = (cx + 0.5) * cc * TILE
+      const wy = (cy + 0.5) * cc * TILE
+      if (Math.hypot(wx - p.x, wy - p.y) < keepR) { this._cursedFogT.set(key, time); continue } // proche -> reste révélé
+      if (this.inOutpostRefuge(wx, wy)) { this._cursedFogT.delete(key); continue } // refuge = acquis pour toujours
+      if (time - t0 < RECLOSE_MS) continue
+      this.exploredCells.delete(key) // la cellule redevient inexplorée (marqueurs masqués, carte voilée)
+      this._cursedFogT.delete(key)
+      this.fogRT?.draw('fogsquare', cx * cc, cy * cc, 1, 0x3f4a5e) // re-voile (carré plein, teinte de la base)
     }
   }
 
@@ -1626,6 +1711,10 @@ export default class GameScene extends Phaser.Scene {
   /** SARGÈR : sous-zone corrompue d'une tuile = MIROIR du biome d'Ergas à la position symétrique (« face cachée »).
    *  prairie->ghost (Bourg Fantôme), forêt->blight (Bois Blêmes), neige->frost (Nécropole), désert->ash (Dunes de Cendre). */
   cursedSub(tx, ty) {
+    // CLAIRIÈRE DE L'AVANT-POSTE (miroir de la prairie du village d'Ergas) : cercle dégagé ~13 tuiles
+    // (bord organique au bruit) autour du hub ouest -> sol propre, AUCUNE déco/arbre (cf. scatterCursedProps).
+    const hx = this.icx + CURSED_ISLE.ox - 58, hy = this.icy + CURSED_ISLE.oy
+    if (Math.hypot(tx - hx, ty - hy) < 13 + this.noise2D(tx, ty) * 2.2) return 'hub'
     const eb = this.biomeAt(tx - CURSED_ISLE.ox, ty - CURSED_ISLE.oy) // biome d'Ergas à la position miroir
     return { prairie: 'ghost', forest: 'blight', snow: 'frost', desert: 'ash' }[eb] || 'blight'
   }
@@ -2422,19 +2511,20 @@ export default class GameScene extends Phaser.Scene {
       const tx = gx + Phaser.Math.Between(-1, 2), ty = gy + Phaser.Math.Between(-1, 2)
       if (!this.isCursedIsland(tx, ty)) continue
       const sub = this.cursedSub(tx, ty), r = Phaser.Math.Between(0, 100)
-      if (sub === 'blight' && r < 60) deadTree(tx, ty)
-      else if (sub === 'frost' && r < 45) deadTree(tx, ty, Phaser.Math.Between(0, 1) ? TREE_SNOW : TREE_DEAD)
-      else if (sub === 'ash' && r < 45) deadTree(tx, ty)
-      else if (sub === 'ghost' && r < 20) deadTree(tx, ty) // clairsemé (hub-miroir)
+      // densités RÉDUITES (~-35 %) : l'île croulait sous les arbres morts (signalé en jeu)
+      if (sub === 'blight' && r < 38) deadTree(tx, ty)
+      else if (sub === 'frost' && r < 30) deadTree(tx, ty, Phaser.Math.Between(0, 1) ? TREE_SNOW : TREE_DEAD)
+      else if (sub === 'ash' && r < 30) deadTree(tx, ty)
+      else if (sub === 'ghost' && r < 14) deadTree(tx, ty) // clairsemé (hub-miroir)
     }
     // PROPS AU SOL : balayage par tuile sur l'emprise de Sargèr
     for (let ty = cb.minY; ty <= cb.maxY; ty++) for (let tx = cb.minX; tx <= cb.maxX; tx++) {
       if (!this.isCursedIsland(tx, ty)) continue
       const sub = this.cursedSub(tx, ty), roll = Phaser.Math.Between(0, 1000)
       if (sub === 'blight') { // Bois Blêmes : souches + fougères malades + champignons
-        if (roll < 60) solid(tx, ty, STUMPS, 0x8a9a78)
-        else if (roll < 150) flora(tx, ty, FERNS, 0x7f9a64)
-        else if (roll < 175) solid(tx, ty, [317, 318], 0x86a060)
+        if (roll < 22) solid(tx, ty, STUMPS, 0x8a9a78) // souches/troncs cassés : 6 % -> 2,2 % par tuile (trop dense, signalé)
+        else if (roll < 120) flora(tx, ty, FERNS, 0x7f9a64)
+        else if (roll < 145) solid(tx, ty, [317, 318], 0x86a060)
       } else if (sub === 'frost') { // Nécropole Gelée : os/débris + pierres tombales + herbes givrées
         if (roll < 110) solid(tx, ty, SNOW_ROCKS, 0xc6d2e2)
         else if (roll < 160) solid(tx, ty, TOMBSTONES, 0x9aa6b8)
@@ -2443,11 +2533,11 @@ export default class GameScene extends Phaser.Scene {
         if (roll < 130) solid(tx, ty, ROCKS, 0x3a3236)
         else if (roll < 190) flora(tx, ty, DESERT_SHRUBS, 0x7a6a4a)
         else if (roll < 210) flora(tx, ty, ASH_VENT)
-      } else { // ghost (Bourg Fantôme) : clairsemé — gravats + buissons fanés + âmes
-        if (roll < 45) solid(tx, ty, RUBBLE, 0x8a8290)
+      } else if (sub === 'ghost') { // Bourg Fantôme : clairsemé — gravats + buissons fanés + âmes
+        if (roll < 28) solid(tx, ty, RUBBLE, 0x8a8290)
         else if (roll < 120) flora(tx, ty, BUSHES, 0xa89cb0)
         else if (roll < 130 && this._ghostWisps.length < 6) this._ghostWisps.push({ x: tx * TILE + 8, y: ty * TILE + 8 })
-      }
+      } // (sub === 'hub' : clairière de l'avant-poste -> AUCUNE déco, comme la prairie du village)
     }
   }
 
@@ -2621,7 +2711,7 @@ export default class GameScene extends Phaser.Scene {
   populateBiome(biome, budget, gap = MONSTER_GAP) {
     if (budget <= 0) return
     for (let placed = 0, guard = 0; placed < budget && guard < budget * 20; guard++) {
-      const t = this.findTileInBiome(biome, { gap, awayFrom: biome === 'cursed' && this.sargerOutpost ? [this.sargerOutpost] : null, awayDist: 10 }) // hub de Sargèr = zone sûre
+      const t = this.findTileInBiome(biome, { gap, awayFrom: biome === 'cursed' && this.sargerOutpost ? [this.sargerOutpost] : null, awayDist: 16 }) // hub de Sargèr = zone sûre (≥ rayon du refuge 14, cf. inOutpostRefuge)
       if (!t) continue // un échec ne doit PAS abandonner tout le budget (forêt dense)
       this.placeMonsterAt(t.tx, t.ty, biome, {})
       placed++
@@ -2741,6 +2831,7 @@ export default class GameScene extends Phaser.Scene {
     const level = cursed ? MONSTER_MAX_LEVEL : Phaser.Math.Clamp(this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1), 1, MONSTER_MAX_LEVEL) // Sargèr = end-game (niv max)
     const name = isElite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}${cursed ? ' Damné' : ''}` : null
     const m = new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite: isElite, name })
+    if (cursed) { m.leech = true; if (!isElite) { m.baseTint = 0xa8e0b0; m.setTint(m.baseTint) } } // FAUNE-MIROIR : vole la vie (teinte spectrale verte, l'or des élites prime)
     this.monsters.add(m)
     return m
   }
@@ -2794,7 +2885,9 @@ export default class GameScene extends Phaser.Scene {
       const elite = forceElite !== null ? forceElite : (initial || cursed) && Phaser.Math.Between(1, 100) <= (cursed ? CURSED_ELITE_CHANCE : SHINY_CHANCE)
       const level = cursed ? MONSTER_MAX_LEVEL : Phaser.Math.Clamp(this.monsterLevelAt(tx, ty) + Phaser.Math.Between(-1, 1), 1, MONSTER_MAX_LEVEL)
       const name = elite ? `${Phaser.Utils.Array.GetRandom(ELITE_NAMES)} le ${MONSTER_TYPES[typeKey].name}${cursed ? ' Damné' : ''}` : null
-      this.monsters.add(new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite, name }))
+      const m = new Monster(this, tx * TILE + 8, ty * TILE + 8, typeKey, { level, elite, name })
+      if (cursed) { m.leech = true; if (!elite) { m.baseTint = 0xa8e0b0; m.setTint(m.baseTint) } } // FAUNE-MIROIR : vole la vie
+      this.monsters.add(m)
       return true
     }
     // le respawn de camp a échoué (joueur qui campe / zone pleine) -> réapparaît ailleurs
@@ -2983,12 +3076,14 @@ export default class GameScene extends Phaser.Scene {
    *  Réutilisent des rigs de boss NON utilisés par le gauntlet, re-teintés ; PV réduits (frac) ; butin = spawnRareLoot. */
   spawnCursedRares() {
     if (this.preview) return
+    // frac = MULTIPLICATEUR de PV vs un boss de base (était une RÉDUCTION 0.45-0.55 -> les rares finissaient
+    // à ~3-4k PV, MOINS qu'une élite de trash à ~10-16k : hiérarchie absurde signalée en jeu). Cible ~16-20k.
     const RARES = [
-      { id: 'vermyre', name: 'Vermyre, le Bois-Pourri', type: 'giantbamboo', sub: 'blight', frac: 0.45, gold: [80, 140], curse: 40 },
-      { id: 'sslaraq', name: 'Sslaraq, la Tisseuse Blême', type: 'giantracoon', sub: 'blight', frac: 0.45, gold: [80, 140], curse: 35 },
-      { id: 'khalmire', name: 'Khalmire, le Givre-Liche', type: 'giantslime', sub: 'frost', frac: 0.5, gold: [100, 160], curse: 50 },
-      { id: 'vorkaesh', name: 'Vorkaesh, le Cendre-Damné', type: 'democyclop', sub: 'ash', frac: 0.5, gold: [120, 180], curse: 55 },
-      { id: 'mortecaille', name: 'Mortécaille, le Veilleur du Bourg', type: 'giantbamboo2', sub: 'ghost', frac: 0.55, gold: [150, 220], curse: 70 },
+      { id: 'vermyre', name: 'Vermyre, le Bois-Pourri', type: 'giantbamboo', sub: 'blight', frac: 2.2, gold: [80, 140], curse: 40 },
+      { id: 'sslaraq', name: 'Sslaraq, la Tisseuse Blême', type: 'giantracoon', sub: 'blight', frac: 2.2, gold: [80, 140], curse: 35 },
+      { id: 'khalmire', name: 'Khalmire, le Givre-Liche', type: 'giantslime', sub: 'frost', frac: 2.4, gold: [100, 160], curse: 50 },
+      { id: 'vorkaesh', name: 'Vorkaesh, le Cendre-Damné', type: 'democyclop', sub: 'ash', frac: 2.6, gold: [120, 180], curse: 55 },
+      { id: 'mortecaille', name: 'Mortécaille, le Veilleur du Bourg', type: 'giantbamboo2', sub: 'ghost', frac: 2.6, gold: [150, 220], curse: 70 },
     ]
     this._rareDefs = {}
     for (const r of RARES) { this._rareDefs[r.id] = r; this.spawnOneRare(r) }
@@ -3003,14 +3098,17 @@ export default class GameScene extends Phaser.Scene {
       const tx = Math.round(ccx + Math.cos(a) * rad), ty = Math.round(ccy + Math.sin(a) * rad)
       if (!this.isCursedIsland(tx, ty) || this.onWater(tx, ty, 1) || this.occupied.has(this.key(tx, ty))) continue
       if (Math.hypot(tx - ccx, ty - ccy) < 58) continue // hors gauntlet (Dargoth + Gardiens)
+      if (this.cursedSub(tx, ty) === 'hub') continue // pas dans la clairière de l'avant-poste
       fallback ||= { tx, ty }
       if (this.cursedSub(tx, ty) === r.sub) tile = { tx, ty }
     }
     tile = tile || fallback
     if (!tile) return
     const m = new Monster(this, tile.tx * TILE + 8, tile.ty * TILE + 8, r.type, { level: 6, boss: true, name: '♦ ' + r.name })
-    m.maxHp = Math.round(m.maxHp * r.frac); m.hp = m.maxHp // PV réduits vs un vrai boss (group-required mais pas un mur de raid)
-    m.isRare = true; m.rareId = r.id; m.noArena = true; m.bossBiome = 'cursed'
+    m.maxHp = Math.round(m.maxHp * r.frac); m.hp = m.maxHp // PV de RARE : au-dessus des élites de trash, sous Dargoth
+    // ARÈNE SCELLÉE comme tout boss (noArena RETIRÉ — le combat ouvert laissait le trash dense de Sargèr
+    // s'inviter et fracasser le joueur). Pas d'arenaCx -> l'arène se centre là où le combat démarre.
+    m.isRare = true; m.rareId = r.id; m.bossBiome = 'cursed'
     m.homeX = tile.tx * TILE + 8; m.homeY = tile.ty * TILE + 8
     m.goldMin = r.gold[0]; m.goldMax = r.gold[1]; m.curseReward = r.curse
     m.setTint(CURSED_SUB_TINT[r.sub] ?? 0xffffff)
@@ -3083,6 +3181,7 @@ export default class GameScene extends Phaser.Scene {
     boss.bossIndex = index // pour le respawn ciblé
     boss.dargoth = !!cfg.dargoth // FINAL de Sargèr (scellé tant que les gardiens vivent)
     boss.guardian = !!cfg.guardian // gardien du gauntlet de Sargèr (à abattre pour libérer Dargoth)
+    if (cfg.hpMul) { boss.maxHp = Math.round(boss.maxHp * cfg.hpMul); boss.hp = boss.maxHp } // sur-multiplicateur end-game (Sargèr : boss > élites)
     boss.homeX = tile.tx * TILE + 8 // ancre de patrouille = son repaire
     boss.homeY = tile.ty * TILE + 8
     boss.arenaR = cfg.arenaR ?? ARENA_RADIUS // rayon de l'arène scellée (réglable par boss)
@@ -3138,13 +3237,16 @@ export default class GameScene extends Phaser.Scene {
     if (this.activeArena) {
       const a = this.activeArena
       if (!a.boss.active || a.boss.hp <= 0) { this.releaseArena(); return } // boss mort -> ouverture
-      // MUR INVISIBLE : on confine le CORPS du joueur dans le cercle (centre du body = source de vérité
-      // avant le step physique). On supprime seulement la vitesse RADIALE sortante (glisse le long du mur).
+      // MUR INVISIBLE À SENS UNIQUE (prêt MULTI : on peut ENTRER dans l'arène, jamais en SORTIR).
+      // On ne clampe que dans la BANDE du mur (r..r+24) : un joueur juste expulsé (recul de nova entre
+      // deux frames) est recollé au bord ; un joueur LOIN dehors (allié qui arrive, cas multi) n'est NI
+      // téléporté NI repoussé — il marche librement vers l'intérieur. Seule la vitesse RADIALE SORTANTE
+      // est supprimée (on glisse le long du mur).
       const b = p.body
       const dx = b.center.x - a.cx
       const dy = b.center.y - a.cy
       const d = Math.hypot(dx, dy)
-      if (d > a.r) {
+      if (d > a.r && d <= a.r + 24) {
         const ux = dx / (d || 1)
         const uy = dy / (d || 1)
         b.position.set(a.cx + ux * a.r - b.halfWidth, a.cy + uy * a.r - b.halfHeight)
@@ -3179,7 +3281,7 @@ export default class GameScene extends Phaser.Scene {
     // pas encore verrouillée : l'arène se scelle quand le COMBAT commence vraiment (le joueur a TAPÉ le
     // boss ou s'est fait TOUCHER). Pas sur la simple approche -> on peut s'avancer, observer, repartir.
     for (const b of this.bosses || []) {
-      if (b.active && b.hp > 0 && b.combatEngaged && !b.noArena) { // RARES (noArena) : combat OUVERT, jamais d'arène scellée (kitable en groupe)
+      if (b.active && b.hp > 0 && b.combatEngaged && !b.noArena) { // noArena = boss de DONJON instancié uniquement (la salle confine déjà) ; rares/gardiens = arène normale
         this.lockArena(b)
         break
       }
@@ -3727,7 +3829,7 @@ export default class GameScene extends Phaser.Scene {
     const ruin = (rx, ry, key, tint) => { // pose avec repli en spirale
       for (let r = 0; r <= 9; r++) for (let a = 0; a < 8; a++) {
         const tx = Math.round(rx + Math.cos((a / 8) * Math.PI * 2) * r), ty = Math.round(ry + Math.sin((a / 8) * Math.PI * 2) * r)
-        if (!okTile(tx, ty)) continue
+        if (!okTile(tx, ty) || this.cursedSub(tx, ty) === 'hub') continue // jamais dans la clairière de l'avant-poste
         const pos = this.placeBuilding(tx, ty, key, tint)
         if (pos) { this.decorateRuin(pos.tx, pos.ty, key); return }
       }
@@ -3739,6 +3841,28 @@ export default class GameScene extends Phaser.Scene {
     ruin(ccx - 22, ccy - 30, 'cottage', 0x6a5c66)
     ruin(ccx - 34, ccy - 26, 'house_orange', 0x6a5c66)
     ruin(ccx - 14, ccy + 34, 'apothecary', 0x4f5e52)
+    this.spawnGhostEchoes(ccx, ccy, okTile)
+  }
+
+  /** ÉCHOS SPECTRAUX du Bourg Fantôme (MIROIR : chaque commerce d'Ergas a son double déformé) — un PNJ
+   *  devant sa ruine, chacun dans une petite BULLE-REFUGE (8 tuiles, anti-aggro + brouillard définitif) :
+   *  Tavernier-Écho = mets maudits ; Écho d'Ylva = potions inversées ; Usurier = rachète l'or contre Éclats. */
+  spawnGhostEchoes(ccx, ccy, okTile) {
+    const place = (rx, ry, tex, name, lines, role) => {
+      for (let r = 0; r <= 9; r++) for (let a = 0; a < 8; a++) { // spirale de validation (même logique que les ruines)
+        const tx = Math.round(rx + Math.cos((a / 8) * Math.PI * 2) * r), ty = Math.round(ry + Math.sin((a / 8) * Math.PI * 2) * r)
+        if (!okTile(tx, ty) || this.onWater(tx, ty, 1) || this.occupied.has(this.key(tx, ty))) continue
+        const n = this.addNpc(tx, ty, tex, name, lines, role)
+        if (n) {
+          n.sprite.setTint(0xb8c8e8).setAlpha(0.8) // spectre : teinte froide + translucide
+          ;(this._cursedRefuges ||= []).push({ x: tx * TILE + 8, y: ty * TILE + 8, r: 8 * TILE })
+        }
+        return
+      }
+    }
+    place(ccx - 43, ccy - 11, 'npc_noble', 'Tavernier-Écho', ['Assieds-toi… enfin, si tu oses. Mes mets nourrissent ET rongent.', 'Le sucre d\'Ergas est notre sel.'], 'cursed_tavern')
+    place(ccx - 13, ccy + 32, 'npc_shaman', 'Écho d\'Ylva', ['Mes fioles font l\'INVERSE de celles de ma sœur de chair.', 'Le sang est une monnaie comme une autre…'], 'cursed_apothecary')
+    place(ccx - 29, ccy + 24, 'npc_inspector', 'Usurier spectral', ['L\'or des vivants ne vaut RIEN ici… mais je collectionne.', 'Donne ton or, je te rends des Éclats Maudits. À MON taux.'], 'usurier')
   }
 
   /** Gravats + cristaux de corruption autour d'une ruine (+ forge froide pour la Forge Corrompue). */
@@ -3767,6 +3891,7 @@ export default class GameScene extends Phaser.Scene {
     const ox = ccx - 58, oy = ccy // débarcadère ouest (hors gauntlet, là où on accoste)
     if (!this.isCursedIsland(ox, oy)) return
     this.sargerOutpost = { tx: ox, ty: oy } // hub : zone SÛRE (aucun mob ne spawn à proximité)
+    ;(this._cursedRefuges ||= []).push({ x: ox * TILE + 8, y: oy * TILE + 8, r: 14 * TILE }) // refuge anti-aggro (cf. inOutpostRefuge)
     // FEU DE CAMP VIVANT (refuge) — calqué sur spawnVillageCampfire
     const fx = ox * TILE + 8, fy = oy * TILE + 8, D = (oy + 1) * TILE
     const glow = this.add.circle(fx, fy + 2, 22, 0xff8a2a, 0.16).setBlendMode(Phaser.BlendModes.ADD).setDepth(oy * TILE - 1)
@@ -3777,12 +3902,23 @@ export default class GameScene extends Phaser.Scene {
     this.occupied.add(this.key(ox, oy))
     // NB : feu DÉCORATIF (anim propre via tween + fire_anim) -> PAS poussé dans this.campfires (updateCampfires
     // attend des refs glow/flame/seed ; une entrée nue y planterait f.glow.setAlpha). Sargèr n'a pas de température.
-    // huttes de survivants (igloos teintés) de part et d'autre du feu
-    this.placeBuilding(ox - 5, oy - 4, 'igloo', 0x7a6f64)
-    this.placeBuilding(ox + 3, oy - 4, 'igloo', 0x7a6f64)
-    // 3 SURVIVANTS autour du feu (textures de PNJ existantes)
+    // huttes de survivants (igloos teintés) de part et d'autre du feu — ENTERABLES (intérieur 'hut') :
+    // même mécanique que les bâtiments du village (carré de porte invisible -> entrée auto au contact).
+    const hut = (htx, hty) => {
+      const pos = this.placeBuilding(htx, hty, 'igloo', 0x7a6f64)
+      if (!pos) return
+      const b = BUILDINGS.igloo
+      const nx = pos.tx + b.door[0], ny = pos.ty + b.h
+      const zone = this.add.rectangle(nx * TILE + 8, (pos.ty + b.h) * TILE - 9, 16, 26) // seuil de porte (cf. spawnVillage)
+      this.physics.add.existing(zone)
+      zone.body.setAllowGravity(false); zone.body.moves = false; zone.body.immovable = true
+      this.buildingEntrances.push({ id: 'hut', x: nx * TILE + 8, y: ny * TILE + 8, zone, npcName: null, npcTex: null, lines: [] })
+    }
+    hut(ox - 5, oy - 4)
+    hut(ox + 3, oy - 4)
+    // SURVIVANTS autour du feu (textures de PNJ existantes) — (le Forgeron Brisé a été RETIRÉ à la demande :
+    // pas de forge sur Sargèr, on répare au village avant la traversée)
     this.addNpc(ox - 3, oy + 2, 'npc_monk', 'Sœur Ondine', ['Repose-toi, voyageur — la nuit de Sargèr est longue.', 'Tant que ce feu brûle, les âmes damnées ne nous prennent pas.'], 'rest')
-    this.addNpc(ox + 4, oy + 2, 'npc_hunter', 'Forgeron Brisé', ['Mon enclume a survécu à la chute du bourg. Donne ton arme, je la remets d\'aplomb.'], 'forge')
     this.addNpc(ox, oy + 4, 'npc_master', 'Dernier Veilleur', ['Ces ruines, là-bas... c\'était notre bourg. Avant que Dargoth ne tombe du ciel.', 'Abats ses trois Gardiens, et le sceau du Seigneur Maudit cédera. Venge-nous.'], 'talk')
     this.addNpc(ox + 5, oy - 1, 'npc_inspector', 'Vael, Quartier-maître', ['Rapporte-moi des Éclats Maudits, je te fournirai de quoi survivre.'], 'reliquaire') // vendeur de faction (monnaie Éclats)
   }
@@ -3866,6 +4002,7 @@ export default class GameScene extends Phaser.Scene {
         const x = tx + dx, y = ty + dy
         if (!this.isCursedIsland(x, y) || this.isOcean(x, y) || this.occupied.has(this.key(x, y))) return false
       }
+      if (this.cursedSub(Math.round(tx + wT / 2), Math.round(ty + hT / 2)) === 'hub') return false // pas dans la clairière de l'avant-poste
       return Math.hypot(tx + wT / 2 - ccx, ty + hT / 2 - ccy) > 58 // hors Dargoth + Gardiens
     }
     const HOUSES = [['ab_manor', 4, 5], ['ab_house_big', 4, 3], ['ab_house_win', 2, 3], ['ab_house_door', 2, 3], ['ab_cabin', 3, 2]]
@@ -4114,7 +4251,7 @@ export default class GameScene extends Phaser.Scene {
   /** true si un panneau plein écran de l'UI est ouvert (boutique/dialogue) -> on gèle les actions monde. */
   uiBusy() {
     const ui = this.scene.get('UIScene')
-    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.bankOpen || ui.reliquaireOpen || ui.grimoireOpen || ui.apothChoiceOpen || ui.pauseOpen || ui.mapOpen))
+    return !!(ui && (ui.dialogueOpen || ui.shopOpen || ui.forgeOpen || ui.bankOpen || ui.reliquaireOpen || ui.grimoireOpen || ui.apothChoiceOpen || ui.usurierOpen || ui.pauseOpen || ui.mapOpen))
   }
 
   /** Touche E : parle au marchand (boutique) ou au villageois le plus proche. */
@@ -4212,6 +4349,8 @@ export default class GameScene extends Phaser.Scene {
     else if (t.role === 'forge') ui.openForge()
     else if (t.role === 'rest') this.restAtOutpost(t) // avant-poste de Sargèr : repos (soin + sauvegarde)
     else if (t.role === 'reliquaire') ui.openReliquaire() // Reliquaire de Sargèr : échange Éclats Maudits -> stuff/panoplie
+    else if (t.role === 'cursed_tavern' || t.role === 'cursed_apothecary') ui.openShop(t.role) // ÉCHOS du Bourg Fantôme : cartes maudites
+    else if (t.role === 'usurier') ui.openUsurier() // Usurier spectral : rachète l'or contre des Éclats Maudits
     else ui.openDialogue(t.name, t.lines, t.texture)
   }
 
@@ -4263,6 +4402,7 @@ export default class GameScene extends Phaser.Scene {
     if (id === 'merchant') return { title: 'Comptoir du marchand', npcTex: 'npc_merchant', npcName: 'Tobias', shopGeneral: true, floor: 0x6e4d2e, plank: 0x533a20, wall: 0xc89860, wallTop: 0x8a6a3c, accent: 0xffc46a, lines: ['« Tout s’achète, tout se vend ! Que te faut-il ? »'] }
     if (id === 'house') return { title: 'Maison', npcTex: 'npc_master', npcName: 'Résident', floor: 0x6e4d2e, plank: 0x533a20, wall: 0xb98a55, wallTop: 0x7a5a30, accent: 0xffba70, lines: ['Un foyer chaleureux du bourg.'] }
     if (id === 'bank') return { title: 'Banque d’Ergas', npcTex: 'npc_inspector', npcName: 'Régis', bank: true, floor: 0x5c5238, plank: 0x453d2b, wall: 0x6a6a82, wallTop: 0x45455a, accent: 0xffe08a, lines: ['« La banque d’Ergas garde tes biens en sûreté, même après une chute. »'] }
+    if (id === 'hut') return { title: 'Hutte de survivants', npcTex: null, npcName: null, floor: 0x5c5238, plank: 0x453d2b, wall: 0x6a6a82, wallTop: 0x45455a, accent: 0xc9b8a0, lines: [] } // abri de l'avant-poste de Sargèr (pas de PNJ)
     return { title: 'Échoppe d’Ylva', npcTex: 'npc_shaman', npcName: 'Ylva', shop: 'apothecary', floor: 0x5c5238, plank: 0x453d2b, wall: 0x2f6a3a, wallTop: 0x214c29, accent: 0x8ef0a0, lines: ['« Mes potions soignent, restaurent la mana et bravent le froid comme la chaleur. »'] }
   }
 
@@ -4625,6 +4765,8 @@ export default class GameScene extends Phaser.Scene {
       this.raylight?.setVisible(false)
       this.snowEmitter?.stop(); this.snowEmitter?.killAll() // stop N'efface PAS les particules vivantes -> purge (sinon flocons dans la taverne)
       this.rainEmitter?.stop(); this.rainEmitter?.killAll()
+      this.ashEmitter?.stop(); this.ashEmitter?.killAll() // cendres/braises de Sargèr : même purge
+      this.emberEmitter?.stop(); this.emberEmitter?.killAll()
       if (this._aiming) this.cancelAiming() // visée de téléportation -> purgée à l'entrée d'un intérieur
       cam.fadeIn(220, 6, 5, 10)
     })
@@ -4664,8 +4806,8 @@ export default class GameScene extends Phaser.Scene {
     if (ov && ov.id === id) { if (ov.npcName) cfg.npcName = ov.npcName; if (ov.npcTex) cfg.npcTex = ov.npcTex; if (ov.lines) cfg.lines = ov.lines; if (ov.title) cfg.title = ov.title }
     const ox = -3200
     const oy = -3200
-    const cols = id === 'tavern' ? 17 : id === 'inn' ? 14 : id === 'dorm' ? 17 : id === 'forge' ? 14 : id === 'merchant' ? 14 : id === 'house' ? 13 : id === 'bank' ? 13 : 15
-    const rows = id === 'tavern' ? 13 : id === 'inn' ? 10 : id === 'dorm' ? 18 : id === 'forge' ? 11 : id === 'merchant' ? 11 : id === 'house' ? 11 : id === 'bank' ? 11 : 12
+    const cols = id === 'tavern' ? 17 : id === 'inn' ? 14 : id === 'dorm' ? 17 : id === 'forge' ? 14 : id === 'merchant' ? 14 : id === 'house' ? 13 : id === 'bank' ? 13 : id === 'hut' ? 10 : 15
+    const rows = id === 'tavern' ? 13 : id === 'inn' ? 10 : id === 'dorm' ? 18 : id === 'forge' ? 11 : id === 'merchant' ? 11 : id === 'house' ? 11 : id === 'bank' ? 11 : id === 'hut' ? 9 : 12
     const W = cols * TILE
     const H = rows * TILE
     const D = 7000
@@ -4878,6 +5020,19 @@ export default class GameScene extends Phaser.Scene {
       si(58, ox + (cols - 2.5) * TILE, oy + 6.4 * TILE, D + 12, 0.9); si(57, ox + (cols - 1.6) * TILE, oy + 6.4 * TILE, D + 12, 0.9)
       si(15, ox + 1.5 * TILE, oy + (rows - 1.5) * TILE, D + 12, 1.3)
       glow(cxm, 6.5, 150, 0xffba70, 0.14); glow(cols - 2.4, 6.4, 70, 0xffce7a, 0.12)
+    } else if (id === 'hut') {
+      // === HUTTE DE SURVIVANTS (avant-poste de Sargèr) : petit abri froid — 2 couchages + vivres, pas de PNJ ===
+      const glow = (gx, gy, rpx, color, alpha) => objs.push(this.add.image(ox + gx * TILE, oy + gy * TILE, 'int_glow').setDisplaySize(rpx * 2, rpx * 2).setTint(color).setAlpha(alpha).setBlendMode(Phaser.BlendModes.ADD).setDepth(D + 50))
+      // COUCHAGES PRATICABLES (comme le dortoir : marcher dessus = fixer son point de réapparition — SANS
+      // soin, miroir de Sargèr, cf. restInBed). Pas de collision : on monte sur le lit.
+      objs.push(this.add.image(ox + 1.0 * TILE, oy + 0.9 * TILE, 'nin_bed_red').setOrigin(0, 0).setDepth(D + 9).setTint(0x9aa6b8)) // couchage 1 (teinte froide de fortune)
+      interiorBeds.push({ cx: ox + 2.0 * TILE, cy: oy + 2.5 * TILE, hw: 0.8 * TILE, hh: 1.0 * TILE })
+      objs.push(this.add.image(ox + (cols - 3.4) * TILE, oy + 0.9 * TILE, 'nin_bed_red').setOrigin(0, 0).setDepth(D + 9).setTint(0x8a96a8)) // couchage 2
+      interiorBeds.push({ cx: ox + (cols - 2.4) * TILE, cy: oy + 2.5 * TILE, hw: 0.8 * TILE, hh: 1.0 * TILE })
+      pp(3, 2, 2, 2, ox + (cols / 2 - 1) * TILE, oy + 4.6 * TILE, D + 10); solid(ox + (cols / 2 - 0.8) * TILE, oy + 5.0 * TILE, 1.4 * TILE, 1.2 * TILE) // étagère à vivres
+      si(57, ox + (cols / 2 - 0.4) * TILE, oy + 4.8 * TILE, D + 12, 0.9); si(58, ox + (cols / 2 + 0.5) * TILE, oy + 4.8 * TILE, D + 12, 0.9) // bocaux de réserve
+      si(29, ox + 1.4 * TILE, oy + (rows - 1.6) * TILE, D + 12, 0.9) // urne près de la porte
+      glow(cols / 2, 3.4, 110, 0x9fb6d0, 0.16) // lueur froide de lanterne
     } else if (id === 'bank') {
       // === BANQUE : coffre-fort + comptoir de guichet + Cornélius + or ===
       const cxm = cols / 2, bL = 2, bR = cols - 1
@@ -4990,7 +5145,9 @@ export default class GameScene extends Phaser.Scene {
     if (interiorBeds.length) { // dortoir : lits où se reposer + point d'apparition à la mort (sur un lit près de la porte)
       this._interior.beds = interiorBeds
       this._interior._restArmed = false // on apparaît peut-être SUR un lit (respawn) -> pas de re-repos immédiat tant qu'on n'a pas bougé
-      this._interior.restSpawn = { x: ox + 5.5 * TILE, y: oy + 15.95 * TILE } // lit (col 4.5, rangée 14) : on réapparaît allongé ici
+      this._interior.restSpawn = id === 'hut'
+        ? { x: ox + 2.0 * TILE, y: oy + 2.6 * TILE } // hutte de Sargèr : on réapparaît sur le couchage 1
+        : { x: ox + 5.5 * TILE, y: oy + 15.95 * TILE } // dortoir : lit (col 4.5, rangée 14), on réapparaît allongé ici
     }
     if (interiorSeats.length) { // taverne : places (tabourets + tables) où s'asseoir (E) pour appeler le barman
       this._interior.seats = interiorSeats
@@ -5218,22 +5375,25 @@ export default class GameScene extends Phaser.Scene {
     if (!onBed) { it._restArmed = true; return }      // hors lit -> ré-arme
     if (it._restArmed === false) return               // déjà reposé sur ce lit (il faut le quitter d'abord)
     it._restArmed = false
-    this.restInBed()
+    this.restInBed(it.id === 'hut')                   // hutte de Sargèr : point de réapparition SANS soin (miroir)
   }
 
-  /** Repos d'auberge : PV et mana au maximum + sauvegarde de la partie (le dortoir sert de point de repos). */
-  restInBed() {
+  /** Repos sur un lit. DORTOIR d'Ergas : PV+mana au max + point de réapparition + sauvegarde.
+   *  HUTTE de Sargèr (miroir, `hut=true`) : point de réapparition + sauvegarde, mais AUCUN soin —
+   *  l'île ne soigne pas (le sucre = le sel). */
+  restInBed(hut = false) {
     const p = this.player
-    const healed = p.heal(p.maxHp)                    // soigne à fond (affiche le chiffre vert)
+    let healed = 0
     const manaWas = p.mana
-    if (p.maxMana > 0) p.mana = p.maxMana
-    const firstTime = !p.respawnHome
-    p.respawnHome = true                              // l'auberge devient ton POINT DE REPOS -> tu réapparais ICI à la mort
-    this.saveGame()                                   // l'auberge fait office de point de sauvegarde
+    if (!hut) { healed = p.heal(p.maxHp); if (p.maxMana > 0) p.mana = p.maxMana } // soin COMPLET seulement au dortoir
+    const prev = p.respawnHome
+    p.respawnHome = hut ? 'hut' : true                // 'hut' = réapparition dans la hutte de Sargèr ; true = dortoir
+    this.saveGame()                                   // le lit fait office de point de sauvegarde
     Audio.sfx('ui_accept', { detune: -150 })
     this.showRestZzz()                                // petit « z Z z » au-dessus du héros
     const ui = this.scene.get('UIScene')
-    if (firstTime) ui?.showToast?.('Point de repos enregistré — tu réapparaîtras ici', '#ffd86b')
+    if (hut) ui?.showToast?.(prev === 'hut' ? 'Couchage de fortune — partie sauvegardée (sans soins)' : 'Point de réapparition fixé ICI — mais Sargèr ne soigne pas', '#c8b8e8')
+    else if (!prev) ui?.showToast?.('Point de repos enregistré — tu réapparaîtras ici', '#ffd86b')
     else ui?.showToast?.(healed > 0 || p.mana > manaWas ? 'Reposé — partie sauvegardée' : 'Partie sauvegardée', '#7cfc9a')
   }
 
@@ -5646,9 +5806,10 @@ export default class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Villageois du spawn : immobiles, nommés, chacun devant SA maison (cf. spawnVillage). */
+  /** Villageois du spawn : immobiles, nommés, chacun devant SA maison (cf. spawnVillage).
+   *  ⚠️ NE PAS réinitialiser this.npcs ici : la liste est créée en tête de create() et contient DÉJÀ
+   *  les PNJ de l'avant-poste de Sargèr (un reset ici les rendait muets — bug vécu). */
   spawnVillagers() {
-    this.npcs = []
     for (const v of this.villagers || []) {
       if (v.merchant) continue // la maison du marchand n'a pas de villageois bavard (le marchand s'y tient)
       // PNJ d'un bâtiment enterable : DÉCALÉ d'1 tuile à CÔTÉ de la porte → on peut PARLER (près du PNJ) OU
@@ -7213,6 +7374,7 @@ export default class GameScene extends Phaser.Scene {
     if (!mon?.active || mon.hp <= 0 || !player?.active || player.hp <= 0) return
     const proj = this.enemyProjectiles.get(mon.x, mon.y)
     if (!proj) return
+    proj.shooter = mon // réf. du tireur (leech de Sargèr : il se soigne si le tir touche)
     proj.dieOnWater = true // ne traverse pas l'eau (anti-tir à travers une rivière)
     const dmg = Math.max(1, Math.round(mon.damage * (cfg.dmgMul ?? 1)))
     const fx = cfg.fx ?? { tex: 'fx_energyball', anim: 'fx-energyball', tint: true, scale: 1 }
@@ -7704,7 +7866,45 @@ export default class GameScene extends Phaser.Scene {
       this._boatHeading = null; this._boatTarget = null // au prochain embarquement, repart du cap courant
     }
     this.enforceSargerGate(p)
+    this.enforceSeaBounds(p)
     this.updateSeaCompass()
+  }
+
+  /** REFUGES de Sargèr : ZONES SÛRES comme la prairie du village (les mobs n'y attaquent pas, cf.
+   *  Monster.update ; le brouillard n'y revient pas). Liste de points {x,y,r} en PIXELS : l'avant-poste
+   *  (r 14 tuiles) + les petites bulles des ÉCHOS spectraux du Bourg Fantôme (r 8 tuiles). */
+  inOutpostRefuge(x, y) {
+    for (const f of this._cursedRefuges || []) {
+      if (Math.hypot(x - f.x, y - f.y) < f.r) return true
+    }
+    return false
+  }
+
+  /** LIMITE DE HAUTE MER : la navigation est bornée à une boîte englobant Ergas + Sargèr (+25 tuiles de
+   *  marge). Au-delà il n'y a RIEN (océan vide jusqu'au bord de la carte) et la carte M ne couvre pas la
+   *  zone -> un joueur partait à l'ouest et se PERDAIT (signalé). Mur doux + message, comme la gate de Sargèr. */
+  enforceSeaBounds(p) {
+    if (!p?.sailing) return
+    const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy
+    const M = 25 // marge de mer navigable autour des deux îles (tuiles)
+    const minX = (this.icx - ISLAND_RX - M) * TILE
+    const maxX = (ccx + CURSED_ISLE.rx + M) * TILE
+    const minY = (Math.min(this.icy - ISLAND_RY, ccy - CURSED_ISLE.ry) - M) * TILE
+    const maxY = (Math.max(this.icy + ISLAND_RY, ccy + CURSED_ISLE.ry) + M) * TILE
+    const hitX = p.x < minX ? 'min' : p.x > maxX ? 'max' : null
+    const hitY = p.y < minY ? 'min' : p.y > maxY ? 'max' : null
+    if (!hitX && !hitY) return
+    p.setPosition(Phaser.Math.Clamp(p.x, minX, maxX), Phaser.Math.Clamp(p.y, minY, maxY))
+    // légère poussée de retour (comme la gate de Sargèr) pour que le bateau « bute » proprement sur le mur
+    if (p.body) {
+      if (hitX) p.body.velocity.x = hitX === 'min' ? 40 : -40
+      if (hitY) p.body.velocity.y = hitY === 'min' ? 40 : -40
+    }
+    const now = this.time.now
+    if (now >= (this._seaBoundsMsgAt || 0)) {
+      this._seaBoundsMsgAt = now + 3000
+      this.scene.get('UIScene')?.showToast?.('🌊 Haute mer — il n\'y a rien à l\'horizon par là. Fais demi-tour.', '#9fd0ff')
+    }
   }
 
   /** BOUSSOLE EN MER : oriente la flèche vers Sargèr + distance, visible UNIQUEMENT en navigation (et pas déjà sur Sargèr). */
@@ -7877,6 +8077,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateAiming(delta) // mode visée (téléportation ciblée) : pilote l'arrivée au clavier / à la souris
     const p = this.player
     p.setDepth(p.y)
+    p.setAlpha((p.phantomUntil ?? 0) > time ? 0.55 : 1) // Essence spectrale : héros translucide tant qu'il est invisible aux mobs
     // ENTRÉE AUTOMATIQUE au CONTACT de la porte (taverne/apothicaire) — aucun message ni bouton.
     // _promptDismissed (posé à la sortie) évite la ré-entrée immédiate : il faut s'éloigner puis revenir.
     // ENTRÉE : le joueur touche le CARRÉ INVISIBLE de la porte (overlap AABB) -> il entre. Aucun message.
@@ -7904,6 +8105,7 @@ export default class GameScene extends Phaser.Scene {
     this.updateTarget(time) // réticule de la cible verrouillée + libération si elle meurt
     if (this.bossLockHint) { const b = this.activeArena?.boss; this.bossLockHint.setVisible(!!b && b.active && this.lockedTarget !== b) } // astuce « Tab » tant que le boss n'est pas ciblé
     this.revealFog(p.x, p.y) // brouillard de guerre : dévoile la carte/minimap autour du joueur
+    this.updateCursedFog(time) // MIROIR : le brouillard de Sargèr se REFERME loin du joueur (balayage léger)
     this.updateFogFade(delta) // fondu de découverte : l'opacité des zones fraîchement vues passe de 100 à 0 sur ~2 s
     // récupération du sac de mort (A1) : il faut d'abord s'en éloigner (armement), puis remarcher dessus
     if (p.deathBag && this.deathBagSprite) {
@@ -7942,8 +8144,11 @@ export default class GameScene extends Phaser.Scene {
 
     if (p.hp <= 0) this.handleDeath()
 
-    // bandeau de zone quand le héros change de biome
-    const biome = this.biomeAt(Math.floor(p.x / TILE), Math.floor(p.y / TILE))
+    // bandeau de zone quand le héros change de biome. Sur l'OCÉAN -> biome dédié 'sea' (le Voronoï couvre
+    // toute la carte : sans ça, on traversait des « zones » désert/neige/forêt invisibles en pleine mer,
+    // avec leur musique/ambiance — signalé en jeu).
+    const ptx = Math.floor(p.x / TILE), pty = Math.floor(p.y / TILE)
+    const biome = this.isOcean(ptx, pty) ? 'sea' : this.biomeAt(ptx, pty)
     if (biome !== this.currentBiome) {
       this.currentBiome = biome
       this.scene.get('UIScene')?.showZoneBanner?.(BIOME_NAMES[biome])
@@ -8187,18 +8392,32 @@ export default class GameScene extends Phaser.Scene {
         this._villageFire.glow.setVisible(!this._villageFire._wet)
       }
       const showRain = !!this.raining && biome !== 'snow' && biome !== 'desert' && !p.sailing // pluie partout sauf désert + neige
-      const e = this.rainEmitter
+      // MIROIR DE SARGÈR : sur l'île maudite, l'averse tombe en CENDRES (émetteur dédié, pas d'éclaboussure)
+      const ashRain = biome === 'cursed'
+      const e = ashRain ? (this.ashEmitter ?? this.rainEmitter) : this.rainEmitter
+      const other = ashRain ? this.rainEmitter : this.ashEmitter
+      if (other?.emitting) other.stop()
       const v = this.cameras.main.worldView
-      e.setPosition(v.centerX - 300, v.y - 22) // zone large (600) en haut de la vue
+      e.setPosition(v.centerX - (ashRain ? 450 : 300), v.y - 22) // zone large en haut de la vue
       if (showRain) {
         if (!e.emitting) e.start()
-        if (time >= (this._rainPhaseAt ?? 0)) { // alterne averse / bruine toutes les ~3-6 s
-          this._rainPhaseAt = time + Phaser.Math.Between(3000, 6000)
-          this._rainHeavy = !this._rainHeavy
-          e.setFrequency(this._rainHeavy ? 12 : 55, this._rainHeavy ? 4 : 2)
+        if (!ashRain) {
+          if (time >= (this._rainPhaseAt ?? 0)) { // alterne averse / bruine toutes les ~3-6 s
+            this._rainPhaseAt = time + Phaser.Math.Between(3000, 6000)
+            this._rainHeavy = !this._rainHeavy
+            e.setFrequency(this._rainHeavy ? 12 : 55, this._rainHeavy ? 4 : 2)
+          }
+          if (time >= (this._splashAt ?? 0)) { this._splashAt = time + (this._rainHeavy ? 90 : 260); this.spawnRainSplash(); if (this._rainHeavy) this.spawnRainSplash() }
         }
-        if (time >= (this._splashAt ?? 0)) { this._splashAt = time + (this._rainHeavy ? 90 : 260); this.spawnRainSplash(); if (this._rainHeavy) this.spawnRainSplash() }
       } else if (e.emitting) { e.stop() }
+    }
+    // BRAISES MONTANTES : ambiance CONTINUE de la sous-zone Dunes de Cendre (indépendante du cycle de pluie)
+    if (this.emberEmitter) {
+      const inAsh = biome === 'cursed' && this.cursedSub?.(Math.floor(p.x / TILE), Math.floor(p.y / TILE)) === 'ash'
+      const ev = this.cameras.main.worldView
+      this.emberEmitter.setPosition(ev.centerX - 450, ev.bottom + 8) // naissent SOUS la vue et montent
+      if (inAsh && !this.emberEmitter.emitting) this.emberEmitter.start()
+      else if (!inAsh && this.emberEmitter.emitting) this.emberEmitter.stop()
     }
     // 2) FEUILLES qui tombent DES ARBRES en forêt (plus espacées)
     if (biome === 'forest' && time >= (this._leafAt ?? 0)) { this._leafAt = time + Phaser.Math.Between(1400, 2800); this.spawnLeaf() }
@@ -8327,7 +8546,14 @@ export default class GameScene extends Phaser.Scene {
   updateDayNight(time) {
     if (!this.nightOverlay) return
     const f = (time % DAY_CYCLE_MS) / DAY_CYCLE_MS
-    const n = (1 - Math.cos(f * Math.PI * 2)) / 2 // courbe douce : 0 au lever (f=0) -> 1 à minuit (f=0.5)
+    const nBase = (1 - Math.cos(f * Math.PI * 2)) / 2 // courbe douce : 0 au lever (f=0) -> 1 à minuit (f=0.5)
+    // MIROIR DE SARGÈR : le cycle y est INVERSÉ (midi d'Ergas = minuit de Sargèr, et inversement).
+    // Le facteur t (0 = Ergas, 1 = Sargèr) suit la POSITION X du joueur entre les deux côtes -> la bascule
+    // se fait PROGRESSIVEMENT pendant la traversée en mer (on « change de monde » au fil de l'eau).
+    const coastE = (this.icx + ISLAND_RX) * TILE
+    const coastS = (this.icx + CURSED_ISLE.ox - CURSED_ISLE.rx) * TILE
+    const t = Phaser.Math.Clamp(((this.player?.x ?? 0) - coastE) / Math.max(1, coastS - coastE), 0, 1)
+    const n = nBase * (1 - t) + (1 - nBase) * t
     this.dayDarkness = n
     // ANNONCE jour/nuit : bandeau quand on franchit le seuil (n=0.5). Pas d'annonce à l'initialisation ni en aperçu.
     const night = n > 0.5
@@ -8350,6 +8576,7 @@ export default class GameScene extends Phaser.Scene {
       const target = (p && this.nearSea(p.x, p.y, 7)) ? 0.12 * (1 - n) : 0
       this._rayAlpha += (target - this._rayAlpha) * 0.05 // lissage -> pas de « pop » en entrant/sortant de la zone
       this.raylight.setAlpha(this._rayAlpha)
+      this.raylight.setTint(t > 0.5 ? 0x9a6ae0 : 0xffffff) // OMBRELIGHT : sur Sargèr, les rais dorés deviennent des rais d'OMBRE violets
     }
   }
 
@@ -8376,6 +8603,8 @@ export default class GameScene extends Phaser.Scene {
     this.clearTarget() // libère la cible verrouillée (sinon le réticule reste après le respawn)
     this.snowEmitter?.stop(); this.snowEmitter?.killAll() // pas de neige pendant le voile de mort
     this.rainEmitter?.stop(); this.rainEmitter?.killAll()
+    this.ashEmitter?.stop(); this.ashEmitter?.killAll() // cendres/braises de Sargèr aussi
+    this.emberEmitter?.stop(); this.emberEmitter?.killAll()
     this.raining = false
     this.endTankCharge() // coupe un éventuel buff de Charge du Tank
     this.activeBoss = null // cache la barre de boss
@@ -8444,6 +8673,15 @@ export default class GameScene extends Phaser.Scene {
     p.moveTarget = null
     this.gameOver = false
     this.physics.resume()
+    // POINT DE REPOS « HUTTE » (Sargèr) : réapparition sur le couchage de l'avant-poste (fixé SANS soin, cf. restInBed)
+    if (p.respawnHome === 'hut') {
+      const hutE = this.buildingEntrances?.find((e) => e.id === 'hut')
+      this._villageReturn = hutE ? { x: hutE.x, y: hutE.y } : { x: this.cx * TILE, y: this.cy * TILE } // sortir de la hutte -> devant sa porte
+      this._savedZoom = this._savedZoom || this.cameras.main.zoom
+      this.goInterior('hut', { spawn: 'restSpawn' })
+      this.saveGame()
+      return
+    }
     // POINT DE REPOS : si le héros a dormi au dortoir, il se RÉVEILLE DANS SON LIT (intérieur dortoir) au lieu de la place du village.
     if (p.respawnHome) {
       const innE = this.buildingEntrances?.find((e) => e.id === 'inn')

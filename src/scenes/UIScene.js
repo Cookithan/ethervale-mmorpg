@@ -133,6 +133,7 @@ export default class UIScene extends Phaser.Scene {
     this.input.keyboard.on('keydown-ESC', () => {
       if (this.dialogueOpen) this.closeDialogue()
       else if (this.apothChoiceOpen) this.closeApothChoice()
+      else if (this.usurierOpen) this.closeUsurier()
       else if (this.grimoireOpen) this.closeGrimoire()
       else if (this.forgeOpen) this.closeForge()
       else if (this.bankOpen) this.closeBank()
@@ -583,20 +584,42 @@ export default class UIScene extends Phaser.Scene {
       Audio.sfx('ui_accept', { detune: 0 })
       return
     }
-    // REPAS-BONUS / ÉLIXIR À EFFET (foodBuff : +ATQ/+DÉF/régén) : applique le buff (+ soin/mana éventuel),
-    // SANS refuser même si PV pleins (le bonus de combat vaut le coup). Un seul buff à la fois (remplace l'ancien).
+    // POTION INVERSÉE de Sargèr (Pacte de sang) : SACRIFIE des PV pour de la mana — le sucre = le sel.
+    if (item.hpCostPct) {
+      if (p.mana >= p.maxMana) return this.showToast('Mana déjà au maximum', '#ffd84d')
+      const cost = Math.min(p.hp - 1, Math.round(p.maxHp * item.hpCostPct)) // ne TUE jamais (laisse 1 PV)
+      if (cost <= 0) return this.showToast('Trop peu de PV pour sceller le pacte', '#ff8a8a')
+      p.hp -= cost
+      p.mana = Math.min(p.maxMana, p.mana + (item.mana ?? 0))
+      p.takeOne(item)
+      this.game_.flashHurt?.()
+      this.showToast(`Pacte de sang : −${cost} PV → +${item.mana} mana`, '#c86ef0')
+      Audio.sfx('ui_accept', { detune: -250 })
+      return
+    }
+    // ESSENCE SPECTRALE (Sargèr) : invisible aux monstres (Monster.engage saute le joueur fantôme).
+    if (item.phantom) {
+      p.phantomUntil = this.game_.time.now + item.phantom
+      p.takeOne(item)
+      this.showToast(`Essence spectrale — les monstres ne te voient plus (${Math.round(item.phantom / 1000)} s)`, '#c8b8e8')
+      Audio.sfx('ui_accept', { detune: 300 })
+      return
+    }
+    // REPAS-BONUS / ÉLIXIR À EFFET (foodBuff : +ATQ/+DÉF/régén, ± malus des mets MAUDITS) : applique le buff
+    // (+ soin/mana éventuel), SANS refuser même si PV pleins. Un seul buff à la fois (remplace l'ancien).
     if (item.foodBuff) {
       const fb = item.foodBuff
       const dur = fb.dur ?? 300000
-      p.foodBuff = { atk: fb.atk || 0, def: fb.def || 0, regen: fb.regen || 0, until: this.game_.time.now + dur }
+      p.foodBuff = { atk: fb.atk || 0, def: fb.def || 0, regen: fb.regen || 0, hpMul: fb.hpMul, until: this.game_.time.now + dur }
       if ((item.heal ?? 0) > 0) p.heal(item.heal)
       if ((item.mana ?? 0) > 0) p.mana = Math.min(p.maxMana, p.mana + item.mana)
-      p.recomputeStats() // applique immédiatement le +ATQ / +DÉF
+      p.recomputeStats() // applique immédiatement le +ATQ / +DÉF (et l'éventuel −% PV max maudit)
       p.takeOne(item)
       const parts = []
-      if (fb.atk) parts.push(`+${fb.atk} ATQ`)
-      if (fb.def) parts.push(`+${fb.def} DÉF`)
+      if (fb.atk) parts.push(`${fb.atk > 0 ? '+' : ''}${fb.atk} ATQ`)
+      if (fb.def) parts.push(`${fb.def > 0 ? '+' : ''}${fb.def} DÉF`)
       if (fb.regen) parts.push(`+${fb.regen} PV/s`)
+      if (fb.hpMul) parts.push(`−${Math.round((1 - fb.hpMul) * 100)}% PV max`)
       this.showToast(`${item.name} — ${parts.join(' ')} (${Math.round(dur / 60000)} min)`, '#ffd86b')
       Audio.sfx('ui_accept', { detune: 0 })
       return
@@ -947,6 +970,64 @@ export default class UIScene extends Phaser.Scene {
     this.apothChoiceObjects.forEach((o) => o.destroy()); this.apothChoiceObjects = []
     Audio.sfx('ui_cancel', { detune: 0 })
     this.scene.resume('GameScene')
+  }
+
+  // ============ USURIER SPECTRAL (Bourg Fantôme) : rachète l'OR contre des ÉCLATS MAUDITS (taux défavorable —
+  // l'économie du monde à l'envers : sur Sargèr, l'or des vivants ne vaut rien) ============
+  openUsurier() {
+    if (this.game_.gameOver) return
+    if (this.charOpen) this.closeChar()
+    if (this.shopOpen) this.closeShop()
+    this.usurierOpen = true
+    this.usurierObjects = []
+    this.scene.pause('GameScene')
+    Audio.sfx('ui_accept', { detune: -200 })
+    this.buildUsurier()
+  }
+
+  closeUsurier() {
+    this.usurierOpen = false
+    this.usurierObjects?.forEach((o) => o.destroy()); this.usurierObjects = []
+    Audio.sfx('ui_cancel', { detune: 0 })
+    this.game_.saveGame?.()
+    this.scene.resume('GameScene')
+  }
+
+  buildUsurier() {
+    this.usurierObjects?.forEach((o) => o.destroy()); this.usurierObjects = []
+    const reg = (o) => { this.usurierObjects.push(o); return o }
+    const p = this.game_.player
+    const cw = this.scale.width, ch = this.scale.height
+    reg(this.add.rectangle(0, 0, cw, ch, 0x05070c, 0.62).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeUsurier()))
+    const W = 380, H = 230, x0 = cw / 2 - W / 2, y0 = ch / 2 - H / 2
+    reg(this.add.rectangle(cw / 2, ch / 2, W, H, 0x1c1626, 0.99).setStrokeStyle(3, 0x8a7ab0).setInteractive())
+    reg(this.add.rectangle(x0 + 30, y0 + 30, 42, 42, 0x000000, 0.45).setStrokeStyle(2, 0x8a7ab0))
+    const port = reg(this.add.image(x0 + 30, y0 + 30, 'npc_inspector', 0).setTint(0xb8c8e8)); port.setScale(36 / Math.max(port.width, port.height))
+    reg(this.add.text(x0 + 60, y0 + 14, 'Usurier spectral', { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: '#e8e0f5' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + 60, y0 + 33, '« L\'or des vivants ne vaut rien ici… à MON taux. »', { fontFamily: 'monospace', fontSize: '9px', fontStyle: 'italic', color: '#b8a8e0' }).setOrigin(0, 0))
+    reg(this.add.text(x0 + W - 14, y0 + 14, `Or ${p.gold}`, { fontFamily: 'monospace', fontSize: '12px', color: '#ffd84d' }).setOrigin(1, 0))
+    reg(this.add.text(x0 + W - 14, y0 + 30, `Éclats ${p.resources?.mat_curse ?? 0}`, { fontFamily: 'monospace', fontSize: '12px', color: '#c86ef0' }).setOrigin(1, 0))
+    // 2 OFFRES (taux volontairement DÉFAVORABLE vs la chasse aux rares : c'est un raccourci, pas un filon)
+    const offer = (oy2, gold, shards) => {
+      const ok = p.gold >= gold
+      const bg = reg(this.add.rectangle(cw / 2, oy2, W - 36, 38, ok ? 0x2e2542 : 0x241d30, 1).setStrokeStyle(2, ok ? 0x8a7ab0 : 0x4a4060))
+      reg(this.add.text(cw / 2, oy2, `${gold} or  →  ${shards} Éclats Maudits`, { fontFamily: 'monospace', fontSize: '13px', fontStyle: 'bold', color: ok ? '#e8e0f5' : '#7a7088' }).setOrigin(0.5))
+      const z = reg(this.add.rectangle(cw / 2, oy2, W - 36, 38, 0xffffff, 0.001).setInteractive({ useHandCursor: true }))
+      z.on('pointerover', () => ok && bg.setFillStyle(0x42365e, 1))
+      z.on('pointerout', () => bg.setFillStyle(ok ? 0x2e2542 : 0x241d30, 1))
+      z.on('pointerdown', (po, lx, ly, ev) => {
+        ev?.stopPropagation?.()
+        if (!ok) { this.playDenied(); this.showToast(`Il te manque ${gold - p.gold} or`, '#e0a866'); return }
+        p.gold -= gold
+        p.addResource('mat_curse', shards)
+        Audio.sfx('ui_coin', { detune: -300 })
+        this.showToast(`Pacte conclu : +${shards} Éclats Maudits`, '#c86ef0')
+        this.buildUsurier() // rafraîchit or/éclats affichés
+      })
+    }
+    offer(y0 + 92, 250, 5)
+    offer(y0 + 138, 1000, 22) // léger bonus de gros (toujours pire que chasser les rares ♦ : 35-70 éclats)
+    reg(this.add.text(cw / 2, y0 + H - 10, 'Échap = repartir', { fontFamily: 'monospace', fontSize: '9px', color: '#9fb6cc' }).setOrigin(0.5, 1))
   }
 
   // ============ GRIMOIRE (compétences / loadout) — ouvert par l'apothicaire ============
@@ -1373,10 +1454,14 @@ export default class UIScene extends Phaser.Scene {
     const cfg = SHOP_CONFIGS[this.shopType]
     const level = Phaser.Math.Clamp(p.shopLevels?.[this.shopType] ?? 1, 1, SHOP_MAX_TIER)
     const apo = this.shopType === 'apothecary'
-    // THÈME (même mise en page, encre différente) : apothicaire = alchimie verte/violette ; taverne = bois chaud ambré.
-    const th = apo
-      ? { panel: 0x231a2e, head: 0x2f2440, frame: 0x9a70d0, accent: '#c7a3ff', chalk: '#efe7ff', banner: 0x3a2c4e, bannerHi: 0x52406e, flavor: '« De quoi as-tu besoin ? »', help: 'Clique une fiole pour la commander' }
-      : { panel: 0x2a1d13, head: 0x3a2a1a, frame: 0xd99a3a, accent: '#ffcf86', chalk: '#fff1d8', banner: 0x4a3320, bannerHi: 0x66482e, flavor: '« Qu’est-ce que je te sers ? »', help: 'Clique un plat pour le commander' }
+    const cursedShop = typeof this.shopType === 'string' && this.shopType.startsWith('cursed_') // ÉCHOS du Bourg Fantôme
+    // THÈME (même mise en page, encre différente) : apothicaire = alchimie verte/violette ; taverne = bois chaud ambré ;
+    // échos de Sargèr = spectral froid (bleu-violet délavé).
+    const th = cursedShop
+      ? { panel: 0x1c1626, head: 0x261e36, frame: 0x8a7ab0, accent: '#b8a8e0', chalk: '#e8e0f5', banner: 0x2e2542, bannerHi: 0x42365e, flavor: '« Les vivants paient comptant… »', help: 'Clique pour acheter' }
+      : apo
+        ? { panel: 0x231a2e, head: 0x2f2440, frame: 0x9a70d0, accent: '#c7a3ff', chalk: '#efe7ff', banner: 0x3a2c4e, bannerHi: 0x52406e, flavor: '« De quoi as-tu besoin ? »', help: 'Clique une fiole pour la commander' }
+        : { panel: 0x2a1d13, head: 0x3a2a1a, frame: 0xd99a3a, accent: '#ffcf86', chalk: '#fff1d8', flavor: '« Qu’est-ce que je te sers ? »', banner: 0x4a3320, bannerHi: 0x66482e, help: 'Clique un plat pour le commander' }
     reg(this.add.rectangle(0, 0, cw, ch, 0x000000, 0.62).setOrigin(0, 0).setInteractive().on('pointerdown', () => this.closeShop())) // clic hors panneau = fermer
     const W = 460, H = 448
     const x0 = cw / 2 - W / 2, y0 = ch / 2 - H / 2
@@ -1443,9 +1528,10 @@ export default class UIScene extends Phaser.Scene {
       z.on('pointerout', () => bg.setFillStyle(ok ? 0x3a2a52 : 0x2a2038, 1))
       z.on('pointerdown', () => { if (this.game_.apothecaryRecoverBag()) { Audio.sfx('ui_accept', { detune: 0 }); this.buildShop() } })
     }
-    // PIED : divider + lien « Étoffer la carte » centré (agrandi, lisible)
+    // PIED : divider + lien « Étoffer la carte » centré (les ÉCHOS spectraux ont une carte IMMUABLE)
     reg(this.add.rectangle(x0 + 14, y0 + H - 32, W - 28, 1, th.frame, 0.3).setOrigin(0, 0))
-    this.drawMenuUpgrade(reg, cw / 2, y0 + H - 15, p, cfg, level, th)
+    if (cursedShop) reg(this.add.text(cw / 2, y0 + H - 15, 'Carte des spectres — immuable', { fontFamily: 'monospace', fontSize: '12px', fontStyle: 'italic', color: '#8a7ab0' }).setOrigin(0.5))
+    else this.drawMenuUpgrade(reg, cw / 2, y0 + H - 15, p, cfg, level, th)
     // étincelle discrète après amélioration de la carte
     if (this._shopRenovateFlash) {
       this._shopRenovateFlash = false

@@ -318,6 +318,8 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.attackPower = this.unarmed ? Math.max(2, Math.round((this.baseAttack + atk) * 0.4)) : this.baseAttack + atk
     this.defense = this.baseDefense + def
     this.maxHp = this.baseMaxHp + hp
+    // METS MAUDITS de Sargèr : malus de PV MAX (%) tant que le buff court (ex. Ragoût de cendres −12 %)
+    if (this.foodBuff && fbNow < (this.foodBuff.until || 0) && this.foodBuff.hpMul) this.maxHp = Math.max(1, Math.round(this.maxHp * this.foodBuff.hpMul))
     this.maxMana = (this.baseMana ?? 0) + mana
     this.manaRegen = MANA_REGEN + manaRegen // régén de base + bonus des items équipés (mana/s)
     this.spellPowerMul = 1 + spellPower // +X% effet/dégâts du sort

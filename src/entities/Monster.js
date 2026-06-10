@@ -476,6 +476,9 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
    *  `force` = true quand le monstre a été FRAPPÉ (il contre-attaque toujours, hors plafond). */
   engage(force = false) {
     if (this.aggroed) return
+    // ESSENCE SPECTRALE (potion inversée de Sargèr) : le joueur est INVISIBLE aux monstres -> pas d'aggro
+    // par proximité. Le frapper (force=true) brise quand même le voile.
+    if (!force && (this.scene.player?.phantomUntil ?? 0) > (this.scene.time?.now ?? 0)) return
     if (!this.isBoss && this.scene.currentBiome === 'prairie') return // joueur dans la zone sûre -> les mobs le snobent (même frappés)
     // PLAFOND D'AGGRO : seul un petit nombre de monstres NORMAUX peut poursuivre le joueur à la fois
     // (sinon un biome dense te submerge ; en multi, un joueur ne pourrait pas "ramasser" tout le biome).
@@ -1227,10 +1230,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
 
     // biome courant du monstre (sert à la zone sûre prairie ET au verrou de biome ci-dessous)
     const curBiome = this.scene.biomeAt(Math.floor(this.x / 16), Math.floor(this.y / 16))
-    // ZONE SÛRE (prairie/village) : un mob NORMAL SNOBE le joueur si LUI-MÊME y est OU si LE JOUEUR y est.
-    // -> pas d'aggro, pas de poursuite contre le mur invisible, pas de tir dans la prairie. Les BOSS l'ignorent.
+    // ZONE SÛRE (prairie/village OU refuge de l'avant-poste de Sargèr) : un mob NORMAL SNOBE le joueur si
+    // LUI-MÊME y est OU si LE JOUEUR y est. -> pas d'aggro, pas de poursuite, pas de tir. Les BOSS l'ignorent.
     const playerInPrairie = this.scene.currentBiome === 'prairie'
-    if (!this.isBoss && (curBiome === 'prairie' || playerInPrairie)) {
+    const inRefuge = this.scene.inOutpostRefuge?.(this.x, this.y) || this.scene.inOutpostRefuge?.(player.x, player.y)
+    if (!this.isBoss && (curBiome === 'prairie' || playerInPrairie || inRefuge)) {
       this.aggroed = false
       if (homeDist > HOME_RADIUS) this.returning = true
       if (this.mobPhase !== 'idle') { this.mobPhase = 'idle'; this.setVelocity(0, 0); this.clearTint(); if (this.baseTint != null) this.setTint(this.baseTint) } // annule un pattern en cours
@@ -1499,6 +1503,14 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     if (this.weakenUntil && now < this.weakenUntil) dmg = Math.max(1, Math.round(dmg * (1 - (this.weakenFactor ?? 0.5)))) // AFFAIBLI (Mage ombre)
     if (player.takeDamage(dmg, now)) {
       this.nextBiteAt = now + TOUCH_COOLDOWN
+      // FAUNE-MIROIR de Sargèr (leech) : le coup SOIGNE la bête de la moitié des dégâts volés -> il faut
+      // la tuer VITE (l'inverse d'un combat d'usure d'Ergas). Posé par spawnOneMonster (biome cursed).
+      if (this.leech && !this.isBoss && this.hp < this.maxHp) {
+        const drain = Math.max(1, Math.round(dmg * 0.5))
+        this.hp = Math.min(this.maxHp, this.hp + drain)
+        this.scene.floatingText?.(this.x, this.y - 12, `+${drain}`, '#9be07a')
+        this.showHpBar()
+      }
       return true
     }
     return false

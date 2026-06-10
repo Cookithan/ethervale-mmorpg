@@ -211,6 +211,13 @@ export const ITEMS = {
   // REPAS/BOISSONS-BONUS (paliers 3-4) — soin + BUFF temporaire (foodBuff : +ATQ/+DÉF/régén pendant N min). Un seul buff à la fois (le nouveau remplace l'ancien).
   meal_roast: { id: 'meal_roast', name: 'Rôti et bière', type: 'consumable', icon: 'food_roast', rarity: 'rare', price: 95, heal: 90, vendor: 'tavern', cat: 'food', foodBuff: { atk: 5, dur: 300000 }, desc: '+90 PV et +5 ATQ pendant 5 min' },
   meal_tea: { id: 'meal_tea', name: 'Thé chaud des collines', type: 'consumable', icon: 'food_tea', rarity: 'common', price: 70, vendor: 'tavern', cat: 'drink', foodBuff: { def: 4, dur: 300000 }, desc: '+4 DÉF pendant 5 min' },
+
+  // ===== MIROIR DE SARGÈR (le sucre = le sel) : mets maudits + potions INVERSÉES, vendus UNIQUEMENT par les
+  // ÉCHOS spectraux du Bourg Fantôme. Buffs PLUS FORTS que ceux d'Ergas… mais toujours avec un REVERS. =====
+  cmeal_ash: { id: 'cmeal_ash', name: 'Ragoût de cendres', type: 'consumable', icon: 'food_roast', iconTint: 0x9a92a0, rarity: 'rare', price: 120, heal: 40, vendor: 'cursed_tavern', cat: 'food', foodBuff: { atk: 14, hpMul: 0.88, dur: 300000 }, desc: '+40 PV et +14 ATQ pendant 5 min… mais −12% PV max (la cendre nourrit ET ronge)' },
+  cmeal_wine: { id: 'cmeal_wine', name: 'Vin de sépulcre', type: 'consumable', icon: 'food_tea', iconTint: 0xb08ae0, rarity: 'rare', price: 110, vendor: 'cursed_tavern', cat: 'drink', foodBuff: { regen: 8, atk: -6, dur: 300000 }, desc: '+8 PV/s pendant 5 min… mais −6 ATQ (la torpeur du tombeau)' },
+  cpot_bloodmana: { id: 'cpot_bloodmana', name: 'Pacte de sang', type: 'consumable', icon: 'pot_mana', iconTint: 0xd04060, rarity: 'rare', price: 90, vendor: 'cursed_apothecary', hpCostPct: 0.2, mana: 90, desc: 'SACRIFIE 20% de tes PV max → +90 mana (l\'inverse d\'une potion d\'Ergas)' },
+  cpot_phantom: { id: 'cpot_phantom', name: 'Essence spectrale', type: 'consumable', icon: 'pot_regen', iconTint: 0xb8a8e8, rarity: 'epic', price: 160, vendor: 'cursed_apothecary', phantom: 10000, desc: 'Les monstres ne te VOIENT plus pendant 10 s (les frapper les réveille quand même)' },
   meal_feast: { id: 'meal_feast', name: 'Festin du Dernier Repos', type: 'consumable', icon: 'food_feast', rarity: 'epic', price: 220, heal: 200, vendor: 'tavern', cat: 'food', foodBuff: { atk: 5, def: 4, regen: 2, dur: 360000 }, desc: '+200 PV, +5 ATQ, +4 DÉF et +2 PV/s pendant 6 min' },
 
   // ===== MATÉRIAUX (type 'material') — ressources lâchées par les mobs, EMPILABLES dans une poche à part
@@ -286,6 +293,18 @@ export const SHOP_CONFIGS = {
       { id: 'meal_roast', tier: 3 }, { id: 'meal_tea', tier: 3 },
       { id: 'meal_feast', tier: 4 },
     ],
+  },
+  // ÉCHOS du Bourg Fantôme (MIROIR de Sargèr) : cartes UNIQUES (pas de rénovation — drawMenuUpgrade sauté),
+  // achat direct (pas de préparation/service : ce sont des spectres, pas des artisans).
+  cursed_tavern: {
+    title: 'Cave du Tavernier-Écho', portrait: 'npc_noble', shopName: 'Cave',
+    costs: [], minLevel: [],
+    items: [{ id: 'cmeal_ash', tier: 1 }, { id: 'cmeal_wine', tier: 1 }],
+  },
+  cursed_apothecary: {
+    title: 'Fioles de l’Écho', portrait: 'npc_shaman', shopName: 'Fioles',
+    costs: [], minLevel: [],
+    items: [{ id: 'cpot_bloodmana', tier: 1 }, { id: 'cpot_phantom', tier: 1 }],
   },
 }
 export const SHOP_MAX_TIER = 4
