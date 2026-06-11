@@ -144,6 +144,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.shopLevels = { apothecary: 1, tavern: 1 } // niveaux de rénovation des boutiques de lieu (1..4, par perso)
     this.foodBuff = { atk: 0, def: 0, regen: 0, until: 0 } // buff de repas/élixir en cours (temps absolu `until`)
     this.setPity = {} // pièces de panoplie : kills de boss depuis le dernier drop (par id) -> drop garanti à X
+    this.dungeonChests = {} // coffres de donjon-grotte : id -> horodatage du dernier pillage (lockout « journalier »)
 
     this.hp = this.baseMaxHp
     this.recomputeStats() // initialise maxHp / attackPower / defense
@@ -214,6 +215,7 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.shopLevels = s.shopLevels ?? { apothecary: 1, tavern: 1 } // anciennes saves -> palier 1
     this.foodBuff = s.foodBuff ?? { atk: 0, def: 0, regen: 0, until: 0 }
     this.setPity = s.setPity ?? {}
+    this.dungeonChests = s.dungeonChests ?? {} // coffres de donjon déjà pillés (horodatage -> regarnissage)
     this.reviveCharge = s.reviveCharge ?? false
     // BIBLIOTHÈQUE : compétences débloquées par contenu + loadout équipé (sanitize : ids inconnus purgés, slots
     // vides re-remplis par les compétences connues). Ancienne save (pas de loadout) -> reconstruit du niveau.

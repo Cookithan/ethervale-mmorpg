@@ -157,6 +157,7 @@ const VILLAGE_OFF_X = 16 // décalage (tuiles) du village vs centre de l'île ->
 const VILLAGE_OFF_Y = -2
 const LEVEL_REACH = 92 // distance (tuiles) au village où le niveau atteint le max ; près du village = niv1
 const MONSTER_MAX_LEVEL = 6 // mobs niv 1 (village) -> 6 (zones lointaines = end-game) ; PV ×2/niv, dégâts ×1.6/niv (cf. Monster.js)
+const DUNGEON_CHEST_REFILL_MS = 20 * 60 * 60 * 1000 // coffre « journalier » des donjons-grottes : une fois pillé (horodatage persisté), il rouvre VIDE et se regarnit ~1 jour réel plus tard (20 h)
 const CRIT_CHANCE = 0.05 // proba d'un COUP CRITIQUE sur tout dégât direct du joueur (épée/tir/sorts d'impact ; pas les DoT)
 const CRIT_MUL = 1.6 // un critique multiplie les dégâts par ça (+ feedback : chiffre orange, étincelle, micro-shake, recul accru)
 const HITSTOP_MS = 55 // micro-gel d'impact (« hitstop ») sur critique/kill : donne du poids aux coups (0 = désactivé)
@@ -3151,9 +3152,9 @@ export default class GameScene extends Phaser.Scene {
   }
 
   /** Crée le Dragon de mer d'AMBIANCE : il LONGE la côte sans fin (chemin précalculé dans l'océan ;
-   *  nage = ignore la collision ; aucune interaction tant que la nage n'existe pas). */
+   *  nage = ignore la collision ; aucune interaction tant que la nage n'existe pas). Si la barque du
+   *  joueur s'approche, il PLONGE et ressurgit plus loin (cf. Monster.updateSeaPatrol). */
   spawnSeaDragon() {
-    return // DRAGON DE MER MASQUÉ temporairement (à réactiver plus tard) -> retirer ce return pour le réafficher
     const path = this.buildSeaPath()
     // espacement des segments voulu (~28 px) converti en indices de chemin (selon l'écart moyen des points)
     let len = 0
@@ -4261,7 +4262,7 @@ export default class GameScene extends Phaser.Scene {
     if (this.inInterior) { if (!this.uiBusy()) this.interiorInteract(); return } // dans un bâtiment : parler/sortir
     if (this.uiBusy()) return
     const p = this.player
-    // (entrée des bâtiments = AUTOMATIQUE au contact de la porte, cf. update — plus d'invite ici)
+    // (entrée des bâtiments ET des grottes = AUTOMATIQUE au contact de la porte/bouche, cf. update)
     if (this.merchant && this.dist(p.x, p.y, this.merchant.x, this.merchant.y) <= MERCHANT_RANGE) {
       this.interactWith(this.merchant)
       return
@@ -4416,49 +4417,63 @@ export default class GameScene extends Phaser.Scene {
   dungeonConfig(id) {
     if (id === 'cave_a') return {
       name: 'Grotte Moussue', tint: 0x6f7a66, // verdâtre, hanté
-      rooms: [
-        { x: 8, y: 13, w: 8, h: 4 },   // ENTRÉE (bas)
-        { x: 9, y: 8, w: 6, h: 4 },    // salle médiane
-        { x: 2, y: 8, w: 5, h: 4 },    // salle latérale ouest
-        { x: 7, y: 2, w: 10, h: 5 },   // CHAMBRE DU BOSS (haut)
+      rooms: [ // GRAND et LARGE : 7 salles spacieuses, couloirs 3-5 tuiles (on peut se battre dedans)
+        { x: 18, y: 26, w: 10, h: 6 }, // ENTRÉE (bas)
+        { x: 19, y: 17, w: 9, h: 6 },  // carrefour central
+        { x: 7, y: 17, w: 8, h: 7 },   // aile ouest (cryptes)
+        { x: 3, y: 25, w: 7, h: 5 },   // cul-de-sac sud-ouest (autel oublié)
+        { x: 18, y: 8, w: 12, h: 7 },  // salle des piliers (nord)
+        { x: 3, y: 1, w: 14, h: 9 },   // CHAMBRE DU BOSS (haut-ouest, vaste : on esquive les mares/novas)
+        { x: 30, y: 9, w: 5, h: 5 },   // alcôve est (gargouilles)
       ],
       corridors: [
-        { x: 11, y: 11, w: 2, h: 3 },  // entrée -> médiane
-        { x: 6, y: 9, w: 4, h: 2 },    // médiane -> ouest
-        { x: 11, y: 6, w: 2, h: 3 },   // médiane -> boss
+        { x: 21, y: 22, w: 4, h: 5 },  // entrée -> carrefour
+        { x: 14, y: 19, w: 5, h: 3 },  // carrefour -> aile ouest
+        { x: 7, y: 23, w: 3, h: 3 },   // aile ouest -> cul-de-sac SO
+        { x: 21, y: 14, w: 4, h: 4 },  // carrefour -> salle des piliers
+        { x: 15, y: 9, w: 5, h: 3 },   // salle des piliers -> chambre du boss
       ],
-      entry: { x: 12, y: 15 },
+      entry: { x: 22, y: 29 },
       trashLevel: 5, // ≤ MONSTER_MAX_LEVEL (6) : au-delà, 1.6^(lvl-1) fait exploser les dégâts -> one-shot
-      boss: { type: 'giantspirit', name: '⚜ Spectre d\'Ombrebois', frac: 0.55, level: 9, gold: [120, 200], pos: { x: 11, y: 4 } },
-      chest: { x: 14, y: 3 },
-      trash: [ // espèces hantées (AUCUNE dans la salle d'entrée -> pas de spawn-kill) : médiane + latérale seulement
-        { x: 11, y: 9, type: 'spirit', n: 2 }, { x: 4, y: 9, type: 'spider', n: 2 },
+      boss: { type: 'giantspirit', name: '⚜ Spectre d\'Ombrebois', frac: 0.55, level: 9, gold: [120, 200], pos: { x: 9, y: 5 } },
+      chest: { x: 5, y: 3 },
+      trash: [ // espèces hantées (AUCUNE dans la salle d'entrée -> pas de spawn-kill), 1 à 2 packs par salle
+        { x: 23, y: 19, type: 'spirit', n: 2 }, { x: 10, y: 20, type: 'spider', n: 3 },
+        { x: 5, y: 27, type: 'spirit', n: 2 }, { x: 21, y: 11, type: 'spider', n: 2 },
+        { x: 26, y: 12, type: 'spirit', n: 2 }, { x: 32, y: 11, type: 'spirit', n: 2 },
       ],
-      torches: [[8, 13], [15, 13], [9, 2], [16, 2], [3, 8]],
-      decor: [[14, 14, 'ab_stones'], [3, 11, 'ab_idol'], [16, 5, 'ab_stump']],
+      torches: [[18, 26], [27, 26], [19, 17], [27, 17], [7, 17], [14, 23], [3, 25], [9, 29], [18, 8], [29, 8], [30, 9], [34, 13], [3, 1], [16, 1], [3, 9], [16, 7]],
+      decor: [[24, 30, 'ab_stones'], [6, 28, 'ab_idol'], [11, 19, 'ab_stump'], [25, 10, 'ab_stones'], [32, 12, 'ab_idol'], [7, 7, 'ab_stump'], [13, 3, 'ab_stones']],
     }
     return { // cave_b
       name: 'Tanière Ocre', tint: 0x8a7458, // ocre/terreux, repaire de bêtes
-      rooms: [
-        { x: 2, y: 6, w: 5, h: 5 },    // ENTRÉE (gauche)
-        { x: 9, y: 6, w: 6, h: 5 },    // salle centrale
-        { x: 9, y: 1, w: 5, h: 4 },    // salle nord
-        { x: 17, y: 6, w: 6, h: 5 },   // CHAMBRE DU BOSS (droite)
+      rooms: [ // GRAND et LARGE : 6 salles spacieuses + BOUCLE au nord, couloirs 3-4 tuiles, boss tout à l'est
+        { x: 2, y: 11, w: 7, h: 7 },   // ENTRÉE (ouest)
+        { x: 13, y: 9, w: 12, h: 9 },  // grande salle centrale
+        { x: 12, y: 2, w: 7, h: 5 },   // nid d'araignées (nord-ouest)
+        { x: 22, y: 2, w: 7, h: 5 },   // ossuaire (nord-est)
+        { x: 15, y: 21, w: 9, h: 5 },  // gouffre sud
+        { x: 28, y: 9, w: 12, h: 9 },  // CHAMBRE DU BOSS (est, vaste : on esquive charge/nova/cône)
       ],
       corridors: [
-        { x: 6, y: 8, w: 4, h: 2 },    // entrée -> centre
-        { x: 11, y: 4, w: 2, h: 3 },   // centre -> nord
-        { x: 14, y: 8, w: 4, h: 2 },   // centre -> boss
+        { x: 9, y: 12, w: 4, h: 4 },   // entrée -> centrale
+        { x: 14, y: 6, w: 3, h: 4 },   // centrale -> nid NO
+        { x: 22, y: 6, w: 3, h: 4 },   // centrale -> ossuaire NE
+        { x: 19, y: 3, w: 3, h: 3 },   // nid -> ossuaire (BOUCLE nord)
+        { x: 18, y: 17, w: 3, h: 5 },  // centrale -> gouffre sud
+        { x: 25, y: 12, w: 3, h: 3 },  // centrale -> chambre du boss
       ],
-      entry: { x: 4, y: 9 },
+      entry: { x: 5, y: 14 },
       trashLevel: 6, // ≤ MONSTER_MAX_LEVEL (6) : au-delà, 1.6^(lvl-1) fait exploser les dégâts -> one-shot
-      boss: { type: 'giantracoon', name: '⚜ Griffe-Pourrie, l\'Ourse Affamée', frac: 0.55, level: 10, gold: [140, 220], pos: { x: 19, y: 8 } },
-      chest: { x: 21, y: 7 },
-      trash: [ // AUCUNE dans la salle d'entrée : centre + nord seulement
-        { x: 11, y: 8, type: 'spider', n: 2 }, { x: 11, y: 3, type: 'racoon', n: 2 },
+      boss: { type: 'giantracoon', name: '⚜ Griffe-Pourrie, l\'Ourse Affamée', frac: 0.55, level: 10, gold: [140, 220], pos: { x: 34, y: 13 } },
+      chest: { x: 38, y: 15 },
+      trash: [ // AUCUNE dans la salle d'entrée, 1 à 2 packs par salle
+        { x: 15, y: 11, type: 'racoon', n: 2 }, { x: 21, y: 14, type: 'spider', n: 2 },
+        { x: 15, y: 4, type: 'spider', n: 3 }, { x: 25, y: 4, type: 'racoon', n: 2 },
+        { x: 17, y: 23, type: 'spider', n: 2 }, { x: 21, y: 23, type: 'racoon', n: 2 },
       ],
-      torches: [[2, 6], [6, 10], [9, 1], [17, 6], [22, 10]],
-      decor: [[13, 10, 'ab_stump'], [9, 1, 'ab_stones'], [21, 6, 'ab_idol']],
+      torches: [[2, 11], [8, 17], [13, 9], [24, 9], [13, 17], [12, 2], [18, 6], [22, 2], [28, 6], [15, 21], [23, 25], [28, 9], [39, 17], [28, 17], [39, 9]],
+      decor: [[5, 16, 'ab_stones'], [16, 13, 'ab_stump'], [14, 5, 'ab_stones'], [26, 3, 'ab_idol'], [19, 24, 'ab_stones'], [31, 11, 'ab_idol'], [36, 16, 'ab_stump']],
     }
   }
 
@@ -4498,7 +4513,7 @@ export default class GameScene extends Phaser.Scene {
   /** Construit la salle de donjon HORS-MAP (sol roche, murs pierre sombre + colliders, torches, déco, coffre, mobs). */
   buildDungeon(id) {
     const cfg = this.dungeonConfig(id)
-    const ox = -6000, oy = -6000, D0 = 0
+    const ox = -6000, oy = -6000
     const objs = [], colliders = []
     const walls = this.physics.add.staticGroup()
     // ensemble des tuiles SOL (union des salles + couloirs)
@@ -4512,19 +4527,23 @@ export default class GameScene extends Phaser.Scene {
     const W = (maxx - minx + 1) * TILE, H = (maxy - miny + 1) * TILE
     const lx = (x) => ox + x * TILE, ly = (y) => oy + y * TILE // coin haut-gauche d'une tuile locale
     const cxp = (x) => ox + x * TILE + 8, cyp = (y) => oy + y * TILE + 8 // centre d'une tuile locale
+    // DEPTH = même convention que le MONDE (depth = y en px). Le donjon vit en y ≈ -6000 : tout ce qui se
+    // depth-e sur son y (projectiles y+40, butin y, FX/télégraphes boss.y±n) doit passer AU-DESSUS du sol ->
+    // le « sous-sol » (fond/sol) vit SOUS le plus petit y du donjon, et murs/déco/coffre prennent depth = leur y.
+    const DG = oy + miny * TILE // y du bord haut du donjon = plafond du sous-sol
     this.ensureInteriorGlow()
     // FOND noir plein (couvre le hors-map gris)
-    objs.push(this.add.rectangle(0, 0, this.scale.width + 80, this.scale.height + 80, 0x05060a, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(-50))
-    objs.push(this.add.rectangle(ox + minx * TILE, oy + miny * TILE, W, H, 0x0a0c10, 1).setOrigin(0, 0).setDepth(D0))
+    objs.push(this.add.rectangle(0, 0, this.scale.width + 80, this.scale.height + 80, 0x05060a, 1).setOrigin(0, 0).setScrollFactor(0).setDepth(DG - 40))
+    objs.push(this.add.rectangle(ox + minx * TILE, oy + miny * TILE, W, H, 0x0a0c10, 1).setOrigin(0, 0).setDepth(DG - 30))
     // SOL roche (tileSprite par rectangle de salle/couloir)
-    for (const r of [...cfg.rooms, ...cfg.corridors]) objs.push(this.add.tileSprite(lx(r.x), ly(r.y), r.w * TILE, r.h * TILE, 'cave_floor').setOrigin(0, 0).setDepth(D0 + 5))
+    for (const r of [...cfg.rooms, ...cfg.corridors]) objs.push(this.add.tileSprite(lx(r.x), ly(r.y), r.w * TILE, r.h * TILE, 'cave_floor').setOrigin(0, 0).setDepth(DG - 20))
     // MURS = tuiles voisines (8 dir) du sol qui ne sont pas du sol -> image mw_walls sombre + collider
     const isFloor = (x, y) => floor.has(x + ',' + y)
     const wallSet = new Set()
     for (const k of floor) { const [x, y] = k.split(',').map(Number); for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) { const nx = x + dx, ny = y + dy; if (!isFloor(nx, ny)) wallSet.add(nx + ',' + ny) } }
     for (const k of wallSet) {
       const [x, y] = k.split(',').map(Number)
-      objs.push(this.add.image(cxp(x), cyp(y), 'mw_walls', (x + y) % 2 ? 33 : 34).setTint(cfg.tint).setDepth(500 + (y - miny)))
+      objs.push(this.add.image(cxp(x), cyp(y), 'mw_walls', (x + y) % 2 ? 33 : 34).setTint(cfg.tint).setDepth(cyp(y)))
       const rr = this.add.rectangle(cxp(x), cyp(y), TILE, TILE).setVisible(false)
       this.physics.add.existing(rr, true); walls.add(rr)
     }
@@ -4538,34 +4557,55 @@ export default class GameScene extends Phaser.Scene {
     objs.push(veil)
     for (const [tx, ty] of cfg.torches) {
       const fx = cxp(tx), fy = cyp(ty)
-      objs.push(this.add.sprite(fx, fy - 2, 'fire_anim').setScale(0.6).setDepth(1000 + (ty - miny)).play('fire-anim'))
+      objs.push(this.add.sprite(fx, fy - 2, 'fire_anim').setScale(0.6).setDepth(fy).play('fire-anim'))
       const gl = this.add.image(fx, fy, 'int_glow').setDisplaySize(120, 120).setTint(0xffae5a).setAlpha(0.5).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050)
       objs.push(gl)
       this.tweens.add({ targets: gl, alpha: 0.62, duration: 900 + tx * 40, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
     }
     const pglow = this.add.image(0, 0, 'int_glow').setDisplaySize(180, 180).setTint(0xbfd0ff).setAlpha(0.32).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050)
     objs.push(pglow)
-    // DÉCO de ruine moussue + crânes/cristaux
-    for (const [dx, dy, key] of cfg.decor) objs.push(this.add.image(cxp(dx), cyp(dy) + 4, key).setOrigin(0.5, 0.9).setTint(cfg.tint).setDepth(1000 + (dy - miny)))
-    // COFFRE de fin de donjon (fermé, verrouillé tant que le boss vit) — bien VISIBLE dans la pénombre
-    const ch = this.add.sprite(cxp(cfg.chest.x), cyp(cfg.chest.y), 'chest', 0).setOrigin(0.5, 0.8).setScale(1.6).setDepth(1000 + (cfg.chest.y - miny))
+    // DÉCO de ruine moussue + crânes/cristaux — SOLIDE : petit collider statique à la base (on ne marche
+    // plus à travers les pierres/idoles). Bloque le JOUEUR seulement : les mobs n'ont pas de pathfinding,
+    // un collider les coincerait derrière le moindre caillou en poursuite.
+    const props = this.physics.add.staticGroup()
+    for (const [dx, dy, key] of cfg.decor) {
+      objs.push(this.add.image(cxp(dx), cyp(dy) + 4, key).setOrigin(0.5, 0.9).setTint(cfg.tint).setDepth(cyp(dy) + 4))
+      const pr = this.add.rectangle(cxp(dx), cyp(dy) + 2, 12, 8).setVisible(false)
+      this.physics.add.existing(pr, true); props.add(pr)
+    }
+    // COFFRE de fin de donjon (fermé, verrouillé tant que le boss vit) — bien VISIBLE dans la pénombre, solide
+    const ch = this.add.sprite(cxp(cfg.chest.x), cyp(cfg.chest.y), 'chest', 0).setOrigin(0.5, 0.8).setScale(1.6).setDepth(cyp(cfg.chest.y))
     objs.push(ch)
+    const chBlock = this.add.rectangle(ch.x, ch.y, 14, 8).setVisible(false)
+    this.physics.add.existing(chBlock, true); props.add(chBlock)
+    colliders.push(this.physics.add.collider(this.player, props))
     // lueur SOUS le coffre (perce le voile) : sourde quand verrouillé, dorée quand déverrouillé (cf. onDungeonBossKilled)
     const chGlow = this.add.image(ch.x, ch.y - 2, 'int_glow').setDisplaySize(56, 44).setTint(0x8a6aa8).setAlpha(0.28).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050)
     objs.push(chGlow)
     this.tweens.add({ targets: chGlow, alpha: 0.42, duration: 1200, yoyo: true, repeat: -1, ease: 'Sine.inOut' })
     const chHint = this.add.text(ch.x, ch.y - 20, '', { fontFamily: FONT, fontSize: '8px', color: '#fff', backgroundColor: '#000000aa', padding: { x: 3, y: 2 } }).setOrigin(0.5, 1).setDepth(60000).setResolution(3).setVisible(false)
     objs.push(chHint)
-    // EXIT = bouche d'entrée (1 tuile SOUS le spawn) — « armée » seulement après s'être éloigné (pas de sortie instantanée)
+    // EXIT = bouche d'entrée (1 tuile SOUS le spawn) — sortie VOLONTAIRE : touche E dessus (cf. dungeonInteract)
     const exit = { x: cxp(cfg.entry.x), y: cyp(cfg.entry.y) + TILE }
-    objs.push(this.add.text(exit.x, exit.y + 2, '↑ sortie', { fontFamily: FONT, fontSize: '8px', color: '#d7c9a6', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(60000).setResolution(3))
+    const exitTxt = this.add.text(exit.x, exit.y + 2, '↑ Sortir (E)', { fontFamily: FONT, fontSize: '8px', color: '#d7c9a6', stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 0).setDepth(60000).setResolution(3)
+    objs.push(exitTxt)
     objs.push(this.add.image(exit.x, exit.y, 'int_glow').setDisplaySize(60, 40).setTint(0x9fb4d0).setAlpha(0.18).setBlendMode(Phaser.BlendModes.ADD).setDepth(8050))
     this._dungeon = {
-      id, cfg, ox, oy, minx, miny, objs, colliders, walls,
+      id, cfg, ox, oy, minx, miny, objs, colliders, walls, props,
       bounds: { x: ox + minx * TILE, y: oy + miny * TILE, w: W, h: H },
-      entry: { x: cxp(cfg.entry.x), y: cyp(cfg.entry.y) }, exit, exitArmed: false,
+      entry: { x: cxp(cfg.entry.x), y: cyp(cfg.entry.y) }, exit, exitTxt, nearExit: false,
       chest: { sprite: ch, hint: chHint, glow: chGlow, x: ch.x, y: ch.y, locked: true, opened: false },
       pglow, mobs: [], boss: null, cleared: false,
+    }
+    // COFFRE « JOURNALIER » : pillé récemment (horodatage persisté dans la save) -> il apparaît OUVERT et VIDE
+    // (le boss, lui, repope à chaque visite). Il se regarnit DUNGEON_CHEST_REFILL_MS après le pillage.
+    const lootedAt = this.player?.dungeonChests?.[id] ?? 0
+    if (lootedAt && Date.now() - lootedAt < DUNGEON_CHEST_REFILL_MS) {
+      const c = this._dungeon.chest
+      c.locked = false; c.opened = true; c.emptied = true
+      ch.setFrame(1) // couvercle ouvert
+      this.tweens.killTweensOf(chGlow)
+      chGlow.setTint(0x9aa3b8).setAlpha(0.14) // lueur éteinte : plus rien à prendre
     }
     this.spawnDungeonContents()
   }
@@ -4595,6 +4635,7 @@ export default class GameScene extends Phaser.Scene {
     if (!boss.dragon) d.colliders.push(this.makeBossSolid(boss)) // collider SUIVI -> retiré au démontage (pas de collider fantôme)
     d.colliders.push(this.physics.add.collider(boss, d.walls))
     this.bosses.push(boss)
+    boss.aura?.setDepth(d.bounds.y - 10) // décalque au sol : SOUS tous les y du donjon (depth 0 du monde passerait DEVANT les sprites ici)
     d.boss = boss
   }
 
@@ -4602,13 +4643,13 @@ export default class GameScene extends Phaser.Scene {
   updateDungeon(time, delta) {
     const p = this.player
     p.update(time)
-    p.setDepth(1000 + (p.y - this._dungeon.oy) / TILE)
+    p.setDepth(p.y) // même convention que le monde (le donjon vit en y ≈ -6000, son sol est plus bas encore)
     const d = this._dungeon
     if (!d) return
     if (d.pglow) d.pglow.setPosition(p.x, p.y)
     // mobs du donjon : IA + combat (on saute les helpers monde keepMonsterOut* qui supposent des coords monde)
-    for (const m of d.mobs) { if (m.active) { m.update(time, p); m.setDepth(1000 + (m.y - d.oy) / TILE) } }
-    if (d.boss && d.boss.active) { d.boss.update(time, p); d.boss.setDepth(1000 + (d.boss.y - d.oy) / TILE) }
+    for (const m of d.mobs) { if (m.active) { m.update(time, p); m.setDepth(m.y) } }
+    if (d.boss && d.boss.active) { d.boss.update(time, p); d.boss.setDepth(d.boss.y) }
     this.updateVoidZones(time)
     this.updateTarget(time)
     this.updateMageClones(time)
@@ -4620,23 +4661,24 @@ export default class GameScene extends Phaser.Scene {
     if (p.hp <= 0) { this.teardownDungeon(); this.handleDeath(); return } // mort en donjon : démontage (joueur ramené à la bouche, monde restauré) PUIS mort -> sac au monde, respawn village
     // coffre : indice + déverrouillage à la mort du boss
     const c = d.chest
-    if (c && !c.opened) {
+    if (c && c.emptied) { // déjà pillé (lockout journalier) : un indice à l'approche, rien à ouvrir
+      const near = this.dist(p.x, p.y, c.x, c.y) <= 26
+      c.hint.setVisible(near).setText('Déjà pillé — il se regarnira').setPosition(c.x, c.y - 18)
+    } else if (c && !c.opened) {
       if (c.locked && d.boss && !d.boss.active) this.unlockDungeonChest() // sécurité (au cas où l'event de mort manquerait)
       const near = this.dist(p.x, p.y, c.x, c.y) <= 26
       c.hint.setVisible(near).setText(c.locked ? 'Verrouillé (bats le gardien)' : 'Ouvrir (E)').setPosition(c.x, c.y - 18)
     }
-    // SORTIE : marcher sur la bouche d'entrée — armée seulement après s'être éloigné (sinon sortie instantanée au spawn)
-    const farFromExit = Math.abs(p.x - d.exit.x) > TILE * 1.6 || Math.abs(p.y - d.exit.y) > TILE * 1.6
-    if (farFromExit) d.exitArmed = true
-    if (d.exitArmed && !this._doorBusy && Math.abs(p.x - d.exit.x) < TILE * 0.8 && Math.abs(p.y - d.exit.y) < TILE * 0.8) {
-      this._doorBusy = true
-      this.exitDungeon(false)
-    }
+    // SORTIE volontaire : à portée de la bouche, l'invite s'allume -> touche E (cf. dungeonInteract).
+    // (Plus de sortie au simple contact : on ne quitte plus le donjon par accident en combattant près de l'entrée.)
+    d.nearExit = Math.abs(p.x - d.exit.x) < TILE * 1.2 && Math.abs(p.y - d.exit.y) < TILE * 1.2
+    d.exitTxt?.setColor(d.nearExit ? '#ffe066' : '#d7c9a6')
   }
 
   /** E près du coffre déverrouillé -> butin garanti (or + 1 épique + 1 rare classe) + ouverture. */
   dungeonInteract() {
     const d = this._dungeon; if (!d) return
+    if (d.nearExit && !this._exiting && !this._transitioning) { this.exitDungeon(false); return } // E sur la bouche = sortir
     const c = d.chest
     if (!c || c.opened) return
     if (this.dist(this.player.x, this.player.y, c.x, c.y) > 26) return
@@ -4644,6 +4686,8 @@ export default class GameScene extends Phaser.Scene {
     c.opened = true
     c.sprite.setFrame(1)
     c.hint.setVisible(false)
+    this.player.dungeonChests[d.id] = Date.now() // horodatage du pillage -> le coffre rouvrira VIDE jusqu'au regarnissage
+    this.saveGame()
     Audio.sfx('ui_accept')
     const cls = this.player.className
     const gold = Phaser.Math.Between(80, 160) + d.cfg.boss.level * 10
@@ -4686,10 +4730,13 @@ export default class GameScene extends Phaser.Scene {
     if (!d) return
     this.scene.get('UIScene')?.hideInteriorTitle?.()
     for (const col of d.colliders) this.physics.world.removeCollider(col)
-    for (const m of d.mobs) { try { m.destroy() } catch (e) { /* déjà mort */ } }
-    if (d.boss) { const i = this.bosses.indexOf(d.boss); if (i >= 0) this.bosses.splice(i, 1); try { if (d.boss.active) d.boss.destroy() } catch (e) { /**/ } }
+    // despawn() (PAS destroy() brut) : détruit AUSSI barre de vie/étiquette/aura — sinon elles restent
+    // orphelines à l'ancienne position quand on revient (barres de PV fantômes).
+    for (const m of d.mobs) { try { if (m.active) m.despawn() } catch (e) { /* déjà mort */ } }
+    if (d.boss) { const i = this.bosses.indexOf(d.boss); if (i >= 0) this.bosses.splice(i, 1); try { if (d.boss.active) d.boss.despawn() } catch (e) { /**/ } }
     this.activeBoss = null; this.bossTrack = null
     try { d.walls.clear(true, true) } catch (e) { /**/ }
+    try { d.props.clear(true, true) } catch (e) { /**/ }
     for (const o of d.objs) { try { o.destroy() } catch (e) { /**/ } }
     this._dungeon = null
     this.inDungeon = null
@@ -4704,7 +4751,7 @@ export default class GameScene extends Phaser.Scene {
     const r = this._dungeonReturn || { x: this.cx * TILE, y: this.cy * TILE }
     p.setPosition(r.x, r.y).setVelocity(0, 0)
     p.moveTarget = null; p.setDepth(p.y)
-    this._promptDismissed = 'cave' // évite la ré-entrée immédiate dans la bouche
+    this._promptDismissed = 'cave' // évite la ré-entrée immédiate dans la bouche (s'éloigner puis revenir)
     const cam = this.cameras.main
     cam.useBounds = true
     cam.setBounds(EDGE_INSET, EDGE_INSET, this.worldW - 2 * EDGE_INSET, this.worldH - 2 * EDGE_INSET)
@@ -8091,7 +8138,9 @@ export default class GameScene extends Phaser.Scene {
     }
     if (nearDoor && !this.uiBusy() && !this.inInterior) { if (this._promptDismissed !== nearDoor.id) this.enterInterior(nearDoor.id, nearDoor) }
     else if (!nearDoor) { this._promptDismissed = null }
-    // ENTRÉE DE GROTTE (donjon instancié) : contact de la bouche -> on bascule dans le donjon
+    // ENTRÉE DE GROTTE (donjon instancié) : contact de la bouche -> on bascule dans le donjon (comme les
+    // portes de bâtiments). _promptDismissed (posé à la sortie) évite la ré-entrée immédiate : il faut
+    // s'éloigner de la bouche puis y revenir. (La SORTIE, elle, reste volontaire : touche E.)
     let nearCave = null
     for (const e of this.caveEntrances || []) {
       const zb = e.zone.body

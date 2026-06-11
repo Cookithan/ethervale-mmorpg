@@ -977,8 +977,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
   }
 
   /** Dragon de MER d'ambiance : suit une orbite elliptique au large de l'île (rôde sans fin),
-   *  tête orientée dans le sens de la nage. Aucune interaction (ni aggro, ni dégâts, ni arène). */
-  updateSeaPatrol(time) {
+   *  tête orientée dans le sens de la nage. Aucune interaction (ni aggro, ni dégâts, ni arène).
+   *  PLONGÉE : si la BARQUE du joueur s'approche (jamais pour un joueur à pied sur la plage), il
+   *  s'enfonce (fondu + remous), CONTINUE d'avancer sous l'eau (remous discrets = son ombre qui file),
+   *  et ne refait surface que lorsqu'il est assez loin de la barque. */
+  updateSeaPatrol(time, player) {
     const sp = this.seaPatrol
     const path = sp.path // boucle de points qui ÉPOUSE la côte (dans l'océan) -> ne traverse pas la terre
     const n = path.length
@@ -1006,6 +1009,52 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       w.setPosition(h.x, h.y).setRotation(this.rotation).setDepth(h.y - 0.5)
       w.scaleX = w.wingSign * this.scaleX * beat
     }
+    // ===== PLONGÉE : distance barque -> point le PLUS PROCHE du corps (tête + segments) =====
+    const DIVE_R = 130 // la barque arrive à ça du corps -> il plonge
+    const RISE_R = 240 // ...et ne refait surface que si elle est repartie à plus de ça
+    const UNDER_MIN = 4000 // immersion minimale (ms) -> il ressort toujours « plus loin »
+    let dist = Infinity
+    if (player?.sailing && player.hp > 0) {
+      dist = Math.hypot(player.x - this.x, player.y - this.y)
+      for (const s of this.segs) dist = Math.min(dist, Math.hypot(player.x - s.x, player.y - s.y))
+    }
+    sp.state ??= 'surface'
+    if (sp.state === 'surface' && dist < DIVE_R) {
+      sp.state = 'under'
+      sp.divedAt = time
+      this.seaSplashes() // gerbe de remous le long du corps : il s'enfonce
+    } else if (sp.state === 'under' && time >= sp.divedAt + UNDER_MIN && dist > RISE_R) {
+      sp.state = 'surface'
+      this.seaSplashes() // il ressurgit (plus loin sur sa route)
+    }
+    // FONDU doux vers l'état voulu (immergé = invisible, mais il continue d'avancer sur son chemin)
+    const dt = Math.min(50, time - (sp.lastT ?? time))
+    sp.lastT = time
+    sp.alpha ??= 1
+    const target = sp.state === 'surface' ? 1 : 0
+    const step = dt / (target > sp.alpha ? 750 : 550) // remontée un peu plus lente que la plongée
+    sp.alpha = Phaser.Math.Clamp(sp.alpha + Math.sign(target - sp.alpha) * step, 0, 1)
+    this.setAlpha(sp.alpha)
+    for (const s of this.segs) s.setAlpha(sp.alpha)
+    this.wingL?.setAlpha(sp.alpha)
+    this.wingR?.setAlpha(sp.alpha)
+    // immergé : petits remous réguliers à la tête -> on suit son ombre qui file sous l'eau
+    if (sp.state === 'under' && sp.alpha <= 0.05 && time >= (sp.nextRippleAt ?? 0)) {
+      sp.nextRippleAt = time + 650
+      this.seaRipple(this.x, this.y, 0.3)
+    }
+  }
+
+  /** Remous de plongée/surface : anneaux d'eau le long du corps (tête + 1 segment sur 3). */
+  seaSplashes() {
+    this.seaRipple(this.x, this.y, 0.55)
+    for (let i = 2; i < this.segs.length; i += 3) this.seaRipple(this.segs[i].x, this.segs[i].y, 0.4)
+  }
+
+  /** Un anneau d'eau : cercle pâle légèrement aplati qui s'élargit puis s'efface. */
+  seaRipple(x, y, alpha = 0.4) {
+    const c = this.scene.add.circle(x, y, 5, 0xd9f2ff, alpha).setDepth(y + 2)
+    this.scene.tweens.add({ targets: c, scaleX: 3.4, scaleY: 2.3, alpha: 0, duration: 620, ease: 'Quad.out', onComplete: () => c.destroy() })
   }
 
   /** Suivi FLUIDE : chaque segment est tiré à distance fixe derrière celui qui le précède (tête en 1er). */
@@ -1110,7 +1159,7 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
   update(time, player) {
     if (!this.active) return
     if (this.seaPatrol) {
-      this.updateSeaPatrol(time)
+      this.updateSeaPatrol(time, player)
       return
     }
     // FENÊTRE DE RECUL : on laisse la vélocité du knockback agir (légèrement amortie) sans que l'IA

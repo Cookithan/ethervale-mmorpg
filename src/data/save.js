@@ -69,6 +69,7 @@ export function makeSave(player, character) {
     deathsSinceRecovery: player.deathsSinceRecovery,
     respawnHome: player.respawnHome, // a dormi au dortoir -> respawn dans son lit à la mort
     setPity: player.setPity, // compteur anti-malchance des pièces de panoplie (par id)
+    dungeonChests: player.dungeonChests, // coffres de donjon pillés (id -> horodatage du pillage, lockout journalier)
     reviveCharge: player.reviveCharge, // bénédiction de résurrection (Soigneur, set) en attente
     unlockedSkills: player.unlockedSkills, // compétences GATED gagnées sur des boss (bibliothèque)
     skillsMigrated: player.skillsMigrated, // grandfather des compétences gated déjà fait (une seule fois)
