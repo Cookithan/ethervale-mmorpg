@@ -236,7 +236,11 @@ export default class BootScene extends Phaser.Scene {
       'eq_leather', 'eq_mail', 'eq_plate', 'eq_dragon', // armures distinctes (Kyrise armor_01 a/b/c/e)
       'eq_ring_band', 'eq_ring_emerald', 'eq_ring_topaz', 'eq_ring_sapphire', 'eq_ring_ruby', // anneaux Kyrise (gemmes serties)
       'rel_frost', 'rel_thunder', 'rel_flame', 'rel_cosmic', // reliques = cristaux de pouvoir Kyrise (givre/foudre/flammes/cosmique)
-      'rel_emerald', // relique de PANOPLIE (cristal vert émeraude)
+      'rel_emerald', // ancienne relique de panoplie partagée (gardée : vieilles saves avant refreshItemDef)
+      // icônes DÉDIÉES des pièces de PANOPLIE (Kyrise) : armure/relique/anneau distincts par classe
+      'set_armor_war', 'set_armor_tank', 'set_armor_mage', 'set_armor_heal', // cuirasse rouge / granit argent / robe bleue / robe dorée
+      'set_relic_war', 'set_relic_tank', 'set_relic_mage', 'set_relic_heal', // écu à croix / orbe de pierre / tome runique / collier d'or
+      'set_ring_war', 'set_ring_tank', 'set_ring_mage', 'set_ring_heal', // or+rubis / terre+gemme verte / argent+bleu / or+gemme dorée
       'foc_scroll', 'foc_ice', 'foc_plant', 'foc_thunder', 'foc_fire', // Focus = parchemins élémentaires
       'ring_green', 'ring_yellow', 'ring_purple', 'ring_red', // Anneaux = gemmes colorées
       'pot_heal', 'pot_heal_big', 'pot_mana', 'pot_mana_big', 'pot_fire', 'pot_frost', // potions (soin / mana / température)
@@ -254,7 +258,7 @@ export default class BootScene extends Phaser.Scene {
       'at_club', 'at_warhammer', 'at_axe', 'at_warlance', 'at_greatblade', // armes Tank (Admurin)
       'am_wand', 'am_grimoire', 'am_archstaff', // armes Mage (am_grimoire = grimoire Kyrise)
       'ah_healstick', 'ah_healwand', 'ah_relic', // armes Soigneur (Admurin)
-      'set_sword', 'set_glaive', 'set_scepter']) { // armes de PANOPLIE (ligne émeraude Admurin)
+      'set_sword', 'set_glaive', 'set_scepter', 'set_staff_heal']) { // armes de PANOPLIE (ligne émeraude Admurin + bâton sacré Kyrise pour la Soigneuse)
       this.load.image(key, `assets/weapons/${key}.png`)
     }
 

@@ -134,24 +134,24 @@ export const ITEMS = {
   // 4 par classe (arme/armure/relique/anneau). Voir SETS pour les bonus 2/4 pièces. =====
   // -- Guerrier : « Dernier Chevalier » --
   set_war_weapon: { id: 'set_war_weapon', name: 'Lame du Dernier Chevalier', slot: 'weapon', classes: ['warrior'], icon: 'set_sword', set: 'warrior', rarity: 'epic', price: 800, stats: { attack: 22 }, dur: 200, fx: 'fx-slash' },
-  set_war_armor: { id: 'set_war_armor', name: 'Cuirasse du Serment', slot: 'armor', classes: ['warrior'], icon: 'eq_plate', set: 'warrior', rarity: 'epic', price: 800, stats: { hp: 48, defense: 9 }, dur: 160 },
-  set_war_relic: { id: 'set_war_relic', name: 'Étendard du Chevalier', slot: 'focus', classes: ['warrior'], icon: 'rel_emerald', set: 'warrior', rarity: 'epic', price: 800, spellDuration: 0.3 },
-  set_war_ring: { id: 'set_war_ring', name: 'Anneau du Serment', slot: 'ring', classes: ['warrior'], icon: 'eq_ring_emerald', set: 'warrior', rarity: 'epic', price: 800, stats: { mana: 30, attack: 5 } },
+  set_war_armor: { id: 'set_war_armor', name: 'Cuirasse du Serment', slot: 'armor', classes: ['warrior'], icon: 'set_armor_war', set: 'warrior', rarity: 'epic', price: 800, stats: { hp: 48, defense: 9 }, dur: 160 },
+  set_war_relic: { id: 'set_war_relic', name: 'Étendard du Chevalier', slot: 'focus', classes: ['warrior'], icon: 'set_relic_war', set: 'warrior', rarity: 'epic', price: 800, spellDuration: 0.3 },
+  set_war_ring: { id: 'set_war_ring', name: 'Anneau du Serment', slot: 'ring', classes: ['warrior'], icon: 'set_ring_war', set: 'warrior', rarity: 'epic', price: 800, stats: { mana: 30, attack: 5 } },
   // -- Tank : « Cœur en Pierre » --
   set_tank_weapon: { id: 'set_tank_weapon', name: 'Masse du Cœur en Pierre', slot: 'weapon', classes: ['tank'], icon: 'set_glaive', set: 'tank', rarity: 'epic', price: 800, stats: { attack: 19 }, dur: 220, fx: 'fx-circslash' },
-  set_tank_armor: { id: 'set_tank_armor', name: 'Carapace de Granit', slot: 'armor', classes: ['tank'], icon: 'eq_mail', set: 'tank', rarity: 'epic', price: 800, stats: { hp: 60, defense: 12 }, dur: 200 },
-  set_tank_relic: { id: 'set_tank_relic', name: 'Pierre du Gardien', slot: 'focus', classes: ['tank'], icon: 'rel_emerald', set: 'tank', rarity: 'epic', price: 800, spellDuration: 0.3 },
-  set_tank_ring: { id: 'set_tank_ring', name: 'Anneau Tellurique', slot: 'ring', classes: ['tank'], icon: 'eq_ring_emerald', set: 'tank', rarity: 'epic', price: 800, stats: { mana: 24, hp: 24, defense: 3 } },
+  set_tank_armor: { id: 'set_tank_armor', name: 'Carapace de Granit', slot: 'armor', classes: ['tank'], icon: 'set_armor_tank', set: 'tank', rarity: 'epic', price: 800, stats: { hp: 60, defense: 12 }, dur: 200 },
+  set_tank_relic: { id: 'set_tank_relic', name: 'Pierre du Gardien', slot: 'focus', classes: ['tank'], icon: 'set_relic_tank', set: 'tank', rarity: 'epic', price: 800, spellDuration: 0.3 },
+  set_tank_ring: { id: 'set_tank_ring', name: 'Anneau Tellurique', slot: 'ring', classes: ['tank'], icon: 'set_ring_tank', set: 'tank', rarity: 'epic', price: 800, stats: { mana: 24, hp: 24, defense: 3 } },
   // -- Mage : « Magie Ancienne » --
   set_mage_weapon: { id: 'set_mage_weapon', name: 'Sceptre de la Magie Ancienne', slot: 'weapon', classes: ['mage'], icon: 'set_scepter', set: 'mage', rarity: 'epic', price: 800, stats: { attack: 21 }, dur: 160 },
-  set_mage_armor: { id: 'set_mage_armor', name: 'Robe Runique', slot: 'armor', classes: ['mage'], icon: 'eq_leather', set: 'mage', rarity: 'epic', price: 800, stats: { hp: 32, mana: 30 }, dur: 140 },
-  set_mage_relic: { id: 'set_mage_relic', name: 'Tome Ancien', slot: 'focus', classes: ['mage'], icon: 'rel_emerald', set: 'mage', rarity: 'epic', price: 800, spellPower: 0.35, stats: { manaRegen: 3 } },
-  set_mage_ring: { id: 'set_mage_ring', name: 'Anneau Arcanique', slot: 'ring', classes: ['mage'], icon: 'eq_ring_emerald', set: 'mage', rarity: 'epic', price: 800, stats: { mana: 70, manaRegen: 3 } },
+  set_mage_armor: { id: 'set_mage_armor', name: 'Robe Runique', slot: 'armor', classes: ['mage'], icon: 'set_armor_mage', set: 'mage', rarity: 'epic', price: 800, stats: { hp: 32, mana: 30 }, dur: 140 },
+  set_mage_relic: { id: 'set_mage_relic', name: 'Tome Ancien', slot: 'focus', classes: ['mage'], icon: 'set_relic_mage', set: 'mage', rarity: 'epic', price: 800, spellPower: 0.35, stats: { manaRegen: 3 } },
+  set_mage_ring: { id: 'set_mage_ring', name: 'Anneau Arcanique', slot: 'ring', classes: ['mage'], icon: 'set_ring_mage', set: 'mage', rarity: 'epic', price: 800, stats: { mana: 70, manaRegen: 3 } },
   // -- Soigneur : « Vie Sacrée » --
-  set_heal_weapon: { id: 'set_heal_weapon', name: 'Sceptre de la Vie Sacrée', slot: 'weapon', classes: ['healer'], icon: 'set_scepter', set: 'healer', rarity: 'epic', price: 800, stats: { attack: 15 }, dur: 160 },
-  set_heal_armor: { id: 'set_heal_armor', name: 'Robe Sacrée', slot: 'armor', classes: ['healer'], icon: 'eq_leather', set: 'healer', rarity: 'epic', price: 800, stats: { hp: 32, mana: 30 }, dur: 140 },
-  set_heal_relic: { id: 'set_heal_relic', name: 'Reliquaire Béni', slot: 'focus', classes: ['healer'], icon: 'rel_emerald', set: 'healer', rarity: 'epic', price: 800, spellPower: 0.3, stats: { manaRegen: 3 } },
-  set_heal_ring: { id: 'set_heal_ring', name: 'Anneau Béni', slot: 'ring', classes: ['healer'], icon: 'eq_ring_emerald', set: 'healer', rarity: 'epic', price: 800, stats: { mana: 70, manaRegen: 4 } },
+  set_heal_weapon: { id: 'set_heal_weapon', name: 'Sceptre de la Vie Sacrée', slot: 'weapon', classes: ['healer'], icon: 'set_staff_heal', set: 'healer', rarity: 'epic', price: 800, stats: { attack: 15 }, dur: 160 },
+  set_heal_armor: { id: 'set_heal_armor', name: 'Robe Sacrée', slot: 'armor', classes: ['healer'], icon: 'set_armor_heal', set: 'healer', rarity: 'epic', price: 800, stats: { hp: 32, mana: 30 }, dur: 140 },
+  set_heal_relic: { id: 'set_heal_relic', name: 'Reliquaire Béni', slot: 'focus', classes: ['healer'], icon: 'set_relic_heal', set: 'healer', rarity: 'epic', price: 800, spellPower: 0.3, stats: { manaRegen: 3 } },
+  set_heal_ring: { id: 'set_heal_ring', name: 'Anneau Béni', slot: 'ring', classes: ['healer'], icon: 'set_ring_heal', set: 'healer', rarity: 'epic', price: 800, stats: { mana: 70, manaRegen: 4 } },
 
   // ===== ÉQUIPEMENT FORGÉ (champ `craftedOnly`) — EXCLUSIF À L'ARTISANAT chez Aldric (jamais marchand/butin,
   // cf. SHOP_STOCK / equipmentOfTier). Gamme « milieu de gamme » qui comble le trou entre commun et épique :

@@ -181,6 +181,7 @@ const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + 
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
 const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque + touche G téléport Sargèr + gate désactivé (test end-game).
 const DEBUG_TP_HAMLET = false // OUTIL DEV : true -> touche H téléporte au hameau abandonné « Ombrebois » (forêt ouest) pour tester. REMETTRE false avant commit.
+const DEBUG_GIVE_SET = false // OUTIL DEV (désactivé) : true -> touche P fait tomber les 4 pièces de la PANOPLIE de ta classe à tes pieds (test icônes/halo/équipement). REMETTRE false avant commit.
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
 // carrelle sans couture. Les gués utilisent un sprite de pont AGRANDI (cf. renderFordBridges).
 const BRIDGE_H = 8 // ponts de rivière (bridgeSpan) : tablier plein
@@ -742,6 +743,12 @@ export default class GameScene extends Phaser.Scene {
         this.player.setPosition((this.hamlet.tx + 1) * TILE + 8, (this.hamlet.ty + 1) * TILE + 8)
         this.cameras.main.centerOn(this.player.x, this.player.y)
         this.scene.get('UIScene')?.showToast?.('TEST : téléporté en forêt ouest (grottes-donjons au NO/SE)', '#cdbd96')
+      })
+      if (DEBUG_GIVE_SET) this.input.keyboard.on('keydown-P', () => { // TEST : P = les 4 pièces de panoplie de TA classe tombent devant toi (icônes/halo/équipement)
+        const p = this.player
+        const pieces = Object.values(ITEMS).filter((it) => it.set === p.className)
+        pieces.forEach((def, i) => this.drops.add(new Drop(this, p.x - 30 + i * 20, p.y + 22, 'equip', 0, cloneItem(def), 800)))
+        this.scene.get('UIScene')?.showToast?.('TEST : panoplie de ta classe lâchée à tes pieds (P)', '#3ddc84')
       })
       this.input.on('pointerdown', (p) => {
         // ignore les clics quand un panneau plein écran est ouvert (boutique/dialogue)
