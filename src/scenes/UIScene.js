@@ -1,7 +1,7 @@
 import Phaser from 'phaser'
 import { ITEMS, MATERIALS, RECIPES, SLOTS, SLOT_LABELS, describeStats, describeItem, RARITY, itemColor, itemTint, SETS, setStatus, SHOP_STOCK, SHOP_CONFIGS, SHOP_MAX_TIER, BOAT_ITEM, sellPrice, cloneItem, itemName, hasDurability, repairCost, upgradeCost, canEquip, classRestrictionLabel } from '../data/items.js'
 import { Audio } from '../data/sound.js'
-import { SKILL_ICONS, SKILLS, SKILL_BY_ID, skillPoolFor } from '../data/classes.js'
+import { SKILL_ICONS, SKILLS, SKILL_BY_ID, SKILL_SOURCES, skillPoolFor } from '../data/classes.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
 
 // couleur du pseudo selon la classe (Guerrier rouge · Tank bleu · Mage violet · Soigneur vert)
@@ -1090,8 +1090,10 @@ export default class UIScene extends Phaser.Scene {
       if (!sk) { dName.setText(''); dCost.setText(''); dDesc.setText('Survole un sort pour voir ce qu\'il fait, puis glisse-le dans une case.'); return }
       const known = !!g.skillKnown?.(sk.id)
       dName.setText(sk.name + (sk.state ? `  ${STATE_ICON[sk.state] ?? ''}` : ''))
-      dCost.setText(known ? `${sk.cost} mana · ${Math.round(sk.cd / 1000)} s` : (sk.gated ? '🔒 À gagner sur un boss' : `🔒 Niveau ${sk.level}`))
-      dDesc.setText(sk.desc ?? '')
+      dCost.setText(known ? `${sk.cost} mana · ${Math.round(sk.cd / 1000)} s` : (sk.gated ? '🔒 Boss' : `🔒 Niveau ${sk.level}`))
+      // gated non apprise : on dit OÙ chasser (mapping précis SKILL_SOURCES) -> la carotte de farm est lisible
+      const src = !known && sk.gated ? SKILL_SOURCES[sk.id]?.source : null
+      dDesc.setText((sk.desc ?? '') + (src ? `\n🔒 Enseigné par ${src}.` : ''))
     }
     showDetail(null)
 

@@ -5,7 +5,7 @@ import Projectile from '../entities/Projectile.js'
 import Drop from '../entities/Drop.js'
 import { ITEMS, cloneItem, RARITY, itemColor, itemTint, ELITE_DROP } from '../data/items.js'
 import { QUESTS, questGoal, questProgress, questComplete, nextQuestId } from '../data/quests.js'
-import { DEFAULT_CHARACTER, KNIGHT_CHARACTER, SKILL_BY_ID, knownSkillsFor, skillPoolFor } from '../data/classes.js'
+import { DEFAULT_CHARACTER, KNIGHT_CHARACTER, SKILL_BY_ID, knownSkillsFor, skillPoolFor, skillTaughtBy } from '../data/classes.js'
 import { makeSave, saveCharacter, getCharacterSave, lastPlayedSave } from '../data/save.js'
 import { Audio, SFX } from '../data/sound.js'
 import { FONT } from '../ui/font.js'
@@ -7216,21 +7216,19 @@ export default class GameScene extends Phaser.Scene {
     return (p.unlockedSkills || []).includes(id) || (!def.gated && p.level >= def.level)
   }
 
-  /** CHASSE À LA COMPÉTENCE : battre un BOSS apprend la PROCHAINE compétence GATED de la classe (ordre du
-   *  catalogue, élément du mage respecté). Persisté + annonce. Sans effet si toutes déjà apprises. */
+  /** CHASSE À LA COMPÉTENCE (mapping PRÉCIS) : chaque compétence gated a SON boss-source (SKILL_SOURCES,
+   *  type + flags guardian/dungeonBoss). Battre CE boss l'apprend (élément du mage respecté) ; les autres
+   *  boss n'enseignent rien — le grimoire affiche où chasser. Persisté + annonce. */
   tryUnlockSkillFromBoss(mon) {
     const p = this.player
     if (!p) return
     p.unlockedSkills ||= []
-    const next = skillPoolFor(p.className, p.element).find((s) => s.gated && !p.unlockedSkills.includes(s.id))
-    if (!next) { // toutes les compétences gated déjà gagnées -> on ferme la boucle UNE fois (pas à chaque boss)
-      if (!this._allSkillsToastShown) { this._allSkillsToastShown = true; this.time.delayedCall(1300, () => this.scene.get('UIScene')?.showToast?.('⚜ Tu maîtrises déjà toutes les compétences de ta voie.', '#c9a8ff')) }
-      return
-    }
+    const next = skillPoolFor(p.className, p.element).find((s) => s.gated && !p.unlockedSkills.includes(s.id) && skillTaughtBy(s.id, mon))
+    if (!next) return // ce boss n'enseigne rien à cette classe (ou compétence déjà apprise)
     p.unlockedSkills.push(next.id)
     this.saveGame?.()
     this.time.delayedCall(1300, () => { // après le toast de victoire du boss
-      this.scene.get('UIScene')?.showToast?.(`⚜ Compétence apprise : ${next.name} ! (équipe-la chez Ylva)`, '#c9a8ff')
+      this.scene.get('UIScene')?.showToast?.(`⚜ ${mon.displayName ?? 'Le boss'} t'enseigne : ${next.name} ! (équipe-la chez Ylva)`, '#c9a8ff')
       Audio.sfx('sfx_levelup', { vol: 0.6, detune: 200 })
     })
   }

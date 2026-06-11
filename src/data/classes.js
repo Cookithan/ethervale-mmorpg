@@ -172,6 +172,39 @@ export const SKILLS = {
 const GATED_SKILLS = new Set(['ragecry', 'warcry', 'bloodfury', 'shockwave', 'frostward', 'fortress', 'meteor', 'mirror', 'cataclysm', 'holynova', 'smite', 'resurrect'])
 for (const list of Object.values(SKILLS)) for (const s of list) if (GATED_SKILLS.has(s.id)) s.gated = true
 
+// SOURCE PRÉCISE de chaque compétence gated : QUEL boss l'enseigne (mapping thématique, « chasse à la
+// compétence » ciblée). Les types de boss sont RÉUTILISÉS entre Ergas/Sargèr/donjons (Akaoni vs Akaoni le
+// Damné…) -> les flags d'instance `guardian`/`dungeonBoss` départagent. Progression : 1re gated = boss
+// accessible mi-jeu, 2e = boss plus lointain/donjon, 3e (ULT) = gardien de Sargèr ou donjon (end-game).
+// `source` = libellé du grimoire (où chasser). NB : la panoplie 4/4 reste une 2e voie pour l'ULT (Player).
+export const SKILL_SOURCES = {
+  // Guerrier — écho narratif : Akaoni t'enseigne le Cri de rage, sa version damnée l'ULT.
+  ragecry: { match: { type: 'redsamurai', guardian: false }, source: 'Akaoni, le Samouraï Rouge (forêt)' },
+  warcry: { match: { type: 'democyclop' }, source: 'Gorehk, le Cyclope des Sables (désert)' },
+  bloodfury: { match: { type: 'redsamurai', guardian: true }, source: 'Akaoni le Damné (gardien de Sargèr)' },
+  // Tank
+  shockwave: { match: { type: 'giantbamboo' }, source: 'Sylvas, le Colosse de Bambou (forêt)' },
+  frostward: { match: { type: 'giantslime' }, source: 'Givralk, la Gelée Polaire (neige)' },
+  fortress: { match: { type: 'giantracoon', dungeonBoss: true }, source: 'Griffe-Pourrie (donjon : Tanière Ocre)' },
+  // Mage (gated neutres = tous les éléments) — écho : Fujin enseigne Météore, sa version damnée l'ULT.
+  meteor: { match: { type: 'tengured', guardian: false }, source: 'Fujin, le Tengu Rouge (désert)' },
+  mirror: { match: { type: 'giantspirit', dungeonBoss: true }, source: 'le Spectre d\'Ombrebois (donjon : Grotte Moussue)' },
+  cataclysm: { match: { type: 'tengured', guardian: true }, source: 'Fujin le Damné (gardien de Sargèr)' },
+  // Soigneuse — Nyl l'Âme Damnée enseigne l'Intervention divine (ramener une âme).
+  holynova: { match: { type: 'giantfrog' }, source: 'Gluk, le Crapaud Colossal (forêt)' },
+  smite: { match: { type: 'squidred' }, source: 'Vorakh, le Kraken des Récifs (côte)' },
+  resurrect: { match: { type: 'giantspirit', guardian: true }, source: 'Nyl, l\'Âme Damnée (gardien de Sargèr)' },
+}
+
+/** true si CE monstre (instance tuée) enseigne la compétence `skillId` (type + flags d'instance). */
+export function skillTaughtBy(skillId, mon) {
+  const m = SKILL_SOURCES[skillId]?.match
+  if (!m || mon?.typeKey !== m.type) return false
+  if (m.guardian !== undefined && !!mon.guardian !== m.guardian) return false
+  if (m.dungeonBoss !== undefined && !!mon.dungeonBoss !== m.dungeonBoss) return false
+  return true
+}
+
 // Index plat : id -> def enrichie de `classKey` (pour cast/UI/save sans reparcourir).
 export const SKILL_BY_ID = {}
 for (const [cls, list] of Object.entries(SKILLS)) for (const s of list) SKILL_BY_ID[s.id] = { ...s, classKey: cls }
