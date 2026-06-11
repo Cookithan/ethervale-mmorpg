@@ -176,6 +176,9 @@ export default class Player extends Phaser.Physics.Arcade.Sprite {
     this.baseAttack = s.baseAttack ?? this.baseAttack
     this.baseDefense = s.baseDefense ?? this.baseDefense
     this.baseMana = s.baseMana ?? this.baseMana // mana de base acquise au fil des niveaux (casters)
+    // RATTRAPAGE mana (équilibrage 2026-06-11) : Guerrier/Tank gagnent désormais +2 mana/niv — une vieille
+    // save garde sa mana figée, on la remet au PLANCHER attendu (mana de classe + gains des niveaux acquis).
+    this.baseMana = Math.max(this.baseMana, (CLASSES[this.className]?.mana ?? 0) + (this.level - 1) * this.manaPerLevel)
     if (s.equipped) {
       // garantit les 4 slots + migre une ancienne sauvegarde (slot 'accessory' -> 'ring')
       this.equipped = { weapon: null, armor: null, focus: null, ring: null, ...s.equipped }

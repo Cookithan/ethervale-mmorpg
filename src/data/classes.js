@@ -19,8 +19,9 @@ export const CLASSES = {
     key: 'warrior', name: 'Guerrier', desc: 'Corps à corps robuste',
     hp: 110, attack: 16, defense: 1, speedMul: 1.0, // ATQ 14->16 (buff mêlée : la mêlée galérait face aux casters)
     mana: 60,
-    // GAINS PAR NIVEAU (identité de rôle, style trinité) : DPS mêlée équilibré.
-    hpPerLevel: 20, defPerLevel: 0, manaPerLevel: 0,
+    // GAINS PAR NIVEAU (identité de rôle, style trinité) : DPS mêlée équilibré. +2 mana/niv (équilibrage
+    // 2026-06-11 : pool FIXE de 60 face à des sorts à 45-50 = ULT inutilisable ; les casters restent loin devant).
+    hpPerLevel: 20, defPerLevel: 0, manaPerLevel: 2,
     abilities: { melee: true, ranged: false, heal: false },
     kit: 'Mêlée mobile · saignements 🩸 et cris de guerre',
     heroes: [
@@ -52,7 +53,8 @@ export const CLASSES = {
     hp: 200, attack: 11, defense: 5, speedMul: 0.78, // ATQ 9->11 ; vitesse 0.6->0.72->0.78 (assez mobile pour esquiver les AoE télégraphiées des boss)
     mana: 70,
     // Mur : énormément de PV ET défense qui monte (encaisse de mieux en mieux), dégâts faibles.
-    hpPerLevel: 30, defPerLevel: 1, manaPerLevel: 0,
+    // +2 mana/niv (équilibrage 2026-06-11 : Onde de choc/Forteresse à 55 sur un pool fixe de 70 = inutilisables en chaîne).
+    hpPerLevel: 30, defPerLevel: 1, manaPerLevel: 2,
     attackCdMul: 1.6, // attaque de base plus LENTE que les autres mais moins pénalisante (2.0->1.6 : ~544 ms/coup)
     meleeKnock: 200, // son coup REPOUSSE l'ennemi
     abilities: { melee: true, ranged: false, heal: false },
@@ -149,7 +151,7 @@ export const SKILLS = {
     { id: 'frostlance', name: 'Lance de givre', element: 'ice', cost: 50, cd: 11000, level: 10, kind: 'bolt', state: 'freeze', dmgMul: 3.2, desc: 'Trait de glace : gros dégâts mono-cible + GÈLE (❄️).' },
     { id: 'shadowbolt', name: "Trait d'ombre", element: 'shadow', cost: 50, cd: 11000, level: 10, kind: 'bolt', state: 'vulnerable', dmgMul: 3.2, desc: "Trait d'ombre : gros dégâts mono-cible + VULNÉRABLE (💀)." },
     { id: 'blink', name: 'Téléportation', cost: 20, cd: 7000, level: 6, kind: 'mobility', aim: true, desc: 'Vise une destination (clic) puis téléporte-toi (clic droit = annuler). Neutre, tous mages.' },
-    { id: 'meteor', name: 'Météore', cost: 45, cd: 14000, level: 16, kind: 'aoe', dmgMul: 3, desc: 'Incantation : énorme impact de zone sur la cible. Neutre, tous mages.' },
+    { id: 'meteor', name: 'Météore', cost: 45, cd: 14000, level: 16, kind: 'aoe', dmgMul: 3.8, desc: 'Incantation : énorme impact de zone sur la cible. Neutre, tous mages.' },
     { id: 'mirror', name: 'Image miroir', cost: 70, cd: 35000, level: 20, kind: 'summon', desc: 'Invoque des clones qui combattent et détournent les ennemis (neutre, tous mages).' },
     { id: 'cataclysm', name: 'Cataclysme', cost: 75, cd: 36000, level: 28, kind: 'aoe', desc: 'ULT : déchaîne une zone immense qui DÉTONE tous les états (🔥❄️💀🩸) du champ. Neutre.' },
   ],
@@ -160,7 +162,7 @@ export const SKILLS = {
     { id: 'sanctuary', name: 'Sanctuaire', cost: 40, cd: 16000, level: 10, kind: 'heal', desc: 'Zone de lumière : soigne sur la durée.' },
     { id: 'blessing', name: 'Bénédiction', cost: 30, cd: 18000, level: 14, kind: 'buff', desc: 'Bénédiction : +attaque et +défense (12 s).' },
     { id: 'purify', name: 'Purification', cost: 25, cd: 12000, level: 8, kind: 'heal', desc: 'Lumière purificatrice : te soigne et RALENTIT les ennemis proches.' },
-    { id: 'holynova', name: 'Nova sacrée', cost: 35, cd: 12000, level: 16, kind: 'aoe', dmgMul: 1.5, desc: 'Explosion de lumière : te soigne ET inflige des dégâts sacrés autour.' },
+    { id: 'holynova', name: 'Nova sacrée', cost: 35, cd: 12000, level: 16, kind: 'aoe', dmgMul: 1.8, desc: 'Explosion de lumière : te soigne ET inflige des dégâts sacrés autour.' },
     { id: 'smite', name: 'Châtiment', cost: 30, cd: 7000, level: 18, kind: 'bolt', state: 'mark', dmgMul: 2, desc: 'Trait sacré ; dégâts DOUBLÉS si la cible est MARQUÉE (⚡) ou VULNÉRABLE (💀).' },
     { id: 'resurrect', name: 'Intervention divine', cost: 65, cd: 35000, level: 24, kind: 'heal', desc: 'Réanime un allié / invulnérabilité + soin (solo : auto-soin d\'urgence).' },
   ],

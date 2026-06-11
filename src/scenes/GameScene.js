@@ -627,7 +627,7 @@ export default class GameScene extends Phaser.Scene {
           cam.centerOn(vX, vY)
         },
       })
-      this.spawnSeaDragon() // dragon qui rôde au large -> visible lors du dézoom de l'accueil
+      this.spawnSeaDragon() // dragon qui rôde autour de SARGÈR (à peine visible à l'accueil — on en devine un bout à l'est au dézoom)
       this.setupFog() // ACCUEIL : la TERRE reste nuageuse (prairie + forêt) ; SEUL le VILLAGE est dégagé
       // ÉCLAIRCIE douce LIMITÉE au village (serrée -> ne déborde ni sur la prairie autour ni sur la forêt)
       if (this.textures.exists('nightHole')) {
@@ -1224,7 +1224,7 @@ export default class GameScene extends Phaser.Scene {
       this.wanderEntity(npc._w, time, dt)
       if (npc.label) npc.label.setPosition(npc.sprite.x, npc.sprite.y - 14)
     }
-    this.seaDragon?.update(time) // le dragon rôde au large aussi à l'accueil (visible au dézoom)
+    this.seaDragon?.update(time) // le dragon rôde autour de Sargèr aussi à l'accueil (à peine visible au dézoom)
     if (this.worldClouds) { this.worldClouds.tilePositionX = time * 0.006; this.worldClouds.tilePositionY = time * 0.0032 } // nuages qui dérivent sur le menu
   }
 
@@ -3124,18 +3124,15 @@ export default class GameScene extends Phaser.Scene {
       const list = BIOME_BOSSES[biome]
       for (let i = 0; i < list.length; i++) this.spawnBoss(biome, i)
     }
-    this.spawnSeaDragon() // Dragon des Abysses : rôde dans l'océan autour de l'île (ambiance, pas un boss classique)
+    this.spawnSeaDragon() // Dragon des Abysses : rôde dans l'océan autour de SARGÈR (ambiance, pas un boss classique)
   }
 
   /** Construit une boucle de points qui ÉPOUSE la côte (juste dans l'océan) : pour chaque angle, on
-   *  marche du centre de l'île vers l'extérieur jusqu'à la 1re tuile d'océan = la côte, puis on décale
-   *  de SEA_OFFSET tuiles dans l'eau. -> le dragon longe la côte sans jamais monter sur la terre. */
-  buildSeaPath() {
-    const cx = this.icx
-    const cy = this.icy
+   *  marche du centre de l'île (cx,cy) vers l'extérieur jusqu'à la 1re tuile d'océan = la côte, puis on
+   *  décale de SEA_OFFSET tuiles dans l'eau. -> le dragon longe la côte sans jamais monter sur la terre. */
+  buildSeaPath(cx, cy, maxR) {
     const N = 240 // résolution de la boucle
     const SEA_OFFSET = 3 // tuiles au large de la côte (proche du rivage)
-    const maxR = Math.max(ISLAND_RX, ISLAND_RY) + 30
     const pts = []
     for (let k = 0; k < N; k++) {
       const a = (k / N) * Math.PI * 2
@@ -3151,11 +3148,12 @@ export default class GameScene extends Phaser.Scene {
     return pts
   }
 
-  /** Crée le Dragon de mer d'AMBIANCE : il LONGE la côte sans fin (chemin précalculé dans l'océan ;
-   *  nage = ignore la collision ; aucune interaction tant que la nage n'existe pas). Si la barque du
-   *  joueur s'approche, il PLONGE et ressurgit plus loin (cf. Monster.updateSeaPatrol). */
+  /** Crée le Dragon de mer d'AMBIANCE : il LONGE la côte de SARGÈR sans fin (le Dragon des Abysses rôde
+   *  autour de l'île maudite — chemin précalculé dans l'océan ; nage = ignore la collision ; aucune
+   *  interaction). Si la barque du joueur s'approche, il PLONGE et ressurgit plus loin (Monster.updateSeaPatrol). */
   spawnSeaDragon() {
-    const path = this.buildSeaPath()
+    const ccx = this.icx + CURSED_ISLE.ox, ccy = this.icy + CURSED_ISLE.oy // centre de Sargèr (tuiles)
+    const path = this.buildSeaPath(ccx, ccy, Math.max(CURSED_ISLE.rx, CURSED_ISLE.ry) + 30)
     // espacement des segments voulu (~28 px) converti en indices de chemin (selon l'écart moyen des points)
     let len = 0
     for (let i = 0; i < path.length; i++) {
@@ -6491,7 +6489,7 @@ export default class GameScene extends Phaser.Scene {
   spawnMirrorClones() {
     const p = this.player
     const now = this.time.now
-    const DUR = 6000
+    const DUR = 8000 // équilibrage 2026-06-11 : 6->8 s (70 mana + 35 s de cd pour 6 s de clones = trop court)
     const N = 3
     const LEASH = 78
     const cloneHp = Math.max(20, Math.round(p.maxHp * 0.35))
@@ -6757,7 +6755,7 @@ export default class GameScene extends Phaser.Scene {
     this.monsters.getChildren().forEach((m) => {
       if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) {
         this.hitMonster(m, dmg, p.x, p.y, 140) // dégâts + recul
-        m.stun?.(m.isBoss ? 4000 : 3000) // étourdi (boss inclus : 4 s sur boss) + "zzz"
+        m.stun?.(m.isBoss ? 2200 : 3000) // étourdi, boss inclus (équilibrage 2026-06-11 : 4->2,2 s sur boss — il dépassait le Cri de guerre, sort de contrôle dédié à 2 s)
         m.lureTarget = null; m.aggroed = true; m.returning = false // PROVOQUÉ : te cible
       }
     })
@@ -7116,12 +7114,12 @@ export default class GameScene extends Phaser.Scene {
     return this.incant(900, 'Météore…', 0xff7a3a, () => {
       const gx = target && target.active ? target.x : fx
       const gy = target && target.active ? target.y : fy
-      const R = Math.round(72 * (p.spellPowerMul ?? 1))
+      const R = Math.round(84 * (p.spellPowerMul ?? 1)) // équilibrage 2026-06-11 : 72->84 (gated = doit dépasser la tempête niv.1)
       this.cameras.main.shake(220, 0.008)
       Audio.sfx(SFX.meteor, { vol: 0.8 })
       const boom = this.add.sprite(gx, gy, 'fx_explosion').setDepth(gy + 6).setScale(2.4)
       if (this.anims.exists('fx-explosion')) { boom.play('fx-explosion'); boom.once('animationcomplete', () => boom.destroy()) } else this.time.delayedCall(420, () => boom.destroy())
-      const dmg = Math.round(p.attackPower * 3 * (p.spellPowerMul ?? 1))
+      const dmg = Math.round(p.attackPower * 3.8 * (p.spellPowerMul ?? 1)) // 3->3.8 : il rendait MOINS que Tempête de feu (niv.1, 30 mana) — un sort de boss doit cogner
       this.monsters.getChildren().forEach((m) => { if (m.active && Phaser.Math.Distance.Between(gx, gy, m.x, m.y) <= R) this.hitMonster(m, dmg, gx, gy, 120) })
     })
   }
@@ -7176,7 +7174,7 @@ export default class GameScene extends Phaser.Scene {
     this.tweens.add({ targets: nova, scale: 1, alpha: 0, duration: 420, onComplete: () => nova.destroy() })
     const healed = p.heal(Math.round(p.maxHp * 0.12 * (p.spellPowerMul ?? 1)))
     if (healed > 0) { this.floatingText(p.x, p.y - 6, `+${healed}`, '#7CFC9A'); this.showHealEffect(p.x, p.y) }
-    const dmg = Math.round(p.attackPower * 1.5 * (p.spellPowerMul ?? 1))
+    const dmg = Math.round(p.attackPower * 1.8 * (p.spellPowerMul ?? 1)) // 1.5->1.8 (équilibrage 2026-06-11 : gated, doit dépasser les sorts de niveau)
     this.monsters.getChildren().forEach((m) => { if (m.active && Phaser.Math.Distance.Between(p.x, p.y, m.x, m.y) <= R) this.hitMonster(m, dmg, p.x, p.y, 90) })
     return true
   }
@@ -8171,7 +8169,7 @@ export default class GameScene extends Phaser.Scene {
       mon.setDepth(mon.y)
     })
     this.updateVoidZones(time) // flaques persistantes des boss (voidzone) : tic de dégâts + expiration
-    this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de l'île)
+    this.seaDragon?.update(time, p) // dragon de mer d'ambiance (orbite autour de Sargèr)
     this.updateMageClones(time) // clones du Mage (Image miroir) : tir + barre de vie + expiration
     if (p.charging2) { // Charge du Tank : la bulle suit, fin au bout de 4 s
       this.tankChargeFx?.setPosition(p.x, p.y).setDepth(p.y + 61)
