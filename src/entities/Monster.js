@@ -1162,6 +1162,11 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
       this.updateSeaPatrol(time, player)
       return
     }
+    // DRAGON DE RAID SEGMENTÉ : la chaîne de corps + le battement d'ailes (qui dépend de `time`) doivent
+    // tourner à CHAQUE frame. Sinon ils FIGENT dès qu'une capacité/phase occupe le boss (les dispatch plus bas
+    // font `return` avant l'ancien appel de fin de frame). On met donc à jour le corps EN TÊTE de frame : le
+    // seul effet de bord est un retard d'1 frame sur la rotation de la tête (invisible à 60 fps).
+    if (this.dragon) this.updateDragon(time)
     // FENÊTRE DE RECUL : on laisse la vélocité du knockback agir (légèrement amortie) sans que l'IA
     // ne reprenne le contrôle -> le coup repousse VRAIMENT le monstre, qui se replace ensuite.
     if (time < this.knockbackUntil) {
@@ -1414,8 +1419,8 @@ export default class Monster extends Phaser.Physics.Arcade.Sprite {
     // immobile pendant le télégraphe de tir (il plante son geste)
     if (time < this.rigShootUntil) this.setVelocity(0, 0)
 
-    if (this.dragon) this.updateDragon(time)
-    else if (time >= this.rigShootUntil) this.updateFacing(aimX, aimY, time)
+    // (le dragon segmenté est déjà mis à jour en tête de frame -> ici, seuls les boss à rig orientent leur sprite)
+    if (!this.dragon && time >= this.rigShootUntil) this.updateFacing(aimX, aimY, time)
     if (this.isBoss && this.aura) {
       this.aura.setPosition(this.x, this.y + (this.auraY ?? 4)) // l'aura suit le boss
       this.aura.setDepth(this.y - 1)

@@ -179,7 +179,7 @@ const VILLAGE_LIGHT_R = 10 * TILE // rayon (px) du trou de lumière : STRICTEMEN
 const NIGHT_TEMP_SHIFT = 28 // refroidissement maxi à minuit (renforce la température : neige plus dure, désert qui se rafraîchit)
 const TEST_UNLOCK_SKILLS = false // débloque les 3 compétences (sort niv.10 + sort de panoplie) sans condition — passer à true pour TESTER
 const DEBUG_SPAWN_BOSS = null // OUTIL DEV (désactivé) : mettre un id de boss (ex 'giantflam') -> la touche B le fait apparaître à côté du joueur pour tester ses patterns.
-const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque + touche G téléport Sargèr + gate désactivé (test end-game).
+const DEBUG_GIVE_BOAT = false // OUTIL DEV (désactivé) : true -> barque offerte + touche G téléport Sargèr + gate désactivé (test end-game). REMETTRE false avant commit.
 const DEBUG_TP_HAMLET = false // OUTIL DEV : true -> touche H téléporte au hameau abandonné « Ombrebois » (forêt ouest) pour tester. REMETTRE false avant commit.
 const DEBUG_GIVE_SET = false // OUTIL DEV (désactivé) : true -> touche P fait tomber les 4 pièces de la PANOPLIE de ta classe à tes pieds (test icônes/halo/équipement). REMETTRE false avant commit.
 // Tuile du tablier de pont (tileset Sprout bridge_wood, 5×3) : la tuile 8 = milieu plein sans bord, se
@@ -716,6 +716,27 @@ export default class GameScene extends Phaser.Scene {
         emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, 900, 6) },
       }).setDepth(8600)
       this.emberEmitter.stop()
+      // MOTES / ESPRITS d'AMBIANCE (sous-zones de Sargèr SAUF Dunes de Cendre, qui a déjà ses braises) : UN seul
+      // emitter retinté par sous-zone chaque frame via `this._wispTint` — spores verts (Bois Blêmes), motes glacés
+      // (Nécropole Gelée), esprits pâles (Bourg Fantôme). Dérive lente/flottante, fondu doux. fx_spirit = blanc/
+      // teintable (5 frames). `tint` en fonction = onEmit -> chaque particule prend la teinte courante.
+      // La ZONE d'émission couvre TOUTE la vue (redimensionnée chaque frame en updateWeather, mode RESIZE) ->
+      // les motes flottent dans toute la scène au lieu de s'agglutiner en haut.
+      this._wispZone = new Phaser.Geom.Rectangle(0, 0, 1280, 720)
+      this.wispEmitter = this.add.particles(0, 0, 'fx_spirit', {
+        frame: [0, 1, 2, 3, 4],
+        lifespan: 4200,
+        speedY: { min: -10, max: 22 },
+        speedX: { min: -16, max: 16 },
+        scale: { min: 0.45, max: 0.95 },
+        alpha: { start: 0.55, end: 0 },
+        rotate: { min: 0, max: 360 },
+        tint: () => this._wispTint ?? 0xb9a8d6,
+        frequency: 240,
+        quantity: 1,
+        emitZone: { type: 'random', source: this._wispZone },
+      }).setDepth(8600)
+      this.wispEmitter.stop()
     }
 
     // --- entrées combat (désactivées en mode aperçu) ---
@@ -4819,6 +4840,7 @@ export default class GameScene extends Phaser.Scene {
       this.rainEmitter?.stop(); this.rainEmitter?.killAll()
       this.ashEmitter?.stop(); this.ashEmitter?.killAll() // cendres/braises de Sargèr : même purge
       this.emberEmitter?.stop(); this.emberEmitter?.killAll()
+      this.wispEmitter?.stop(); this.wispEmitter?.killAll() // motes/esprits d'ambiance : pas dans un intérieur
       if (this._aiming) this.cancelAiming() // visée de téléportation -> purgée à l'entrée d'un intérieur
       cam.fadeIn(220, 6, 5, 10)
     })
@@ -8471,6 +8493,20 @@ export default class GameScene extends Phaser.Scene {
       if (inAsh && !this.emberEmitter.emitting) this.emberEmitter.start()
       else if (!inAsh && this.emberEmitter.emitting) this.emberEmitter.stop()
     }
+    // MOTES / ESPRITS d'AMBIANCE : actifs sur Sargèr dans Bois Blêmes / Nécropole / Bourg Fantôme (la Dunes de
+    // Cendre a ses braises ; le hub d'avant-poste reste « propre » comme la prairie du village). Retinte par sous-zone.
+    if (this.wispEmitter) {
+      const sub = biome === 'cursed' ? this.cursedSub?.(Math.floor(p.x / TILE), Math.floor(p.y / TILE)) : null
+      const tints = { ghost: 0xb9a8d6, blight: 0x9fd08a, frost: 0xcfe2f5 } // esprits pâles / spores verts / motes glacés
+      const showWisp = !p.sailing && sub != null && tints[sub] != null
+      if (showWisp) {
+        this._wispTint = tints[sub]
+        const wv = this.cameras.main.worldView
+        this._wispZone.width = wv.width; this._wispZone.height = wv.height // zone = toute la vue (mode RESIZE)
+        this.wispEmitter.setPosition(wv.x, wv.y) // coin haut-gauche -> motes répartis sur tout l'écran
+        if (!this.wispEmitter.emitting) this.wispEmitter.start()
+      } else if (this.wispEmitter.emitting) { this.wispEmitter.stop() }
+    }
     // 2) FEUILLES qui tombent DES ARBRES en forêt (plus espacées)
     if (biome === 'forest' && time >= (this._leafAt ?? 0)) { this._leafAt = time + Phaser.Math.Between(1400, 2800); this.spawnLeaf() }
   }
@@ -8587,6 +8623,21 @@ export default class GameScene extends Phaser.Scene {
         const fa = sub === 'frost' ? 0.15 : sub === 'ash' ? 0.05 : 0.09 // brume au-dessus de la scène : discrète (ne masque pas la vue), + dense en Nécropole
         this.cursedFog.alpha += (fa - this.cursedFog.alpha) * 0.04
       }
+      // ÂMES du Bourg Fantôme (section D) : un esprit pulse sur un point fixe VISIBLE à l'écran, throttlé (~1,8 s).
+      // Monte doucement en se dissipant -> lecture « âme qui s'élève » sur les ruines. Points posés par scatterCursedProps.
+      if (this._ghostWisps?.length && (time ?? 0) > (this._wispNext || 0)) {
+        this._wispNext = (time ?? 0) + 1800
+        const view = this.cameras.main.worldView
+        const visible = this._ghostWisps.filter(w => view.contains(w.x, w.y))
+        if (visible.length) {
+          const w = Phaser.Utils.Array.GetRandom(visible)
+          const sp = this.playFx('fx-spirit', w.x, w.y - 6, { tint: 0xb9a8d6, alpha: 0, scale: 1.3, depth: w.y, life: 1700 })
+          if (sp) {
+            this.tweens.add({ targets: sp, alpha: 0.6, duration: 850, yoyo: true, ease: 'Sine.easeInOut' }) // apparition/disparition douce
+            this.tweens.add({ targets: sp, y: w.y - 30, scale: 1.7, duration: 1700, ease: 'Sine.easeOut' }) // dérive vers le haut
+          }
+        }
+      }
     } else if (this.cursedFog && this.cursedFog.alpha > 0.002) {
       this.cursedFog.alpha += (0 - this.cursedFog.alpha) * 0.05 // s'estompe en quittant l'île
     }
@@ -8657,6 +8708,7 @@ export default class GameScene extends Phaser.Scene {
     this.rainEmitter?.stop(); this.rainEmitter?.killAll()
     this.ashEmitter?.stop(); this.ashEmitter?.killAll() // cendres/braises de Sargèr aussi
     this.emberEmitter?.stop(); this.emberEmitter?.killAll()
+    this.wispEmitter?.stop(); this.wispEmitter?.killAll() // motes/esprits d'ambiance
     this.raining = false
     this.endTankCharge() // coupe un éventuel buff de Charge du Tank
     this.activeBoss = null // cache la barre de boss
